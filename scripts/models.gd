@@ -1,0 +1,784 @@
+class_name Models
+extends RefCounted
+## Low-poly prosedürel modeller: hepsi kodla, basit geometrilerden çizilir.
+## Web sürümündeki models.js'in birebir karşılığı.
+
+static var _meshes := {}
+static var _mats := {}
+static var _glow: StandardMaterial3D
+static var _water: StandardMaterial3D
+
+# ------------------------------------------------------------ malzemeler
+static func mat(c: String) -> StandardMaterial3D:
+	if not _mats.has(c):
+		var m := StandardMaterial3D.new()
+		m.albedo_color = Color(c)
+		m.roughness = 0.9
+		_mats[c] = m
+	return _mats[c]
+
+static func emissive(c: String, e: String, energy: float) -> StandardMaterial3D:
+	var k := "%s|%s|%s" % [c, e, energy]
+	if not _mats.has(k):
+		var m := StandardMaterial3D.new()
+		m.albedo_color = Color(c)
+		m.emission_enabled = true
+		m.emission = Color(e)
+		m.emission_energy_multiplier = energy
+		_mats[k] = m
+	return _mats[k]
+
+## Geceleri parlayan ortak malzeme (fener, pencere). Oyun enerjisini değiştirir.
+static func glow() -> StandardMaterial3D:
+	if _glow == null:
+		_glow = StandardMaterial3D.new()
+		_glow.albedo_color = Color("#ffe9a8")
+		_glow.emission_enabled = true
+		_glow.emission = Color("#ffb300")
+		_glow.emission_energy_multiplier = 0.0
+	return _glow
+
+static func water() -> StandardMaterial3D:
+	if _water == null:
+		_water = StandardMaterial3D.new()
+		_water.albedo_color = Color(0.31, 0.71, 0.91, 0.85)
+		_water.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		_water.roughness = 0.15
+		_water.metallic = 0.1
+	return _water
+
+# ------------------------------------------------------------ geometri
+## Pürüzsüz normalleri yüz normalleriyle değiştirir: low-poly "facet" görünümü.
+static func _flat(src: Mesh, offset := Vector3.ZERO) -> ArrayMesh:
+	var arr := src.surface_get_arrays(0)
+	var verts: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+	var norms: PackedVector3Array = arr[Mesh.ARRAY_NORMAL]
+	var idx: PackedInt32Array = arr[Mesh.ARRAY_INDEX] if arr[Mesh.ARRAY_INDEX] != null else PackedInt32Array()
+	var count := idx.size() if idx.size() > 0 else verts.size()
+	var out_v := PackedVector3Array()
+	var out_n := PackedVector3Array()
+	for i in range(0, count, 3):
+		var ia := idx[i] if idx.size() > 0 else i
+		var ib := idx[i + 1] if idx.size() > 0 else i + 1
+		var ic := idx[i + 2] if idx.size() > 0 else i + 2
+		var a := verts[ia]
+		var b := verts[ib]
+		var c := verts[ic]
+		var fn := (b - a).cross(c - a)
+		if fn.length_squared() < 1e-12:
+			continue
+		fn = fn.normalized()
+		if norms.size() > 0 and fn.dot(norms[ia] + norms[ib] + norms[ic]) < 0.0:
+			fn = -fn
+		out_v.append(a + offset)
+		out_v.append(b + offset)
+		out_v.append(c + offset)
+		out_n.append(fn)
+		out_n.append(fn)
+		out_n.append(fn)
+	var res := []
+	res.resize(Mesh.ARRAY_MAX)
+	res[Mesh.ARRAY_VERTEX] = out_v
+	res[Mesh.ARRAY_NORMAL] = out_n
+	var m := ArrayMesh.new()
+	m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, res)
+	return m
+
+static func _mi(mesh: Mesh, c, x: float, y: float, z: float) -> MeshInstance3D:
+	var m := MeshInstance3D.new()
+	m.mesh = mesh
+	m.material_override = c if c is Material else mat(str(c))
+	m.position = Vector3(x, y, z)
+	m.rotation_order = EULER_ORDER_XYZ
+	return m
+
+static func box(w: float, h: float, d: float, c, x := 0.0, y := 0.0, z := 0.0) -> MeshInstance3D:
+	var k := "b%s|%s|%s" % [w, h, d]
+	if not _meshes.has(k):
+		var b := BoxMesh.new()
+		b.size = Vector3(w, h, d)
+		_meshes[k] = b
+	return _mi(_meshes[k], c, x, y, z)
+
+static func cyl(rt: float, rb: float, h: float, s: int, c, x := 0.0, y := 0.0, z := 0.0) -> MeshInstance3D:
+	var k := "c%s|%s|%s|%s" % [rt, rb, h, s]
+	if not _meshes.has(k):
+		var m := CylinderMesh.new()
+		m.top_radius = rt
+		m.bottom_radius = rb
+		m.height = h
+		m.radial_segments = s
+		m.rings = 0
+		_meshes[k] = _flat(m)
+	return _mi(_meshes[k], c, x, y, z)
+
+static func cone(r: float, h: float, s: int, c, x := 0.0, y := 0.0, z := 0.0) -> MeshInstance3D:
+	return cyl(0.0, r, h, s, c, x, y, z)
+
+static func ball(r: float, c, x := 0.0, y := 0.0, z := 0.0, detail := 0) -> MeshInstance3D:
+	var k := "s%s|%s" % [r, detail]
+	if not _meshes.has(k):
+		var m := SphereMesh.new()
+		m.radius = r
+		m.height = r * 2.0
+		m.radial_segments = 7 if detail == 0 else 11
+		m.rings = 4 if detail == 0 else 6
+		_meshes[k] = _flat(m)
+	return _mi(_meshes[k], c, x, y, z)
+
+static func dodec(r: float, c, x := 0.0, y := 0.0, z := 0.0) -> MeshInstance3D:
+	var k := "d%s" % r
+	if not _meshes.has(k):
+		var m := SphereMesh.new()
+		m.radius = r
+		m.height = r * 2.0
+		m.radial_segments = 5
+		m.rings = 3
+		_meshes[k] = _flat(m)
+	return _mi(_meshes[k], c, x, y, z)
+
+## Üçgen prizma, tabanı y=0'da, mahya z ekseni boyunca.
+static func prism(w: float, h: float, d: float, c, x := 0.0, y := 0.0, z := 0.0) -> MeshInstance3D:
+	var k := "p%s|%s|%s" % [w, h, d]
+	if not _meshes.has(k):
+		var m := PrismMesh.new()
+		m.size = Vector3(w, h, d)
+		_meshes[k] = _flat(m, Vector3(0, h / 2.0, 0))
+	return _mi(_meshes[k], c, x, y, z)
+
+static func torus(big_r: float, small_r: float, c, x := 0.0, y := 0.0, z := 0.0) -> MeshInstance3D:
+	var k := "t%s|%s" % [big_r, small_r]
+	if not _meshes.has(k):
+		var m := TorusMesh.new()
+		m.inner_radius = big_r - small_r
+		m.outer_radius = big_r + small_r
+		m.rings = 20
+		m.ring_segments = 6
+		_meshes[k] = _flat(m)
+	return _mi(_meshes[k], c, x, y, z)
+
+static func rot(n: Node3D, x := 0.0, y := 0.0, z := 0.0) -> Node3D:
+	n.rotation = Vector3(x, y, z)
+	return n
+
+static func scl(n: Node3D, x: float, y := -1.0, z := -1.0) -> Node3D:
+	n.scale = Vector3(x, x if y < 0 else y, x if z < 0 else z)
+	return n
+
+static func node(x := 0.0, y := 0.0, z := 0.0) -> Node3D:
+	var n := Node3D.new()
+	n.position = Vector3(x, y, z)
+	n.rotation_order = EULER_ORDER_XYZ
+	return n
+
+static func add(parent: Node, child: Node) -> Node:
+	parent.add_child(child)
+	return child
+
+## Beşik çatı: üçgen alınlık + iki eğik levha. Mahya z ekseni boyunca.
+static func gable_roof(w: float, d: float, h: float, wall: String, roof: String, over := 0.25) -> Node3D:
+	var g := node()
+	add(g, prism(w, h, d, wall))
+	var half := w / 2.0 + over
+	var ang := atan2(h, w / 2.0)
+	var length := half / cos(ang)
+	var y_mid := (h - over * tan(ang)) / 2.0 + 0.04
+	for s in [-1.0, 1.0]:
+		var slab := box(snappedf(length, 0.001), 0.1, d + over * 2.0, roof, s * half / 2.0, y_mid, 0)
+		slab.rotation.z = -s * ang
+		add(g, slab)
+	add(g, box(0.16, 0.12, d + over * 2.0 + 0.02, roof, 0, h + 0.02, 0))
+	return g
+
+static func _eyes(g: Node3D, x: float, y: float, z: float, c := "#212121") -> void:
+	add(g, box(0.035, 0.035, 0.02, c, -x, y, z))
+	add(g, box(0.035, 0.035, 0.02, c, x, y, z))
+
+# ------------------------------------------------------------ çiftçi
+static func farmer() -> Node3D:
+	const SKIN := "#f1c27d"
+	const SHIRT := "#e2483d"
+	const OVER := "#2f7fd6"
+	const BOOT := "#4e342e"
+	const HAT := "#e8c66a"
+	var g := node()
+	var legs := []
+	for x in [-0.1, 0.1]:
+		var p := node(x, 0.45, 0)
+		add(p, box(0.14, 0.36, 0.16, OVER, 0, -0.2, 0))
+		add(p, box(0.16, 0.1, 0.22, BOOT, 0, -0.4, 0.03))
+		add(g, p)
+		legs.append(p)
+	var body := node()
+	add(g, body)
+	add(body, box(0.4, 0.42, 0.25, SHIRT, 0, 0.68, 0))
+	add(body, box(0.41, 0.16, 0.26, OVER, 0, 0.53, 0))
+	add(body, box(0.28, 0.22, 0.03, OVER, 0, 0.68, 0.13))
+	for s in [-1.0, 1.0]:
+		add(body, box(0.05, 0.2, 0.03, OVER, s * 0.12, 0.8, 0.13))
+		add(body, box(0.04, 0.04, 0.03, "#ffd54f", s * 0.1, 0.76, 0.15))
+	var head := node(0, 1.05, 0)
+	add(body, head)
+	add(head, box(0.3, 0.3, 0.3, SKIN))
+	add(head, box(0.05, 0.06, 0.02, "#3e2723", -0.07, 0.02, 0.151))
+	add(head, box(0.05, 0.06, 0.02, "#3e2723", 0.07, 0.02, 0.151))
+	add(head, box(0.06, 0.06, 0.05, "#e0a86a", 0, -0.04, 0.17))
+	add(head, box(0.12, 0.03, 0.02, "#b5651d", 0, -0.1, 0.151))
+	add(head, box(0.32, 0.08, 0.32, "#6d4c41", 0, 0.12, -0.01))
+	add(head, cyl(0.34, 0.34, 0.03, 12, HAT, 0, 0.17, 0))
+	add(head, cyl(0.17, 0.19, 0.16, 10, HAT, 0, 0.26, 0))
+	add(head, cyl(0.195, 0.195, 0.04, 10, "#c62828", 0, 0.2, 0))
+	var arms := []
+	for x in [-0.26, 0.26]:
+		var p := node(x, 0.86, 0)
+		add(p, box(0.11, 0.34, 0.12, SHIRT, 0, -0.15, 0))
+		add(p, box(0.1, 0.1, 0.1, SKIN, 0, -0.36, 0))
+		add(body, p)
+		arms.append(p)
+	var tool := node(0, -0.38, 0.05)
+	add(tool, rot(cyl(0.02, 0.02, 0.75, 5, "#8d6e63", 0, 0, 0.25), PI / 2.0))
+	add(tool, box(0.16, 0.04, 0.12, "#9e9e9e", 0, -0.05, 0.6))
+	add(arms[1], tool)
+	g.set_meta("parts", {"leg_l": legs[0], "leg_r": legs[1], "arm_l": arms[0], "arm_r": arms[1], "body": body, "head": head})
+	return g
+
+# ------------------------------------------------------------ tarla ve ekinler
+static func soil(wet := false) -> Node3D:
+	var base := "#5b3a27" if wet else "#8b5a3c"
+	var groove := "#4a2e1f" if wet else "#744a31"
+	var g := node()
+	add(g, box(0.94, 0.1, 0.94, base, 0, 0.05, 0))
+	for z in [-0.28, 0.0, 0.28]:
+		add(g, box(0.86, 0.035, 0.1, groove, 0, 0.11, z))
+	return g
+
+const SPOTS4 := [[-0.22, -0.22], [0.22, -0.22], [-0.22, 0.22], [0.22, 0.22]]
+const SPOTS9 := [[-0.28, -0.28], [-0.28, 0.0], [-0.28, 0.28], [0.0, -0.28], [0.0, 0.0], [0.0, 0.28], [0.28, -0.28], [0.28, 0.0], [0.28, 0.28]]
+
+static func _sprout(x: float, z: float) -> Node3D:
+	var s := node(x, 0, z)
+	add(s, rot(box(0.05, 0.12, 0.015, "#8bc34a", -0.03, 0.05, 0), 0, 0, 0.6))
+	add(s, rot(box(0.05, 0.12, 0.015, "#9ccc65", 0.03, 0.05, 0), 0, 0, -0.6))
+	return s
+
+static func crop(type: String, stage: int) -> Node3D:
+	var g := node(0, 0.1, 0)
+	if stage == 0:
+		for p in SPOTS4:
+			add(g, _sprout(p[0], p[1]))
+		return g
+	var inner: Node3D
+	match type:
+		"wheat": inner = _wheat(stage)
+		"carrot": inner = _carrot(stage)
+		"tomato": inner = _tomato(stage)
+		"corn": inner = _corn(stage)
+		"sunflower": inner = _sunflower(stage)
+		_: inner = _pumpkin(stage)
+	if stage == 1:
+		inner.scale = Vector3.ONE * 0.5
+	elif stage == 2:
+		inner.scale = Vector3.ONE * 0.78
+	add(g, inner)
+	return g
+
+static func _wheat(stage: int) -> Node3D:
+	var g := node()
+	var ripe := stage == 3
+	var stalk := "#d4a93c" if ripe else "#7cb342"
+	var head := "#f0c75e" if ripe else "#aed581"
+	for i in SPOTS9.size():
+		var p = SPOTS9[i]
+		var h := 0.5 + float((i * 37) % 10) / 50.0
+		var tilt := float((i * 53) % 10 - 5) / 40.0
+		var s := node(p[0], 0, p[1])
+		s.rotation = Vector3(tilt, 0, -tilt)
+		add(s, cyl(0.012, 0.018, h, 4, stalk, 0, h / 2.0, 0))
+		add(s, box(0.045, 0.16, 0.045, head, 0, h + 0.06, 0))
+		add(s, rot(box(0.02, 0.18, 0.06, "#c9a13a" if ripe else "#8bc34a", 0.03, 0.12, 0), 0, 0, -0.5))
+		add(g, s)
+	return g
+
+static func _carrot(stage: int) -> Node3D:
+	var g := node()
+	for p in SPOTS4:
+		var t := node(p[0], 0, p[1])
+		for k in 3:
+			var c := cone(0.035, 0.34, 4, "#388e3c" if k == 1 else "#43a047", 0, 0.16, 0)
+			c.rotation = Vector3(sin(k * 2.1) * 0.35, 0, cos(k * 2.1) * 0.35)
+			add(t, c)
+		if stage == 3:
+			add(t, cyl(0.065, 0.045, 0.09, 6, "#fb8c00", 0, 0.02, 0))
+		add(g, t)
+	return g
+
+static func _tomato(stage: int) -> Node3D:
+	var g := node()
+	for bp in [[-0.2, -0.18], [0.2, 0.18]]:
+		var b := node(bp[0], 0, bp[1])
+		add(b, cyl(0.015, 0.015, 0.85, 4, "#a1887f", 0, 0.42, 0))
+		add(b, ball(0.17, "#388e3c", 0, 0.28, 0))
+		add(b, ball(0.14, "#43a047", 0.08, 0.46, 0.04))
+		add(b, ball(0.13, "#2e7d32", -0.07, 0.58, -0.04))
+		add(b, ball(0.1, "#43a047", 0.01, 0.72, 0.03))
+		if stage >= 2:
+			var col := "#e53935" if stage == 3 else "#9ccc65"
+			var r := 0.065 if stage == 3 else 0.045
+			for f in [[0.15, 0.3, 0.1], [-0.15, 0.4, 0.08], [0.08, 0.56, -0.15], [-0.1, 0.26, -0.13], [0.04, 0.68, 0.13]]:
+				add(b, ball(r, col, f[0], f[1], f[2]))
+		add(g, b)
+	return g
+
+static func _corn(stage: int) -> Node3D:
+	var g := node()
+	var ripe := stage == 3
+	for sp in [[-0.18, 0.12, 0.3], [0.2, -0.12, 2.2]]:
+		var s := node(sp[0], 0, sp[1])
+		s.rotation.y = sp[2]
+		add(s, cyl(0.03, 0.045, 1.2, 5, "#9ccc65" if ripe else "#7cb342", 0, 0.6, 0))
+		for lf in [[0.3, 1.0], [0.55, -1.0], [0.8, 1.0], [1.0, -1.0]]:
+			add(s, rot(box(0.05, 0.42, 0.015, "#8bc34a", lf[1] * 0.12, lf[0], 0), 0, 0, lf[1] * -0.8))
+		add(s, cone(0.05, 0.22, 5, "#d4a93c" if ripe else "#c5e1a5", 0, 1.3, 0))
+		if stage >= 2:
+			add(s, rot(cyl(0.06, 0.045, 0.28, 6, "#ffd54f" if ripe else "#c5e1a5", 0.08, 0.68, 0), 0, 0, -0.35))
+			add(s, rot(box(0.07, 0.24, 0.05, "#7cb342", 0.1, 0.64, 0.03), 0, 0, -0.35))
+		add(g, s)
+	return g
+
+static func _sunflower(stage: int) -> Node3D:
+	var g := node()
+	add(g, cyl(0.03, 0.045, 1.25, 5, "#689f38", 0, 0.62, 0))
+	add(g, rot(scl(ball(0.15, "#7cb342", 0.16, 0.5, 0), 1, 0.2, 0.6), 0, 0, -0.4))
+	add(g, rot(scl(ball(0.15, "#689f38", -0.16, 0.78, 0), 1, 0.2, 0.6), 0, 0, 0.4))
+	var head := node(0, 1.3, 0.05)
+	head.rotation.x = -0.35
+	if stage == 3:
+		add(head, rot(cyl(0.16, 0.16, 0.06, 10, "#5d4037"), PI / 2.0))
+		add(head, rot(cyl(0.17, 0.17, 0.04, 10, "#558b2f", 0, 0, -0.04), PI / 2.0))
+		for i in 12:
+			var a := float(i) / 12.0 * TAU
+			var p := box(0.08, 0.17, 0.025, "#fdd835" if i % 2 else "#fbc02d", cos(a) * 0.23, sin(a) * 0.23, 0)
+			p.rotation.z = a - PI / 2.0
+			add(head, p)
+	else:
+		add(head, ball(0.1, "#9ccc65"))
+	add(g, head)
+	return g
+
+static func _pumpkin(stage: int) -> Node3D:
+	var g := node()
+	for lp in [[-0.25, -0.2], [0.27, -0.15], [-0.2, 0.27], [0.22, 0.28]]:
+		add(g, scl(ball(0.2, "#558b2f", lp[0], 0.06, lp[1]), 1, 0.3, 1))
+	add(g, rot(cyl(0.02, 0.02, 0.7, 4, "#689f38", 0, 0.04, 0), 0, 0.6, PI / 2.0))
+	if stage >= 2:
+		var ripe := stage == 3
+		var col := "#fb8c00" if ripe else "#9ccc65"
+		var col2 := "#f57c00" if ripe else "#8bc34a"
+		var r := 0.14 if ripe else 0.08
+		for i in 6:
+			var a := float(i) / 6.0 * TAU
+			add(g, scl(ball(snappedf(r * 1.25, 0.001), col if i % 2 else col2, cos(a) * r, r * 1.05, sin(a) * r, 1), 1, 0.85, 1))
+		add(g, cyl(0.025, 0.035, 0.12, 5, "#5d4037", 0, r * 2.1, 0))
+	return g
+
+# ------------------------------------------------------------ ağaçlar
+const TREE_STYLE := {
+	"apple":  {"leaf": ["#43a047", "#4caf50", "#388e3c"], "fruit": "#e53935", "r": 0.075, "cl": [[0, 1.15, 0, 0.5], [0.32, 0.98, 0.12, 0.36], [-0.3, 1.02, -0.1, 0.38], [0.04, 1.5, -0.04, 0.33]]},
+	"orange": {"leaf": ["#2e7d32", "#1b5e20", "#33691e"], "fruit": "#fb8c00", "r": 0.08, "cl": [[0, 1.2, 0, 0.58], [0, 1.62, 0, 0.36]]},
+	"cherry": {"leaf": ["#7cb342", "#689f38", "#8bc34a"], "fruit": "#b71c1c", "r": 0.05, "cl": [[0, 1.1, 0, 0.42], [0.32, 1.04, 0.1, 0.32], [-0.3, 1.06, 0.12, 0.3], [0, 1.44, 0, 0.3], [0.1, 1.1, -0.32, 0.3]]},
+}
+const FRUIT_ANG := [[0.4, 1.0], [2.5, 1.3], [4.4, 0.9], [1.4, 1.6], [5.5, 1.5]]
+
+static func tree(type: String, grown := true, fruit := false) -> Node3D:
+	var st = TREE_STYLE[type]
+	var g := node()
+	var inner := node()
+	add(g, inner)
+	add(inner, cyl(0.08, 0.13, 1.0, 6, "#8d6e63", 0, 0.5, 0))
+	add(inner, rot(cyl(0.04, 0.05, 0.4, 5, "#8d6e63", 0.12, 0.85, 0), 0, 0, -0.7))
+	var cl: Array = st["cl"]
+	for i in cl.size():
+		var c = cl[i]
+		add(inner, ball(c[3], st["leaf"][i % 3], c[0], c[1], c[2]))
+	if grown and fruit:
+		for i in cl.size():
+			var c = cl[i]
+			var n := 5 if i == 0 else 3
+			for j in n:
+				var th: float = FRUIT_ANG[j][0]
+				var ph: float = FRUIT_ANG[j][1]
+				var r: float = c[3] * 0.97
+				var p := Vector3(c[0] + cos(th) * sin(ph) * r, c[1] + cos(ph) * r, c[2] + sin(th) * sin(ph) * r)
+				add(inner, ball(st["r"], st["fruit"], p.x, p.y, p.z))
+				if type == "cherry":
+					add(inner, ball(st["r"], st["fruit"], p.x + 0.06, p.y - 0.03, p.z))
+	elif grown and type == "cherry":
+		for c in cl:
+			for fa in FRUIT_ANG:
+				add(inner, ball(0.045, "#f8bbd0", c[0] + cos(fa[0]) * sin(fa[1]) * c[3], c[1] + cos(fa[1]) * c[3], c[2] + sin(fa[0]) * sin(fa[1]) * c[3]))
+	if not grown:
+		inner.scale = Vector3.ONE * 0.45
+	return g
+
+# ------------------------------------------------------------ hayvanlar
+static func animal(type: String) -> Node3D:
+	match type:
+		"chicken": return _chicken()
+		"cow": return _cow()
+		"sheep": return _sheep()
+		_: return _pig()
+
+static func _chicken() -> Node3D:
+	var g := node()
+	add(g, scl(ball(0.2, "#fafafa", 0, 0.3, 0, 1), 1, 0.9, 1.15))
+	add(g, rot(box(0.12, 0.2, 0.06, "#eeeeee", 0, 0.44, -0.22), -0.4))
+	for s in [-1.0, 1.0]:
+		add(g, scl(ball(0.1, "#f0f0f0", s * 0.17, 0.3, 0), 0.4, 0.7, 1.1))
+		add(g, cyl(0.015, 0.015, 0.16, 4, "#ffa000", s * 0.07, 0.08, 0))
+		add(g, box(0.06, 0.015, 0.08, "#ffa000", s * 0.07, 0.008, 0.03))
+	var head := node(0, 0.5, 0.17)
+	add(head, ball(0.11, "#fafafa", 0, 0, 0, 1))
+	add(head, box(0.03, 0.08, 0.12, "#e53935", 0, 0.11, 0))
+	add(head, rot(cone(0.035, 0.08, 4, "#ffa000", 0, -0.01, 0.12), PI / 2.0))
+	add(head, box(0.03, 0.05, 0.03, "#e53935", 0, -0.07, 0.08))
+	_eyes(head, 0.08, 0.02, 0.06)
+	add(g, head)
+	g.set_meta("head", head)
+	return g
+
+static func _cow() -> Node3D:
+	var g := node()
+	const W := "#fafafa"
+	const B := "#3b2b25"
+	add(g, box(0.5, 0.42, 0.85, W, 0, 0.62, 0))
+	add(g, box(0.52, 0.2, 0.24, B, 0, 0.7, -0.15))
+	add(g, box(0.2, 0.22, 0.3, B, 0.16, 0.6, 0.2))
+	add(g, box(0.16, 0.16, 0.2, B, -0.18, 0.75, 0.28))
+	for lp in [[-0.17, -0.3], [0.17, -0.3], [-0.17, 0.3], [0.17, 0.3]]:
+		add(g, box(0.12, 0.4, 0.12, W, lp[0], 0.22, lp[1]))
+		add(g, box(0.13, 0.06, 0.13, "#4e342e", lp[0], 0.03, lp[1]))
+	add(g, box(0.2, 0.1, 0.18, "#f8bbd0", 0, 0.38, -0.12))
+	add(g, rot(cyl(0.02, 0.02, 0.4, 4, W, 0, 0.6, -0.45), 0.3))
+	add(g, box(0.06, 0.1, 0.06, B, 0, 0.42, -0.5))
+	var head := node(0, 0.82, 0.5)
+	add(head, box(0.32, 0.32, 0.3, W))
+	add(head, box(0.3, 0.16, 0.12, "#f8bbd0", 0, -0.08, 0.18))
+	add(head, box(0.04, 0.04, 0.02, "#ad1457", -0.07, -0.06, 0.245))
+	add(head, box(0.04, 0.04, 0.02, "#ad1457", 0.07, -0.06, 0.245))
+	for s in [-1.0, 1.0]:
+		add(head, rot(cone(0.035, 0.14, 5, "#efebe9", s * 0.13, 0.22, -0.02), 0, 0, -s * 0.5))
+		add(head, box(0.14, 0.07, 0.08, W, s * 0.21, 0.08, -0.04))
+	add(head, box(0.33, 0.1, 0.2, B, 0, 0.12, -0.02))
+	_eyes(head, 0.09, 0.05, 0.151)
+	add(g, head)
+	g.set_meta("head", head)
+	g.scale = Vector3.ONE * 0.85
+	return g
+
+static func _sheep() -> Node3D:
+	var g := node()
+	const WL := "#f5f5f5"
+	const D := "#3d3d3d"
+	for b in [[0, 0.5, 0, 0.24], [0.15, 0.55, 0.15, 0.2], [-0.15, 0.55, 0.15, 0.2], [0.15, 0.55, -0.15, 0.2], [-0.15, 0.55, -0.15, 0.2], [0, 0.68, 0, 0.2], [0, 0.55, -0.27, 0.16]]:
+		add(g, ball(b[3], WL, b[0], b[1], b[2]))
+	for lp in [[-0.13, -0.18], [0.13, -0.18], [-0.13, 0.18], [0.13, 0.18]]:
+		add(g, box(0.08, 0.32, 0.08, D, lp[0], 0.16, lp[1]))
+	var head := node(0, 0.62, 0.36)
+	add(head, box(0.2, 0.24, 0.26, D))
+	for s in [-1.0, 1.0]:
+		add(head, rot(box(0.13, 0.05, 0.07, D, s * 0.14, 0.05, -0.04), 0, 0, s * -0.3))
+	add(head, ball(0.1, "#ffffff", 0, 0.14, -0.04))
+	_eyes(head, 0.06, 0.03, 0.131, "#fafafa")
+	add(g, head)
+	g.set_meta("head", head)
+	return g
+
+static func _pig() -> Node3D:
+	var g := node()
+	const P := "#f6a5c0"
+	const D := "#ec7fa6"
+	add(g, scl(ball(0.32, P, 0, 0.42, 0, 1), 0.85, 0.78, 1.15))
+	for lp in [[-0.14, -0.2], [0.14, -0.2], [-0.14, 0.2], [0.14, 0.2]]:
+		add(g, box(0.1, 0.24, 0.1, D, lp[0], 0.12, lp[1]))
+	add(g, rot(cyl(0.015, 0.015, 0.14, 4, D, 0, 0.5, -0.38), -0.8))
+	var head := node(0, 0.5, 0.33)
+	add(head, ball(0.2, P, 0, 0, 0, 1))
+	add(head, rot(cyl(0.09, 0.09, 0.08, 8, D, 0, -0.03, 0.19), PI / 2.0))
+	add(head, box(0.025, 0.04, 0.02, "#ad1457", -0.035, -0.03, 0.235))
+	add(head, box(0.025, 0.04, 0.02, "#ad1457", 0.035, -0.03, 0.235))
+	for s in [-1.0, 1.0]:
+		add(head, rot(cone(0.065, 0.12, 4, D, s * 0.11, 0.17, 0.02), 0.3, 0, -s * 0.3))
+	_eyes(head, 0.08, 0.06, 0.17)
+	add(g, head)
+	g.set_meta("head", head)
+	return g
+
+static func product(type: String) -> Node3D:
+	var g := node()
+	match type:
+		"chicken":
+			add(g, scl(ball(0.12, "#fff3d6", 0, 0, 0, 1), 0.85, 1.12, 0.85))
+		"sheep":
+			add(g, ball(0.11, "#ffffff", -0.07, 0, 0))
+			add(g, ball(0.1, "#f3f3f3", 0.08, 0.02, 0))
+			add(g, ball(0.09, "#fafafa", 0, 0.09, 0.02))
+		"pig":
+			add(g, cyl(0.04, 0.05, 0.12, 6, "#efe3c8", 0, -0.04, 0))
+			add(g, scl(ball(0.13, "#c0392b", 0, 0.05, 0, 1), 1, 0.6, 1))
+			add(g, ball(0.025, "#ffffff", 0.06, 0.1, 0.05))
+			add(g, ball(0.02, "#ffffff", -0.05, 0.11, -0.03))
+		"cow":
+			add(g, cyl(0.07, 0.08, 0.2, 8, "#ffffff", 0, -0.02, 0))
+			add(g, cyl(0.04, 0.07, 0.06, 8, "#ffffff", 0, 0.11, 0))
+			add(g, cyl(0.045, 0.045, 0.04, 8, "#1e88e5", 0, 0.16, 0))
+			add(g, cyl(0.082, 0.082, 0.06, 8, "#64b5f6", 0, -0.02, 0))
+	add(g, torus(0.2, 0.025, emissive("#ffe082", "#ffca28", 0.8), 0, -0.16, 0))
+	return g
+
+# ------------------------------------------------------------ binalar
+static func _window(g: Node3D, x: float, y: float, z: float, ry := 0.0) -> Node3D:
+	var w := node(x, y, z)
+	w.rotation.y = ry
+	add(w, box(0.62, 0.56, 0.05, "#ffffff"))
+	add(w, box(0.5, 0.44, 0.06, glow()))
+	add(w, box(0.04, 0.44, 0.07, "#ffffff"))
+	add(w, box(0.5, 0.04, 0.07, "#ffffff"))
+	add(g, w)
+	return w
+
+static func building(type: String) -> Node3D:
+	match type:
+		"house": return _house()
+		"barn": return _barn()
+		"silo": return _silo()
+		"well": return _well()
+		_: return _windmill()
+
+static func _house() -> Node3D:
+	var g := node()
+	add(g, box(3.2, 0.2, 2.8, "#9e9e9e", 0, 0.1, 0))
+	add(g, box(3.0, 1.7, 2.6, "#fbe9c6", 0, 1.05, 0))
+	for x in [-1.5, 1.5]:
+		for z in [-1.3, 1.3]:
+			add(g, box(0.14, 1.72, 0.14, "#8d6e63", x, 1.05, z))
+	add(g, box(3.05, 0.12, 2.65, "#8d6e63", 0, 1.9, 0))
+	var roof := gable_roof(2.6, 3.0, 1.2, "#fbe9c6", "#c0392b", 0.28)
+	roof.rotation.y = PI / 2.0
+	roof.position.y = 1.95
+	add(g, roof)
+	add(g, box(0.35, 1.0, 0.35, "#8d6e63", 0.9, 2.75, -0.35))
+	add(g, box(0.45, 0.1, 0.45, "#5d4037", 0.9, 3.28, -0.35))
+	add(g, box(0.62, 1.1, 0.06, "#6d4c41", 0, 0.75, 1.31))
+	add(g, box(0.06, 0.06, 0.04, "#ffd54f", 0.2, 0.75, 1.35))
+	_window(g, -0.95, 1.2, 1.31)
+	_window(g, 0.95, 1.2, 1.31)
+	_window(g, 1.51, 1.2, 0, PI / 2.0)
+	_window(g, -1.51, 1.2, 0, PI / 2.0)
+	var wtop := _window(g, 0, 2.5, 1.2)
+	wtop.scale = Vector3.ONE * 0.7
+	for x in [-0.95, 0.95]:
+		add(g, box(0.66, 0.14, 0.16, "#8d6e63", x, 0.86, 1.4))
+		for dx in [-0.2, 0.0, 0.2]:
+			add(g, ball(0.07, "#ffd23f" if dx == 0.0 else "#ff5c8a", x + dx, 0.97, 1.4))
+	add(g, box(1.3, 0.12, 0.7, "#a1887f", 0, 0.16, 1.65))
+	add(g, box(1.4, 0.08, 0.8, "#c0392b", 0, 1.55, 1.6))
+	for x in [-0.62, 0.62]:
+		add(g, box(0.07, 1.4, 0.07, "#ffffff", x, 0.85, 1.95))
+	return g
+
+static func _barn() -> Node3D:
+	var g := node()
+	const R := "#b23a2e"
+	const WT := "#ffffff"
+	add(g, box(3.4, 2.0, 2.8, R, 0, 1.0, 0))
+	for x in [-1.7, 1.7]:
+		for z in [-1.4, 1.4]:
+			add(g, box(0.12, 2.02, 0.12, WT, x, 1.0, z))
+	var roof := gable_roof(3.4, 2.8, 1.35, R, "#5d4037", 0.25)
+	roof.position.y = 2.0
+	add(g, roof)
+	add(g, box(1.4, 1.5, 0.06, "#8e2a20", 0, 0.75, 1.41))
+	for t in [[1.5, 0.1, 0, 1.5], [0.1, 1.5, -0.7, 0.75], [0.1, 1.5, 0.7, 0.75], [0.08, 1.5, 0, 0.75]]:
+		add(g, box(t[0], t[1], 0.08, WT, t[2], t[3], 1.43))
+	var diag := snappedf(Vector2(0.7, 1.5).length(), 0.001)
+	var ang := atan2(0.7, 1.5)
+	for sx in [-0.35, 0.35]:
+		for s in [-1.0, 1.0]:
+			add(g, rot(box(0.07, diag, 0.08, WT, sx, 0.75, 1.44), 0, 0, s * ang))
+	add(g, box(0.7, 0.55, 0.06, WT, 0, 2.5, 1.41))
+	add(g, box(0.55, 0.42, 0.08, "#3e2723", 0, 2.5, 1.42))
+	add(g, box(0.5, 0.25, 0.25, "#e8c547", 0, 2.35, 1.4))
+	_window(g, 1.71, 1.2, 0, PI / 2.0)
+	_window(g, -1.71, 1.2, 0, PI / 2.0)
+	return g
+
+static func _silo() -> Node3D:
+	var g := node()
+	add(g, cyl(0.72, 0.72, 3.2, 12, "#cfd8dc", 0, 1.6, 0))
+	for y in [0.8, 1.6, 2.4]:
+		add(g, cyl(0.74, 0.74, 0.08, 12, "#90a4ae", 0, y, 0))
+	add(g, scl(ball(0.74, "#b0bec5", 0, 3.2, 0, 1), 1, 0.6, 1))
+	add(g, box(0.06, 2.8, 0.06, "#78909c", 0.2, 1.5, 0.73))
+	add(g, box(0.06, 2.8, 0.06, "#78909c", -0.2, 1.5, 0.73))
+	var y := 0.3
+	while y < 2.9:
+		add(g, box(0.4, 0.03, 0.04, "#78909c", 0, y, 0.74))
+		y += 0.3
+	return g
+
+static func _well() -> Node3D:
+	var g := node()
+	add(g, cyl(0.45, 0.5, 0.5, 10, "#9e9e9e", 0, 0.25, 0))
+	add(g, cyl(0.47, 0.47, 0.08, 10, "#bdbdbd", 0, 0.52, 0))
+	add(g, cyl(0.36, 0.36, 0.02, 10, water(), 0, 0.45, 0))
+	for x in [-0.42, 0.42]:
+		add(g, box(0.08, 1.0, 0.08, "#6d4c41", x, 0.85, 0))
+	var roof := gable_roof(1.0, 0.8, 0.4, "#8d6e63", "#c0392b", 0.12)
+	roof.rotation.y = PI / 2.0
+	roof.position.y = 1.32
+	add(g, roof)
+	add(g, rot(cyl(0.04, 0.04, 0.9, 6, "#5d4037", 0, 1.1, 0), 0, 0, PI / 2.0))
+	add(g, cyl(0.01, 0.01, 0.3, 3, "#3e2723", 0, 0.92, 0))
+	add(g, cyl(0.09, 0.07, 0.13, 8, "#8d6e63", 0, 0.72, 0))
+	return g
+
+static func _windmill() -> Node3D:
+	var g := node()
+	add(g, cyl(0.7, 1.1, 3.6, 8, "#efebe9", 0, 1.8, 0))
+	add(g, cone(0.95, 0.9, 8, "#c0392b", 0, 4.05, 0))
+	add(g, box(0.5, 0.9, 0.06, "#6d4c41", 0, 0.45, 1.05))
+	var wm := _window(g, 0, 2.2, 0.86)
+	wm.scale = Vector3.ONE * 0.6
+	add(g, rot(cyl(0.12, 0.12, 0.5, 8, "#5d4037", 0, 3.4, 0.85), PI / 2.0))
+	var blades := node(0, 3.4, 1.1)
+	for k in 4:
+		var b := node()
+		b.rotation.z = k * PI / 2.0
+		add(b, box(0.08, 1.9, 0.06, "#6d4c41", 0, 1.0, 0))
+		add(b, box(0.42, 1.45, 0.03, "#fff8e1", 0.25, 1.1, 0))
+		var y := 0.5
+		while y < 1.9:
+			add(b, box(0.45, 0.03, 0.04, "#8d6e63", 0.25, y, 0.01))
+			y += 0.35
+		add(blades, b)
+	add(blades, ball(0.14, "#5d4037"))
+	add(g, blades)
+	g.set_meta("blades", blades)
+	return g
+
+# ------------------------------------------------------------ dekor
+const FLOWER_COLS := ["#ff5c8a", "#ffd23f", "#b388ff", "#ff7043", "#ffffff", "#4fc3f7"]
+
+static func fence(n := false, s := false, e := false, w := false) -> Node3D:
+	var g := node()
+	const P := "#a47148"
+	const RL := "#c79a6a"
+	add(g, box(0.13, 0.62, 0.13, P, 0, 0.31, 0))
+	add(g, box(0.17, 0.05, 0.17, "#8d5f3a", 0, 0.64, 0))
+	for y in [0.45, 0.22]:
+		if e: add(g, box(0.5, 0.07, 0.05, RL, 0.25, y, 0))
+		if w: add(g, box(0.5, 0.07, 0.05, RL, -0.25, y, 0))
+		if s: add(g, box(0.05, 0.07, 0.5, RL, 0, y, 0.25))
+		if n: add(g, box(0.05, 0.07, 0.5, RL, 0, y, -0.25))
+	return g
+
+static func decor(type: String, conn := {}) -> Node3D:
+	var g := node()
+	match type:
+		"fence":
+			return fence(conn.get("n", false), conn.get("s", false), conn.get("e", false), conn.get("w", false))
+		"path":
+			var cols := ["#b9b2a6", "#a8a196", "#c4beb3", "#aea79b"]
+			var ps := [[-0.23, -0.23], [0.23, -0.23], [-0.23, 0.23], [0.23, 0.23]]
+			for i in 4:
+				add(g, box(0.43, 0.05, 0.43, cols[i], ps[i][0], 0.025, ps[i][1]))
+		"flowers":
+			add(g, box(0.9, 0.1, 0.9, "#6d4c41", 0, 0.05, 0))
+			for x in [-0.45, 0.45]:
+				add(g, box(0.06, 0.16, 0.94, "#a1887f", x, 0.08, 0))
+			for z in [-0.45, 0.45]:
+				add(g, box(0.94, 0.16, 0.06, "#a1887f", 0, 0.08, z))
+			var i := 0
+			for x in [-0.25, 0.0, 0.25]:
+				for z in [-0.25, 0.0, 0.25]:
+					var h := 0.18 + float((i * 7) % 5) * 0.03
+					add(g, cyl(0.012, 0.012, h, 3, "#558b2f", x, 0.1 + h / 2.0, z))
+					add(g, ball(0.07, FLOWER_COLS[(i * 5) % FLOWER_COLS.size()], x, 0.12 + h, z))
+					add(g, ball(0.03, "#ffeb3b", x, 0.16 + h, z))
+					i += 1
+		"rock":
+			add(g, scl(dodec(0.3, "#9e9e9e", 0, 0.18, 0), 1.2, 0.8, 1))
+			add(g, scl(dodec(0.18, "#bdbdbd", 0.28, 0.1, 0.15), 1, 0.8, 1))
+			add(g, scl(dodec(0.12, "#8d8d8d", -0.25, 0.07, 0.2), 1, 0.8, 1))
+		"bush":
+			add(g, ball(0.32, "#3e8e41", 0, 0.3, 0))
+			add(g, ball(0.24, "#4caf50", 0.22, 0.25, 0.1))
+			add(g, ball(0.22, "#388e3c", -0.2, 0.24, -0.08))
+			add(g, ball(0.2, "#43a047", 0, 0.5, 0.05))
+			for b in [[0.2, 0.42, 0.25], [-0.15, 0.5, 0.2], [0.05, 0.62, -0.1]]:
+				add(g, ball(0.04, "#e91e63", b[0], b[1], b[2]))
+		"lantern":
+			add(g, box(0.3, 0.08, 0.3, "#616161", 0, 0.04, 0))
+			add(g, cyl(0.04, 0.05, 1.4, 6, "#424242", 0, 0.74, 0))
+			add(g, box(0.22, 0.3, 0.22, glow(), 0, 1.55, 0))
+			for x in [-0.11, 0.11]:
+				for z in [-0.11, 0.11]:
+					add(g, box(0.03, 0.32, 0.03, "#424242", x, 1.55, z))
+			add(g, rot(cone(0.2, 0.18, 4, "#424242", 0, 1.79, 0), 0, PI / 4.0))
+			add(g, box(0.26, 0.04, 0.26, "#424242", 0, 1.39, 0))
+		"hay":
+			add(g, rot(cyl(0.34, 0.34, 0.7, 12, "#e8c547", 0, 0.34, 0), 0, 0, PI / 2.0))
+			for x in [-0.18, 0.18]:
+				add(g, rot(cyl(0.345, 0.345, 0.04, 12, "#c9a227", x, 0.34, 0), 0, 0, PI / 2.0))
+		"scarecrow":
+			add(g, box(0.08, 1.5, 0.08, "#8d6e63", 0, 0.75, 0))
+			add(g, box(1.0, 0.07, 0.07, "#8d6e63", 0, 1.1, 0))
+			add(g, box(0.36, 0.45, 0.2, "#3f51b5", 0, 1.02, 0))
+			add(g, box(0.22, 0.14, 0.21, "#e53935", 0, 1.2, 0))
+			for s in [-1.0, 1.0]:
+				add(g, box(0.28, 0.14, 0.16, "#3f51b5", s * 0.3, 1.1, 0))
+				add(g, rot(cone(0.06, 0.16, 4, "#e8c547", s * 0.5, 1.1, 0), 0, 0, s * PI / 2.0))
+			add(g, ball(0.17, "#f3d9a4", 0, 1.43, 0, 1))
+			_eyes(g, 0.06, 1.46, 0.155)
+			add(g, box(0.1, 0.025, 0.02, "#5d4037", 0, 1.37, 0.16))
+			add(g, cyl(0.3, 0.3, 0.025, 10, "#c8a15a", 0, 1.56, 0))
+			add(g, cone(0.16, 0.22, 8, "#c8a15a", 0, 1.68, 0))
+	return g
+
+# ------------------------------------------------------------ doğa
+static func pine(s := 1.0) -> Node3D:
+	var g := node()
+	add(g, cyl(0.1, 0.14, 0.6, 5, "#6d4c41", 0, 0.3, 0))
+	add(g, cone(0.75, 1.0, 7, "#2e7d32", 0, 0.95, 0))
+	add(g, cone(0.6, 0.85, 7, "#388e3c", 0, 1.45, 0))
+	add(g, cone(0.42, 0.7, 7, "#43a047", 0, 1.9, 0))
+	g.scale = Vector3.ONE * s
+	return g
+
+static func round_tree(s := 1.0, col := "#4caf50") -> Node3D:
+	var g := node()
+	add(g, cyl(0.1, 0.15, 1.0, 6, "#795548", 0, 0.5, 0))
+	add(g, ball(0.6, col, 0, 1.3, 0))
+	add(g, ball(0.4, col, 0.35, 1.05, 0.1))
+	add(g, ball(0.38, col, -0.3, 1.15, -0.15))
+	g.scale = Vector3.ONE * s
+	return g
+
+static func cloud() -> Node3D:
+	var g := node()
+	var m := emissive("#ffffff", "#ffffff", 0.35)
+	for b in [[0, 0, 0, 1.2], [1.2, -0.2, 0.2, 0.9], [-1.2, -0.25, 0, 0.85], [0.4, 0.5, -0.2, 0.8], [-0.5, 0.3, 0.4, 0.7]]:
+		var mi := ball(b[3], m, b[0], b[1], b[2], 1)
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add(g, mi)
+	g.scale = Vector3(1.4, 0.8, 1)
+	return g
+
+static func tuft() -> Node3D:
+	var g := node()
+	for k in 3:
+		var c := cone(0.04, 0.25, 3, "#5ea83a", (k - 1) * 0.05, 0.12, 0)
+		c.rotation.z = (k - 1) * 0.4
+		c.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add(g, c)
+	return g
