@@ -67,6 +67,8 @@ var drag_moved := false
 var mouse_pos := Vector2.ZERO
 
 var walk_phase := 0.0
+var move_target = null   # Vector3: tıklanan yere yürü
+var move_marker: MeshInstance3D
 var act_t := 0.0
 var night_f := 0.0
 var clock_t := 0.0
@@ -207,8 +209,17 @@ func _build_env() -> void:
 
 	sun = DirectionalLight3D.new()
 	sun.shadow_enabled = true
-	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
-	sun.directional_shadow_max_distance = 50.0
+	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
+	sun.directional_shadow_max_distance = 40.0
+	sun.directional_shadow_split_1 = 0.08
+	sun.directional_shadow_split_2 = 0.22
+	sun.directional_shadow_split_3 = 0.5
+	sun.directional_shadow_blend_splits = true
+	sun.directional_shadow_fade_start = 0.85
+	sun.shadow_bias = 0.04
+	sun.shadow_normal_bias = 1.2
+	sun.shadow_blur = 1.6
+	sun.light_angular_distance = 0.6
 	sun.light_energy = 1.4
 	add_child(sun)
 
@@ -434,6 +445,10 @@ func _build_cursor() -> void:
 		im.surface_add_vertex(pts[i])
 		im.surface_add_vertex(pts[(i + 1) % 4])
 	im.surface_end()
+	move_marker = Models.torus(0.28, 0.035, Models.emissive("#ffffff", "#ffe082", 1.2))
+	move_marker.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	move_marker.visible = false
+	add_child(move_marker)
 	cursor_edge = MeshInstance3D.new()
 	cursor_edge.mesh = im
 	var em := StandardMaterial3D.new()
@@ -775,6 +790,7 @@ func _enqueue(t: Vector2i) -> void:
 	m.position = Vector3(t.x + 0.5, 0.14, t.y + 0.5)
 	add_child(m)
 	queue.append({"x": t.x, "z": t.y, "tool": tool, "arg": arg, "marker": m})
+	move_target = null
 
 func _explain_fail(arg, x: int, z: int) -> void:
 	var e = tiles.get(key(x, z))
@@ -789,7 +805,7 @@ func _explain_fail(arg, x: int, z: int) -> void:
 		_sfx("error")
 		_toast("🪙 Yeterli altının yok", "warn")
 		return
-	if seedish and e == null:
+	if tool == "seed" and e == null:
 		_toast("⛏️ Önce Çapa ile toprağı sür (2)", "hint")
 
 func _clear_queue() -> void:
@@ -807,6 +823,14 @@ func _update_farmer(dt: float) -> void:
 		var fwd := Vector3(-sin(cam_yaw), 0, -cos(cam_yaw))
 		var right := Vector3(cos(cam_yaw), 0, -sin(cam_yaw))
 		dir = (fwd * kf + right * kx).normalized()
+		move_target = null
+	elif move_target != null:
+		var d: Vector3 = move_target - farmer.position
+		d.y = 0.0
+		if d.length() < 0.08:
+			move_target = null
+		else:
+			dir = d.normalized()
 	elif act_t <= 0.0:
 		while queue.size() > 0 and _resolve(queue[0].tool, queue[0].arg, queue[0].x, queue[0].z) == null:
 			queue.pop_front().marker.queue_free()
@@ -827,12 +851,29 @@ func _update_farmer(dt: float) -> void:
 				act_t = 0.22
 				hud_dirty = true
 	if dir != Vector3.ZERO:
-		farmer.position += dir * FSPEED * dt
-		farmer.position.x = clampf(farmer.position.x, -40, 40)
-		farmer.position.z = clampf(farmer.position.z, -40, 40)
+		var step := dir * FSPEED * dt
+		if move_target != null:
+			var rem: Vector3 = move_target - farmer.position
+			rem.y = 0.0
+			if step.length() > rem.length():
+				step = rem
+		var np := farmer.position + step
+		if _blocked(np):
+			# bina: eksen boyunca kaymayı dene
+			if not _blocked(Vector3(np.x, 0, farmer.position.z)):
+				np = Vector3(np.x, 0, farmer.position.z)
+			elif not _blocked(Vector3(farmer.position.x, 0, np.z)):
+				np = Vector3(farmer.position.x, 0, np.z)
+			else:
+				np = farmer.position
+				move_target = null
+		farmer.position = Vector3(clampf(np.x, -40, 40), farmer.position.y, clampf(np.z, -40, 40))
 		farmer.rotation.y = lerp_angle(farmer.rotation.y, atan2(dir.x, dir.z), minf(1.0, dt * 14.0))
 		moving = true
 	farmer.position.y = maxf(0.0, height_at(farmer.position.x, farmer.position.z))
+	move_marker.visible = move_target != null
+	if move_target != null:
+		move_marker.rotation.y += dt * 3.0
 	if moving:
 		walk_phase += dt * 11.0
 	var sw := sin(walk_phase) * 0.7 if moving else 0.0
@@ -865,6 +906,24 @@ func _pick(mp: Vector2):
 		return null
 	return Vector2i(floori(hit.x), floori(hit.z))
 
+func _pick_point(mp: Vector2):
+	var hit = Plane(Vector3.UP, 0.0).intersects_ray(cam.project_ray_origin(mp), cam.project_ray_normal(mp))
+	return hit
+
+func _walk_to(p) -> void:
+	if p == null:
+		return
+	p.x = clampf(p.x, -40.0, 40.0)
+	p.z = clampf(p.z, -40.0, 40.0)
+	p.y = 0.0
+	move_target = p
+	move_marker.position = Vector3(p.x, height_at(p.x, p.z) + 0.05, p.z)
+	move_marker.visible = true
+
+func _blocked(p: Vector3) -> bool:
+	var t = tiles.get(key(floori(p.x), floori(p.z)))
+	return t != null and t.kind == "building"
+
 func _input(ev: InputEvent) -> void:
 	if ev is InputEventMouseMotion:
 		mouse_pos = ev.position
@@ -884,7 +943,11 @@ func _unhandled_input(ev: InputEvent) -> void:
 				drag_moved = false
 				hover = _pick(ev.position)
 				if hover != null:
-					_enqueue(hover)
+					if _resolve(tool, _current_arg(), hover.x, hover.y) != null:
+						_enqueue(hover)
+					else:
+						_walk_to(_pick_point(ev.position))
+						_explain_fail(_current_arg(), hover.x, hover.y)
 			MOUSE_BUTTON_RIGHT, MOUSE_BUTTON_MIDDLE:
 				rotating = true
 			MOUSE_BUTTON_WHEEL_UP:
@@ -1155,9 +1218,10 @@ func _update_day(dt: float) -> void:
 	env.fog_light_color = sky
 	env.ambient_light_color = Color("#6d82c9").lerp(Color("#dff1ff"), day_f)
 	env.ambient_light_energy = 0.3 + 0.2 * day_f
-	var s_elev := maxf(elev, 0.15)
-	var off := Vector3(cos(ang) * 30.0, s_elev * 35.0, 12.0)
-	sun.look_at_from_position(cam_target + off, cam_target, Vector3.UP)
+	var qang := snappedf(ang, TAU / 720.0)
+	var s_elev := maxf(sin(qang), 0.15)
+	var off := Vector3(cos(qang) * 30.0, s_elev * 35.0, 12.0)
+	sun.look_at_from_position(off, Vector3.ZERO, Vector3.UP)
 	sun.light_energy = 1.15 * day_f + 0.12
 	sun.light_color = Color("#9fb4ff") if night_f > 0.5 else Color("#ffb37a").lerp(Color("#fff3d6"), smoothstep(0.0, 0.5, elev))
 	Models.glow().emission_energy_multiplier = night_f * 3.0
@@ -1705,6 +1769,17 @@ func _selftest() -> void:
 	if not _perform({"x": 9, "z": 2, "tool": "water", "arg": null}): fails.append("sulama 2")
 	_simulate(17.0)
 	if tiles[key(9, 2)].progress < 1.0: fails.append("büyüme %.2f" % tiles[key(9, 2)].progress)
+	# tıklanan yere yürüme + bina engeli
+	farmer.position = Vector3(0.5, 0, 9)
+	_clear_queue()
+	_walk_to(Vector3(6.3, 0, 11.2))
+	for i in 200:
+		_update_farmer(0.05)
+	if farmer.position.distance_to(Vector3(6.3, 0, 11.2)) > 0.1: fails.append("yürüme %s" % farmer.position)
+	_walk_to(Vector3(-9, 0, -10))
+	for i in 200:
+		_update_farmer(0.05)
+	if _blocked(farmer.position): fails.append("binanın içine girdi")
 	var n_before := entities.size()
 	_save()
 	var data = JSON.parse_string(FileAccess.get_file_as_string(SAVE_PATH))
