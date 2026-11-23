@@ -25,6 +25,12 @@ const QUEST_SLOTS := 4
 const ACT_DUR := {"plow": 0.55, "remove": 0.55, "water": 0.85, "plant": 0.55, "flower": 0.55, "tree": 0.6,
 	"harvest": 0.5, "feed": 0.8, "coop": 0.4, "pond": 0.4, "animal": 0.4, "decor": 0.35, "build": 0.6}
 const NET_PORT := 24565
+## Geliştirici: --netport=N ile başka port (oyun açıkken test için).
+func _net_port() -> int:
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--netport="):
+			return int(a.substr(10))
+	return NET_PORT
 const NET_COLORS := ["#4a90d9", "#9c5bd6", "#e0912f", "#2fae8f", "#d94a8c"]
 const WALK_LIM := 56     # çiftçinin gezebileceği alan (±), görünen arazinin içi
 const BLOCK_DECOR := ["fence", "rock", "lantern", "hay", "scarecrow", "bush", "flowers"]
@@ -378,6 +384,8 @@ var net_players := {}       # peer -> {"name", "node", "parts", "tp", "ry", "mv"
 var net_applying := false   # uzaktan gelen işi uygularken
 var net_actor := 1
 var net_sync_t := 0.0
+var net_quest_dirty := false   # ev sahibi: görevler değişti, misafirlere hemen gönder
+var net_quest_t := 0.0
 var net_pos_t := 0.0
 var player_name := "Çiftçi"
 var net_dlg: PanelContainer
@@ -3804,7 +3812,7 @@ func _local_ips() -> Array:
 
 func _net_host() -> void:
 	var peer := ENetMultiplayerPeer.new()
-	var err := peer.create_server(NET_PORT, 4)
+	var err := peer.create_server(_net_port(), 4)
 	if err != OK:
 		_toast("📡 Paylaşım açılamadı (port %d kullanımda olabilir)." % NET_PORT, "warn")
 		return
@@ -3828,7 +3836,7 @@ func _net_join(ip: String, nm: String) -> void:
 	_profile_set("player", nm)
 	_net_close()
 	var peer := ENetMultiplayerPeer.new()
-	var err := peer.create_client(ip, NET_PORT)
+	var err := peer.create_client(ip, _net_port())
 	if err != OK:
 		if net_status != null:
 			net_status.text = "Bağlanılamadı."
@@ -3960,6 +3968,10 @@ func net_pos(x: float, z: float, ry: float, mv: bool) -> void:
 func net_req(t: String, a: String, x: int, z: int) -> void:
 	if net_role != "host":
 		return
+	if t == "@skip":   # misafir görev silmek istedi: ev sahibinin kurallarıyla (ücretsiz hak / elmas)
+		if x >= 0 and x < quests.size():
+			_skip_quest(x)
+		return
 	var id := multiplayer.get_remote_sender_id()
 	net_actor = id
 	net_applying = true
@@ -3970,8 +3982,11 @@ func net_req(t: String, a: String, x: int, z: int) -> void:
 		net_players[id].act_t = 0.5
 
 @rpc("authority", "reliable")
-func net_do(t: String, a: String, x: int, z: int, actor: int) -> void:
+func net_do(t: String, a: String, x: int, z: int, actor: int, msg := "") -> void:
 	if net_role != "guest":
+		return
+	if t == "@toast":
+		_toast(msg, a)
 		return
 	var keep := coins
 	coins = 1 << 30
@@ -3983,13 +3998,43 @@ func net_do(t: String, a: String, x: int, z: int, actor: int) -> void:
 		net_players[actor].act_t = 0.5
 	hud_dirty = true
 
+## Ortak görevler: hikâye adımı, günlük görevler, madalya ve elmas ev sahibinde tutulur.
+func _net_quest_dict() -> Dictionary:
+	return {"quests": quests, "story": story_step, "sh": story_have, "medals": medals, "gems": gems}
+
+## Görev paketi net_sync içinde gelir (ayrı RPC yok: yeni RPC'ler süreçler arası sırayı bozuyor).
+func net_quests(d: Dictionary) -> void:
+	if net_role != "guest":
+		return
+	var ql := []
+	for q in d.get("quests", []):
+		if typeof(q) == TYPE_DICTIONARY and q.has("kind"):
+			ql.append({"kind": str(q.kind), "arg": str(q.get("arg", "")), "text": str(q.get("text", "")),
+				"need": int(q.need), "have": int(q.get("have", 0)), "medals": int(q.medals), "gems": int(q.gems), "xp": int(q.xp)})
+	var st := clampi(int(d.get("story", STORY.size())), 0, STORY.size())
+	var sh := int(d.get("sh", 0))
+	medals = int(d.get("medals", medals))
+	gems = int(d.get("gems", gems))
+	hud_dirty = true
+	if ql != quests or st != story_step or sh != story_have:
+		quests = ql
+		story_step = st
+		story_have = sh
+		_render_quests()
+
+## Ev sahibinde: herkese duyur (görev tamamlandı vb.). Duyuru net_do kanalıyla gider.
+func _toast_all(msg: String, kind := "") -> void:
+	_toast(msg, kind)
+	if net_role == "host" and multiplayer.get_peers().size() > 0:
+		rpc("net_do", "@toast", kind, 0, 0, 1, msg)
+
 ## Ev sahibinden misafirlere: para, zaman, hava ve tüm varlıkların durumu.
 func _net_sync_dict() -> Dictionary:
 	var ents := []
 	for e in entities:
 		ents.append(_ent_dict(e))
 	return {"coins": coins, "xp": xp, "level": level, "day_time": day_time, "day": day, "season": season, "season_t": season_t,
-		"year": year, "weather": weather, "weather_t": weather_t, "fh": farm_h, "res": res, "ents": ents}
+		"year": year, "weather": weather, "weather_t": weather_t, "fh": farm_h, "res": res, "ents": ents, "q": _net_quest_dict()}
 
 @rpc("authority", "reliable")
 func net_sync(d: Dictionary) -> void:
@@ -4016,6 +4061,8 @@ func net_sync(d: Dictionary) -> void:
 		farm_h = int(d.fh)
 		_on_farm_resized()
 	_net_apply_ents(d.ents)
+	if d.has("q"):
+		net_quests(d.q)
 	hud_dirty = true
 
 func _vis_sig(e: Dictionary) -> String:
@@ -4058,6 +4105,13 @@ func _net_tick(dt: float) -> void:
 	if net_role == "host":
 		net_sync_t += dt
 		if net_sync_t > 3.0 and multiplayer.get_peers().size() > 0:
+			net_sync_t = 0.0
+			net_quest_dirty = false
+			rpc("net_sync", _net_sync_dict())
+		net_quest_t -= dt
+		if net_quest_dirty and net_quest_t <= 0.0 and multiplayer.get_peers().size() > 0:
+			net_quest_dirty = false
+			net_quest_t = 1.0
 			net_sync_t = 0.0
 			rpc("net_sync", _net_sync_dict())
 	for id in net_players:
@@ -4131,13 +4185,17 @@ func _render_net_dlg() -> void:
 
 ## İki süreçli ağ denemesi (misafir tarafı): çapala, ev sahibinden onay bekle.
 func _net_host_probe() -> void:
+	if quests.size() > 0:   # deneme: misafirin çapası bu göreve sayılmalı
+		quests[0] = {"kind": "plow", "arg": "", "text": "⛏️ Deneme: 5 kare sür", "need": 5, "have": 0, "medals": 1, "gems": 0, "xp": 1}
+		_render_quests()
 	var plots0 := entities.filter(func(e): return e.kind == "plot").size()
 	var seen := 0
 	for i in 140:
 		await get_tree().create_timer(0.1).timeout
 		seen = maxi(seen, net_players.size())
 	var plots1 := entities.filter(func(e): return e.kind == "plot").size()
-	print("NET HOST ", "OK" if plots1 == plots0 + 1 and seen == 1 else "FAIL", " tarla %d→%d oyuncu=%d" % [plots0, plots1, seen])
+	var qok: bool = quests.is_empty() or quests[0].kind != "plow" or quests[0].have == 1
+	print("NET HOST ", "OK" if plots1 == plots0 + 1 and seen == 1 and qok else "FAIL", " tarla %d→%d oyuncu=%d görev=%s" % [plots0, plots1, seen, qok])
 	get_tree().quit()
 
 func _net_selftest() -> void:
@@ -4153,12 +4211,19 @@ func _net_selftest() -> void:
 	if not net_players.has(1): fails.append("ev sahibi avatarı yok")
 	if entities.size() < 10: fails.append("çiftlik yüklenmedi")
 	if tiles.has(key(tx, tz)): fails.append("deneme karesi dolu")
+	if quests.is_empty() and not _story_on(): fails.append("görevler misafire gelmedi")
+	var qsig := str(quests) + str(story_have) + str(story_step)
 	_perform({"tool": "plow", "arg": null, "x": tx, "z": tz})
 	await get_tree().create_timer(2.0).timeout
 	var e = tiles.get(key(tx, tz))
 	if e == null or e.kind != "plot": fails.append("çapa ev sahibinden dönmedi")
 	await get_tree().create_timer(3.5).timeout
 	if coins <= 0: fails.append("senkron para yok")
+	var plow_q := false
+	for q in quests:
+		if q.kind == "plow":
+			plow_q = true
+	if plow_q and str(quests) + str(story_have) + str(story_step) == qsig: fails.append("misafirin işi göreve sayılmadı")
 	print("NET GUEST ", "OK" if fails.is_empty() else "FAIL: " + ", ".join(fails))
 	_net_close()
 	get_tree().quit()
@@ -5586,8 +5651,7 @@ func _story_on() -> bool:
 	return story_step < STORY.size()
 
 func _fill_quests() -> void:
-	if net_role == "guest":
-		quests = []
+	if net_role == "guest":   # görevler ev sahibinden gelir (net_quests)
 		_render_quests()
 		return
 	if _story_on():
@@ -5599,7 +5663,7 @@ func _fill_quests() -> void:
 	_render_quests()
 
 func _story_event(kind: String, arg: String, n: int) -> void:
-	if not _story_on():
+	if not _story_on() or net_role == "guest":
 		return
 	var st: Dictionary = STORY[story_step]
 	if st.kind != kind or (st.arg != "" and st.arg != arg):
@@ -5612,7 +5676,7 @@ func _story_event(kind: String, arg: String, n: int) -> void:
 	story_have = 0
 	_sfx("level")
 	if st.say != "":
-		_toast("⭐ %s" % st.say, "level")
+		_toast_all("⭐ %s" % st.say, "level")
 	_gain(st.coins, st.xp, farmer.position, "⭐")
 	if not _story_on():
 		gems += 3
@@ -5622,7 +5686,7 @@ func _story_event(kind: String, arg: String, n: int) -> void:
 	_render_quests()
 
 func _quest_event(kind: String, arg: String, n: int) -> void:
-	if n <= 0:
+	if n <= 0 or net_role == "guest":   # çiftliğin görevleri ortak: işi ev sahibi uygular ve sayar
 		return
 	_story_event(kind, arg, n)
 	var done := []
@@ -5637,13 +5701,16 @@ func _quest_event(kind: String, arg: String, n: int) -> void:
 		medals += q.medals
 		gems += q.gems
 		quests[i] = _random_quest()
-		_toast("📜 Görev tamamlandı: %s\n+%d 🏅  +%d 💎  +%d XP" % [q.text, q.medals, q.gems, q.xp], "level")
+		_toast_all("📜 Görev tamamlandı: %s\n+%d 🏅  +%d 💎  +%d XP" % [q.text, q.medals, q.gems, q.xp], "level")
 		_gain(0, q.xp, farmer.position, "📜")
 		_sfx("level")
 	hud_dirty = true
 	_render_quests()
 
 func _skip_quest(i: int) -> bool:
+	if net_role == "guest":
+		rpc_id(1, "net_req", "@skip", "", i, 0)
+		return true
 	var now := Time.get_unix_time_from_system()
 	if now - quest_skip_at >= QUEST_SKIP_COOLDOWN:
 		quest_skip_at = now
@@ -5675,6 +5742,8 @@ func _build_quest_ui() -> void:
 	quest_panel.add_child(quest_box)
 
 func _render_quests() -> void:
+	if net_role == "host":
+		net_quest_dirty = true
 	if quest_box == null:
 		return
 	for c in quest_box.get_children():

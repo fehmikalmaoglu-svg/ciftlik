@@ -1,5 +1,11 @@
 # Çiftliğim 3D — Sürüm Notları
 
+## v0.3.1 · Erken Erişim
+- Online görevler ortak: arkadaşın da çiftliğin hikâye adımını ve günlük görevlerini görür. Onun yaptığı işler (sürme, ekme, hasat…) aynı görevlere sayılır.
+  - Görev tamamlanınca duyuru iki oyuncuda da çıkar. Madalya ve elmas sayısı da eşitlenir.
+  - Misafir görev silerse ev sahibinin ücretsiz hakkı ya da elması kullanılır.
+- Not: Online oynarken iki oyuncunun da aynı sürümde olması gerekir.
+
 ## v0.3.0 · Erken Erişim
 - Yeni arazi düzeni: yeni kariyer 16×16 küçük bir kareyle başlar. 🗺️ Arazi menüsünden (üst çubuk ya da L tuşu) altın ve seviyeyle adım adım 40×40'a kadar büyür; çit kendiliğinden dışarı taşınır.
   - Temalı bölgeler, sis ve tabelalar kalktı; çitin dışı doğal, yabani bir arazi.
