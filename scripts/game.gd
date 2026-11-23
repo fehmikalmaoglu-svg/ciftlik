@@ -3,9 +3,13 @@ extends Node3D
 
 const FARM_MIN := -12
 const FARM_MAX := 11
+## Arazi: dünya -20..19, 8×8'lik 5×5 parsel. Ortadaki 3×3 (ev arazisi) baştan açık.
+const WORLD_MIN := -20
+const WORLD_MAX := 19
+const PARCEL := 8
 const DAY_LEN := 900.0   # gündüz ~%70, gece ~%30
 const SAVE_PATH := "user://save.json"
-const POND_X := 21.0
+const POND_X := 29.0
 const POND_Z := 6.0
 const POND_R := 4.2
 const OFFLINE_CAP := 6.0 * 3600.0
@@ -54,7 +58,9 @@ var day_time := 0.33
 var day := 1
 var tool := "hand"
 var sel := {"seed": "wheat", "tree": "apple", "animal": "chicken", "decor": "path", "garden": "daisy"}
+var farm_name := "Çiftliğim"
 var flv := {}            # çiçek türü -> {"lv", "n"}
+var parcels: Array = []  # satın alınmış parseller: "px,pz"
 var gems := 0
 var quests: Array = []   # en fazla QUEST_SLOTS görev
 var quest_skip_at := 0.0 # son ücretsiz silme (unix sn)
@@ -88,6 +94,10 @@ var grid: MeshInstance3D
 var windmill: Node3D
 var clouds: Array = []
 var lamp_lights: Array = []
+var frame_root: Node3D
+var parcel_root: Node3D
+var land_dlg: Control
+var land_box: VBoxContainer
 var ground_mat: ShaderMaterial
 var rain_fx: GPUParticles3D
 var snow_fx: GPUParticles3D
@@ -103,6 +113,8 @@ var cam_target := Vector3(0.5, 0, 9)
 var hover = null
 var painting := false
 var rotating := false
+var panning := false
+var cam_follow := true
 var drag_moved := false
 var mouse_pos := Vector2.ZERO
 
@@ -160,8 +172,51 @@ var shot_t := 0.0
 static func key(x: int, z: int) -> Vector2i:
 	return Vector2i(x, z)
 
-static func in_farm(x: int, z: int) -> bool:
-	return x >= FARM_MIN and x <= FARM_MAX and z >= FARM_MIN and z <= FARM_MAX
+func in_farm(x: int, z: int) -> bool:
+	if x < WORLD_MIN or x > WORLD_MAX or z < WORLD_MIN or z > WORLD_MAX:
+		return false
+	return _parcel_open(_parcel_of(x, z))
+
+static func _parcel_of(x: int, z: int) -> Vector2i:
+	return Vector2i(floori(float(x - WORLD_MIN) / PARCEL), floori(float(z - WORLD_MIN) / PARCEL))
+
+static func _is_home(pc: Vector2i) -> bool:
+	return pc.x >= 1 and pc.x <= 3 and pc.y >= 1 and pc.y <= 3
+
+func _parcel_open(pc: Vector2i) -> bool:
+	return _is_home(pc) or parcels.has("%d,%d" % [pc.x, pc.y])
+
+func _parcel_in_world(pc: Vector2i) -> bool:
+	return pc.x >= 0 and pc.x <= 4 and pc.y >= 0 and pc.y <= 4
+
+## Satın alınabilir: kilitli ve açık bir parselle kenar komşusu.
+func _parcel_buyable(pc: Vector2i) -> bool:
+	if not _parcel_in_world(pc) or _parcel_open(pc):
+		return false
+	for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+		var n: Vector2i = pc + d
+		if _parcel_in_world(n) and _parcel_open(n):
+			return true
+	return false
+
+func _parcel_price() -> Vector2i:
+	var n := parcels.size() + 1
+	return Vector2i(int(snappedf(500.0 * pow(n, 1.6), 50.0)), 2 + n)   # (altın, seviye)
+
+func _buy_parcel(pc: Vector2i) -> bool:
+	var pr := _parcel_price()
+	if not _parcel_buyable(pc) or coins < pr.x or level < pr.y:
+		return false
+	_spend(pr.x)
+	parcels.append("%d,%d" % [pc.x, pc.y])
+	var c := Vector3(WORLD_MIN + pc.x * PARCEL + PARCEL / 2.0, 0, WORLD_MIN + pc.y * PARCEL + PARCEL / 2.0)
+	_burst(c + Vector3(0, 1.0, 0), "#ffd54f", 20, 5.0)
+	_burst(c + Vector3(0, 1.0, 0), "#81c784", 20, 5.0)
+	_float_text(c, "-%d 🪙" % pr.x, Color("#ffb4a8"))
+	_toast("🗺️ Yeni arazi açıldı! (%d. parsel)" % parcels.size(), "level")
+	_sfx("level")
+	_refresh_parcels()
+	return true
 
 static func tile_center(x: int, z: int) -> Vector3:
 	return Vector3(x + 0.5, 0, z + 0.5)
@@ -179,7 +234,7 @@ static func bar(p: float) -> String:
 
 func height_at(x: float, z: float) -> float:
 	var d := maxf(absf(x), absf(z))
-	var outside := smoothstep(15.0, 24.0, d)
+	var outside := smoothstep(21.5, 30.0, d)
 	var h := (sin(x * 0.15) + cos(z * 0.13) + sin((x + z) * 0.07)) * 1.3 + 1.2
 	h = maxf(0.0, h) * outside
 	var pd := Vector2(x - POND_X, z - POND_Z).length()
@@ -217,7 +272,9 @@ func _ready() -> void:
 	if args.has("--night"):
 		day_time = 0.88
 	for a in args:
-		if a.begins_with("--season="):
+		if a.begins_with("--cam="):
+			cam_dist = float(a.substr(6))
+		elif a.begins_with("--season="):
 			season = clampi(int(a.substr(9)), 0, 3)
 		elif a.begins_with("--weather="):
 			_start_weather(a.substr(10))
@@ -228,6 +285,7 @@ func _ready() -> void:
 		res = {"cereal": 24, "veg": 13, "fruit": 9, "milk": 6}
 		order = {"need": {"veg": 10, "cereal": 30}, "medals": 3, "xp": 41, "coins": 240}
 		_open_barn()
+	_refresh_parcels()
 	_render_quests()
 	if args.has("--selftest"):
 		_selftest()
@@ -362,6 +420,8 @@ func _build_terrain() -> void:
 				c = c_road
 			elif absf(x) <= 12.6 and absf(z) <= 12.6:
 				c = c_farm
+			elif x >= WORLD_MIN - 0.4 and x <= WORLD_MAX + 1.4 and z >= WORLD_MIN - 0.4 and z <= WORLD_MAX + 1.4:
+				c = c_farm.lerp(c_grass, 0.6)
 			else:
 				c = c_grass.lerp(c_hill, smoothstep(0.0, 4.0, y))
 			var v := rng.randf() * 0.06 - 0.03
@@ -425,7 +485,7 @@ func _build_surroundings() -> void:
 	for i in 260:
 		var x := (r.randf() - 0.5) * 110.0
 		var z := (r.randf() - 0.5) * 110.0
-		if maxf(absf(x), absf(z)) < 15.0:
+		if maxf(absf(x), absf(z)) < 22.5:
 			continue
 		if Vector2(x - POND_X, z - POND_Z).length() < POND_R + 2.0:
 			continue
@@ -447,7 +507,7 @@ func _build_surroundings() -> void:
 	for i in 160:
 		var x := (r.randf() - 0.5) * 70.0
 		var z := (r.randf() - 0.5) * 70.0
-		if maxf(absf(x), absf(z)) < 13.5 or Vector2(x - POND_X, z - POND_Z).length() < POND_R + 1.0:
+		if maxf(absf(x), absf(z)) < 21.0 or Vector2(x - POND_X, z - POND_Z).length() < POND_R + 1.0:
 			continue
 		var t := Models.tuft()
 		t.position = Vector3(x, height_at(x, z), z)
@@ -455,16 +515,16 @@ func _build_surroundings() -> void:
 		add_child(t)
 	for i in 12:
 		var c := Models.cloud()
-		c.position = Vector3((r.randf() - 0.5) * 120.0, 14.0 + r.randf() * 6.0, (r.randf() - 0.5) * 120.0)
+		c.position = Vector3((r.randf() - 0.5) * 140.0, 42.0 + r.randf() * 8.0, (r.randf() - 0.5) * 140.0)
 		c.scale *= 0.8 + r.randf()
 		add_child(c)
 		clouds.append(c)
 	windmill = Models.building("windmill")
-	windmill.position = Vector3(17, height_at(17, -8) - 0.1, -8)
+	windmill.position = Vector3(25, height_at(25, -12) - 0.1, -12)
 	windmill.rotation.y = -0.9
 	add_child(windmill)
 
-func _ring(x: int, z: int) -> bool:
+func _ring_unused(x: int, z: int) -> bool:
 	var lo := FARM_MIN - 1
 	var hi := FARM_MAX + 1
 	if x < lo or x > hi or z < lo or z > hi:
@@ -475,37 +535,97 @@ func _ring(x: int, z: int) -> bool:
 		return false
 	return true
 
-func _build_farm_frame() -> void:
-	var lo := FARM_MIN - 1
-	var hi := FARM_MAX + 1
-	for x in range(lo, hi + 1):
-		for z in range(lo, hi + 1):
-			if not _ring(x, z):
+func _frame_tile(x: int, z: int) -> bool:
+	if in_farm(x, z):
+		return false
+	for dx in [-1, 0, 1]:
+		for dz in [-1, 0, 1]:
+			if in_farm(x + dx, z + dz):
+				return true
+	return false
+
+func _frame_ring(x: int, z: int, gate_z: int) -> bool:
+	return _frame_tile(x, z) and not ((x == -1 or x == 0) and z == gate_z)
+
+## Açık arazinin çevresine çit, giriş kapısı ve tabela; kilitli parsellere örtü ve fiyat.
+func _refresh_parcels() -> void:
+	for c in frame_root.get_children():
+		c.queue_free()
+	for c in parcel_root.get_children():
+		c.queue_free()
+	var gate_z := FARM_MAX + 1
+	while in_farm(0, gate_z):
+		gate_z += 1
+	for x in range(WORLD_MIN - 1, WORLD_MAX + 2):
+		for z in range(WORLD_MIN - 1, WORLD_MAX + 2):
+			if not _frame_ring(x, z, gate_z):
 				continue
-			var f := Models.fence(_ring(x, z - 1), _ring(x, z + 1), _ring(x + 1, z), _ring(x - 1, z))
+			var f := Models.fence(_frame_ring(x, z - 1, gate_z), _frame_ring(x, z + 1, gate_z), _frame_ring(x + 1, z, gate_z), _frame_ring(x - 1, z, gate_z))
 			f.position = Vector3(x + 0.5, 0, z + 0.5)
-			add_child(f)
+			frame_root.add_child(f)
 	for x in [-1.15, 1.15]:
-		add_child(Models.box(0.22, 2.0, 0.22, "#8d5f3a", x, 1.0, hi + 0.5))
-	add_child(Models.box(2.9, 0.5, 0.1, "#c79a6a", 0, 1.85, hi + 0.5))
+		frame_root.add_child(Models.box(0.22, 2.0, 0.22, "#8d5f3a", x, 1.0, gate_z + 0.5))
+	frame_root.add_child(Models.box(2.9, 0.5, 0.1, "#c79a6a", 0, 1.85, gate_z + 0.5))
 	var sign := Label3D.new()
-	sign.text = "ÇİFTLİĞİM"
+	sign.text = farm_name.to_upper()
 	sign.font = font
 	sign.font_size = 72
 	sign.pixel_size = 0.005
 	sign.modulate = Color("#4e2f17")
 	sign.outline_size = 0
-	sign.position = Vector3(0, 1.85, hi + 0.56)
-	add_child(sign)
+	sign.position = Vector3(0, 1.85, gate_z + 0.56)
+	frame_root.add_child(sign)
+	var pr := _parcel_price()
+	var shade := StandardMaterial3D.new()
+	shade.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	shade.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	shade.albedo_color = Color(0.12, 0.16, 0.05, 0.3)
+	for px in 5:
+		for pz in 5:
+			var pc := Vector2i(px, pz)
+			if _parcel_open(pc):
+				continue
+			var c := Vector3(WORLD_MIN + px * PARCEL + PARCEL / 2.0, 0, WORLD_MIN + pz * PARCEL + PARCEL / 2.0)
+			var pl := MeshInstance3D.new()
+			var pm := PlaneMesh.new()
+			pm.size = Vector2(PARCEL - 0.1, PARCEL - 0.1)
+			pl.mesh = pm
+			pl.material_override = shade
+			pl.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			pl.position = c + Vector3(0, 0.03, 0)
+			parcel_root.add_child(pl)
+			if not _parcel_buyable(pc):
+				continue
+			var post := Models.node(c.x, 0, c.z)
+			post.add_child(Models.box(0.12, 1.3, 0.12, "#8d5f3a", 0, 0.65, 0))
+			post.add_child(Models.box(1.5, 0.6, 0.08, "#e8c690", 0, 1.25, 0))
+			parcel_root.add_child(post)
+			var l := Label3D.new()
+			l.font = font
+			l.font_size = 64
+			l.pixel_size = 0.0075
+			l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+			l.outline_size = 14
+			l.outline_modulate = Color(0.15, 0.1, 0.05, 0.75)
+			l.text = "🔒 %d 🪙\nSeviye %d" % [pr.x, pr.y]
+			l.modulate = Color("#fff3c4") if level >= pr.y else Color("#ffb4a8")
+			l.position = c + Vector3(0, 2.4, 0)
+			parcel_root.add_child(l)
+
+func _build_farm_frame() -> void:
+	frame_root = Node3D.new()
+	add_child(frame_root)
+	parcel_root = Node3D.new()
+	add_child(parcel_root)
 
 	# tarla ızgarası
 	var im := ImmediateMesh.new()
 	im.surface_begin(Mesh.PRIMITIVE_LINES)
-	for i in range(FARM_MIN, FARM_MAX + 2):
-		im.surface_add_vertex(Vector3(i, 0, FARM_MIN))
-		im.surface_add_vertex(Vector3(i, 0, FARM_MAX + 1))
-		im.surface_add_vertex(Vector3(FARM_MIN, 0, i))
-		im.surface_add_vertex(Vector3(FARM_MAX + 1, 0, i))
+	for i in range(WORLD_MIN, WORLD_MAX + 2):
+		im.surface_add_vertex(Vector3(i, 0, WORLD_MIN))
+		im.surface_add_vertex(Vector3(i, 0, WORLD_MAX + 1))
+		im.surface_add_vertex(Vector3(WORLD_MIN, 0, i))
+		im.surface_add_vertex(Vector3(WORLD_MAX + 1, 0, i))
 	im.surface_end()
 	grid = MeshInstance3D.new()
 	grid.mesh = im
@@ -844,6 +964,8 @@ func _gain(c: int, x: int, pos: Vector3, icon: String) -> void:
 		_on_level_up()
 
 func _on_level_up() -> void:
+	if parcel_root != null:
+		_refresh_parcels()
 	var names := []
 	for list in [Data.CROPS, Data.TREES, Data.ANIMALS, Data.DECOR]:
 		for k in list:
@@ -1166,8 +1288,8 @@ func _clear_queue() -> void:
 # ============================================================ çiftçi
 func _update_farmer(dt: float) -> void:
 	var moving := false
-	var kx := (1.0 if Input.is_physical_key_pressed(KEY_D) or Input.is_physical_key_pressed(KEY_RIGHT) else 0.0) - (1.0 if Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_LEFT) else 0.0)
-	var kf := (1.0 if Input.is_physical_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_UP) else 0.0) - (1.0 if Input.is_physical_key_pressed(KEY_S) or Input.is_physical_key_pressed(KEY_DOWN) else 0.0)
+	var kx := (1.0 if Input.is_physical_key_pressed(KEY_D) else 0.0) - (1.0 if Input.is_physical_key_pressed(KEY_A) else 0.0)
+	var kf := (1.0 if Input.is_physical_key_pressed(KEY_W) else 0.0) - (1.0 if Input.is_physical_key_pressed(KEY_S) else 0.0)
 	var dir := Vector3.ZERO
 	var seek = null   # yol izlerken sıradaki ara nokta
 	if kx != 0.0 or kf != 0.0:
@@ -1175,6 +1297,7 @@ func _update_farmer(dt: float) -> void:
 		var right := Vector3(cos(cam_yaw), 0, -sin(cam_yaw))
 		dir = (fwd * kf + right * kx).normalized()
 		move_target = null
+		cam_follow = true
 	elif move_target != null:
 		var nxt = _path_next(walk_path)
 		if nxt == null:
@@ -1259,7 +1382,16 @@ func _update_camera(dt: float) -> void:
 		cam_yaw += dt * 1.8
 	if Input.is_physical_key_pressed(KEY_E):
 		cam_yaw -= dt * 1.8
-	cam_target = cam_target.lerp(farmer.position, 1.0 - exp(-dt * 4.0))
+	var px := (1.0 if Input.is_physical_key_pressed(KEY_RIGHT) else 0.0) - (1.0 if Input.is_physical_key_pressed(KEY_LEFT) else 0.0)
+	var pz := (1.0 if Input.is_physical_key_pressed(KEY_UP) else 0.0) - (1.0 if Input.is_physical_key_pressed(KEY_DOWN) else 0.0)
+	if px != 0.0 or pz != 0.0:
+		_pan_camera(Vector2(px, -pz) * dt * cam_dist * 1.1)
+	if Input.is_physical_key_pressed(KEY_R):
+		cam_pitch = clampf(cam_pitch + dt * 0.8, 0.3, 1.4)
+	if Input.is_physical_key_pressed(KEY_F):
+		cam_pitch = clampf(cam_pitch - dt * 0.8, 0.3, 1.4)
+	if cam_follow:
+		cam_target = cam_target.lerp(farmer.position, 1.0 - exp(-dt * 4.0))
 	var cp := cos(cam_pitch)
 	cam.position = cam_target + Vector3(sin(cam_yaw) * cp * cam_dist, sin(cam_pitch) * cam_dist, cos(cam_yaw) * cp * cam_dist)
 	cam.look_at(cam_target + Vector3(0, 0.5, 0), Vector3.UP)
@@ -1481,16 +1613,31 @@ func _update_coop(c: Dictionary) -> void:
 		c.icon.text = "🥚 %d" % c.eggs
 		c.icon.visible = c.eggs > 0
 
+## Kamerayı yer düzleminde kaydırır (ekran yönüne göre); çiftçiyi takip etmeyi bırakır.
+func _pan_camera(v: Vector2) -> void:
+	var fwd := Vector3(-sin(cam_yaw), 0, -cos(cam_yaw))
+	var right := Vector3(cos(cam_yaw), 0, -sin(cam_yaw))
+	cam_target += right * v.x - fwd * v.y
+	cam_target.x = clampf(cam_target.x, -45.0, 45.0)
+	cam_target.z = clampf(cam_target.z, -45.0, 45.0)
+	cam_target.y = 0.0
+	cam_follow = false
+
 func _input(ev: InputEvent) -> void:
 	if ev is InputEventMouseMotion:
 		mouse_pos = ev.position
 		if rotating:
 			cam_yaw -= ev.relative.x * 0.008
+			cam_pitch = clampf(cam_pitch + ev.relative.y * 0.005, 0.3, 1.4)
+		if panning:
+			_pan_camera(-ev.relative * cam_dist * 0.0017)
 	elif ev is InputEventMouseButton and not ev.pressed:
 		if ev.button_index == MOUSE_BUTTON_LEFT:
 			painting = false
-		elif ev.button_index == MOUSE_BUTTON_RIGHT or ev.button_index == MOUSE_BUTTON_MIDDLE:
+		elif ev.button_index == MOUSE_BUTTON_RIGHT:
 			rotating = false
+		elif ev.button_index == MOUSE_BUTTON_MIDDLE:
+			panning = false
 
 func _unhandled_input(ev: InputEvent) -> void:
 	if ev is InputEventMouseButton and ev.pressed:
@@ -1499,6 +1646,13 @@ func _unhandled_input(ev: InputEvent) -> void:
 				painting = true
 				drag_moved = false
 				hover = _pick(ev.position)
+				if hover != null and not in_farm(hover.x, hover.y) and _parcel_in_world(_parcel_of(hover.x, hover.y)):
+					var pc := _parcel_of(hover.x, hover.y)
+					if _parcel_buyable(pc):
+						_open_land(pc)
+						return
+					_walk_to(_pick_point(ev.position))
+					return
 				if hover != null:
 					var he = tiles.get(key(hover.x, hover.y))
 					if he != null and he.kind == "building" and (he.type == "barn" or he.type == "silo"):
@@ -1509,20 +1663,25 @@ func _unhandled_input(ev: InputEvent) -> void:
 					else:
 						_walk_to(_pick_point(ev.position))
 						_explain_fail(_current_arg(), hover.x, hover.y)
-			MOUSE_BUTTON_RIGHT, MOUSE_BUTTON_MIDDLE:
+			MOUSE_BUTTON_RIGHT:
 				rotating = true
+			MOUSE_BUTTON_MIDDLE:
+				panning = true
 			MOUSE_BUTTON_WHEEL_UP:
-				cam_dist = clampf(cam_dist * 0.9, 7.0, 45.0)
+				cam_dist = clampf(cam_dist * 0.9, 5.0, 60.0)
 			MOUSE_BUTTON_WHEEL_DOWN:
-				cam_dist = clampf(cam_dist * 1.1, 7.0, 45.0)
+				cam_dist = clampf(cam_dist * 1.1, 5.0, 60.0)
 	elif ev is InputEventKey and ev.pressed and not ev.echo:
 		var k: int = ev.physical_keycode
 		if k >= KEY_1 and k <= KEY_9 and k - KEY_1 < TOOLS.size():
 			_set_tool(TOOLS[k - KEY_1].id)
 		elif k == KEY_ESCAPE:
 			_clear_queue()
+			land_dlg.visible = false
 			help.visible = false
 			barn.visible = false
+		elif k == KEY_SPACE:
+			cam_follow = true
 		elif k == KEY_J:
 			quest_open = not quest_open
 			_render_quests()
@@ -2155,7 +2314,8 @@ func _build_ui() -> void:
 	var body := Label.new()
 	body.custom_minimum_size = Vector2(520, 0)
 	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	body.text = "Toprağı sür, tohum ek, sula, hasat et; altınla ağaç, hayvan ve dekor al. Seviye atladıkça yeni ekinler açılır.\n\n• Sol tık / sürükle — seçili aleti karelere uygula (çiftçi sırayla yapar)\n• Sağ tık sürükle veya Q / E — kamerayı döndür · Tekerlek — yakınlaştır\n• Boş yere tıkla — çiftçi oraya yürür · WASD / oklar — yürüt\n• 1–9 — alet seç · B — 📦 Ambar (kaynak sat, sipariş teslim et) · Esc — iptal\n• ✋ El akıllıdır: boş tarlaya seçili tohumu eker, susuzu sular, hazırı toplar.\n• 💧 Sulanan toprak bir süre ıslak kalır (2× hız), sonra kurur · 🧑‍🌾 Korkuluk çevresine +%25 hız verir.\n• 🐔 Hayvanlar yem ister (tahıl; yoksa altın). Aç hayvan üretmez; ✋ ile yemle. Yan yana aynı tür hayvanlar ağıl olur, biri yemlenince hepsi yer. Topladıkça seviye atlar, daha çok kazandırır.\n• 🌼 Bahçe (9): çiçek tarhları kalıcıdır, sabit sürede açar; büyürken sulu kalırsa 3 kata kadar kazanç. 🐟 Gölet 2×2 kare, kendiliğinden balık verir.\n• 📜 Görevler (J): aynı anda 4 görev; bitince 🏅 madalya, 💎 elmas ve XP. Günde bir görev ücretsiz silinir, sonrası 2 💎.\n• 🚧 Çiftçi çitlerden, kayalardan, ağaçlardan geçmez; ağıla 🚪 kapıdan girer. 🛖 Kümes: çevresindeki tavuklar yumurtayı oraya bırakır.\n• 🌸 Dört mevsim (10'ar dk): bazı tohumlar yalnız kendi mevsiminde ekilir. 🌧️ Yağmur sular, 🔥 kuraklıkta su çabuk biter, 🌨️ karda sulamaya gerek yok.\n• Oyun otomatik kaydedilir; sen yokken de çiftlik büyür."
+	body.text = "Toprağı sür, tohum ek, sula, hasat et; altınla ağaç, hayvan ve dekor al. Seviye atladıkça yeni ekinler açılır.\n\n• Sol tık / sürükle — seçili aleti karelere uygula (çiftçi sırayla yapar)\n• Sağ tık sürükle — kamerayı döndür/eğ · Orta tık sürükle veya ok tuşları — haritada gez · Boşluk — çiftçiye dön
+• Q / E — döndür · R / F — eğ · Tekerlek — yakınlaştır\n• Boş yere tıkla — çiftçi oraya yürür · WASD / oklar — yürüt\n• 1–9 — alet seç · B — 📦 Ambar (kaynak sat, sipariş teslim et) · Esc — iptal\n• ✋ El akıllıdır: boş tarlaya seçili tohumu eker, susuzu sular, hazırı toplar.\n• 💧 Sulanan toprak bir süre ıslak kalır (2× hız), sonra kurur · 🧑‍🌾 Korkuluk çevresine +%25 hız verir.\n• 🐔 Hayvanlar yem ister (tahıl; yoksa altın). Aç hayvan üretmez; ✋ ile yemle. Yan yana aynı tür hayvanlar ağıl olur, biri yemlenince hepsi yer. Topladıkça seviye atlar, daha çok kazandırır.\n• 🌼 Bahçe (9): çiçek tarhları kalıcıdır, sabit sürede açar; büyürken sulu kalırsa 3 kata kadar kazanç. 🐟 Gölet 2×2 kare, kendiliğinden balık verir.\n• 📜 Görevler (J): aynı anda 4 görev; bitince 🏅 madalya, 💎 elmas ve XP. Günde bir görev ücretsiz silinir, sonrası 2 💎.\n• 🚧 Çiftçi çitlerden, kayalardan, ağaçlardan geçmez; ağıla 🚪 kapıdan girer. 🛖 Kümes: çevresindeki tavuklar yumurtayı oraya bırakır.\n• 🗺️ Kilitli araziye tıkla: seviye ve altınla yeni 8×8 parsel aç.\n• 🌸 Dört mevsim (10'ar dk): bazı tohumlar yalnız kendi mevsiminde ekilir. 🌧️ Yağmur sular, 🔥 kuraklıkta su çabuk biter, 🌨️ karda sulamaya gerek yok.\n• Oyun otomatik kaydedilir; sen yokken de çiftlik büyür."
 	hv.add_child(body)
 	var go := Button.new()
 	go.text = "Başlayalım!"
@@ -2172,6 +2332,7 @@ func _build_ui() -> void:
 	help.visible = false
 	_build_barn_ui()
 	_build_quest_ui()
+	_build_land_ui()
 
 func _icon_btn(icon: String, tip: String) -> Button:
 	var b := Button.new()
@@ -2322,7 +2483,7 @@ func _save() -> void:
 				s.ex = e.xp
 				s.ey = e.yield
 		ents.append(s)
-	var data := {"v": 1, "gems": gems, "quests": quests, "qskip": quest_skip_at, "flv": flv, "season": season, "season_t": season_t, "year": year, "weather": weather, "weather_t": weather_t, "medals": medals, "res": res, "order": order, "coins": coins, "xp": xp, "level": level, "day_time": day_time, "day": day, "sel": sel, "muted": muted,
+	var data := {"v": 1, "parcels": parcels, "name": farm_name, "gems": gems, "quests": quests, "qskip": quest_skip_at, "flv": flv, "season": season, "season_t": season_t, "year": year, "weather": weather, "weather_t": weather_t, "medals": medals, "res": res, "order": order, "coins": coins, "xp": xp, "level": level, "day_time": day_time, "day": day, "sel": sel, "muted": muted,
 		"saved_at": Time.get_unix_time_from_system(), "ents": ents, "fx": farmer.position.x, "fz": farmer.position.z}
 	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if f:
@@ -2342,6 +2503,10 @@ func _load() -> bool:
 	muted = bool(data.get("muted", false))
 	medals = int(data.get("medals", 0))
 	gems = int(data.get("gems", 0))
+	parcels = []
+	for pc in data.get("parcels", []):
+		parcels.append(str(pc))
+	farm_name = str(data.get("name", "Çiftliğim"))
 	quest_skip_at = float(data.get("qskip", 0.0))
 	quests = []
 	var qd = data.get("quests", [])
@@ -2569,6 +2734,7 @@ func _selftest() -> void:
 	_selftest_garden(fails)
 	_selftest_quests(fails)
 	_selftest_paths(fails)
+	_selftest_parcels(fails)
 	var n_before := entities.size()
 	_save()
 	var data = JSON.parse_string(FileAccess.get_file_as_string(SAVE_PATH))
@@ -2610,6 +2776,70 @@ func _demo() -> void:
 	farmer.position = Vector3(6.5, 0, 1.5)
 	cam_target = farmer.position
 	cam_dist = 11.0
+
+# ============================================================ arazi (parseller)
+func _build_land_ui() -> void:
+	land_dlg = ColorRect.new()
+	land_dlg.color = Color(0.12, 0.2, 0.08, 0.35)
+	land_dlg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	land_dlg.mouse_filter = Control.MOUSE_FILTER_STOP
+	ui.add_child(land_dlg)
+	var cc := CenterContainer.new()
+	cc.set_anchors_preset(Control.PRESET_FULL_RECT)
+	land_dlg.add_child(cc)
+	var p := _panel(22)
+	p.custom_minimum_size = Vector2(400, 0)
+	cc.add_child(p)
+	land_box = VBoxContainer.new()
+	land_box.add_theme_constant_override("separation", 10)
+	p.add_child(land_box)
+	land_dlg.visible = false
+
+func _open_land(pc: Vector2i) -> void:
+	for c in land_box.get_children():
+		land_box.remove_child(c)
+		c.queue_free()
+	var pr := _parcel_price()
+	var t := Label.new()
+	t.text = "🗺️ Yeni Arazi"
+	t.add_theme_font_size_override("font_size", 24)
+	land_box.add_child(t)
+	var b := Label.new()
+	b.text = "8×8 kare yeni alan. Ekin, hayvan ve bina için yer açar.\n\nBedel: %d 🪙\nGerekli seviye: %d   (sen: %d)" % [pr.x, pr.y, level]
+	land_box.add_child(b)
+	var ok := coins >= pr.x and level >= pr.y
+	if not ok:
+		var w := Label.new()
+		w.text = "⭐ Seviye yetmiyor" if level < pr.y else "🪙 Altın yetmiyor"
+		w.add_theme_color_override("font_color", Color("#c62828"))
+		land_box.add_child(w)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	row.add_child(_small_btn("  Satın al  ", func():
+		_buy_parcel(pc)
+		land_dlg.visible = false, ok, true))
+	row.add_child(_small_btn("  Vazgeç  ", func(): land_dlg.visible = false))
+	land_box.add_child(row)
+	land_dlg.visible = true
+
+func _selftest_parcels(fails: Array) -> void:
+	parcels = []
+	if in_farm(13, 0): fails.append("kilitli parsel açık")
+	if not in_farm(11, 0): fails.append("ev arazisi kapalı")
+	if _resolve("plow", null, 13, 0) != null: fails.append("kilitli araziye çapa")
+	coins = 100000
+	level = 30
+	if _buy_parcel(Vector2i(4, 4)): fails.append("köşe parsel komşusuz alındı")
+	var c0 := coins
+	var pr := _parcel_price()
+	if not _buy_parcel(Vector2i(4, 2)): fails.append("parsel satın alma")
+	if coins != c0 - pr.x: fails.append("parsel bedeli")
+	if not in_farm(13, 0) or not in_farm(19, -4): fails.append("parsel açılmadı")
+	if _resolve("plow", null, 13, 0) != "plow": fails.append("yeni araziye çapa")
+	if _parcel_price().x <= pr.x: fails.append("ikinci parsel pahalanmadı")
+	if not _buy_parcel(Vector2i(4, 3)) or not _buy_parcel(Vector2i(4, 4)): fails.append("komşulu köşe parsel")
+	parcels = []
+	_refresh_parcels()
 
 # ============================================================ çarpışma, yol, kümes testleri
 func _selftest_paths(fails: Array) -> void:
