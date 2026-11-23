@@ -35,10 +35,11 @@ const TOOLS := [
 	{"id": "tree", "icon": "🌳", "name": "Ağaç", "shelf": "tree", "tip": "Meyve ağacı dik"},
 	{"id": "animal", "icon": "🐔", "name": "Hayvan", "shelf": "animal", "tip": "Hayvan al"},
 	{"id": "decor", "icon": "🌷", "name": "Dekor", "shelf": "decor", "tip": "Çit, yol, çiçek…"},
+	{"id": "garden", "icon": "🌼", "name": "Bahçe", "shelf": "garden", "tip": "Çiçek tarhı ve balık göleti"},
 	{"id": "remove", "icon": "🗑️", "name": "Kaldır", "shelf": "", "tip": "Nesneyi kaldır (%25 iade)"},
 ]
-const ACT_TXT := {"plant": "🌱 Ek", "water": "💧 Sula", "harvest": "🧺 Topla", "feed": "🌾 Yemle", "plow": "⛏️ Sür", "tree": "🌳 Dik", "animal": "🐾 Yerleştir", "decor": "🎨 Yerleştir", "remove": "🗑️ Kaldır"}
-const MARKER_COL := {"hand": "#ffffff", "plow": "#a1673f", "seed": "#8bc34a", "water": "#4fc3f7", "tree": "#2e7d32", "animal": "#ffca28", "decor": "#ce93d8", "remove": "#e53935"}
+const ACT_TXT := {"plant": "🌱 Ek", "water": "💧 Sula", "harvest": "🧺 Topla", "feed": "🌾 Yemle", "flower": "🌼 Çiçek dik", "pond": "🐟 Gölet kur", "plow": "⛏️ Sür", "tree": "🌳 Dik", "animal": "🐾 Yerleştir", "decor": "🎨 Yerleştir", "remove": "🗑️ Kaldır"}
+const MARKER_COL := {"hand": "#ffffff", "plow": "#a1673f", "seed": "#8bc34a", "water": "#4fc3f7", "tree": "#2e7d32", "animal": "#ffca28", "decor": "#ce93d8", "garden": "#f48fb1", "remove": "#e53935"}
 
 # ------------------------------------------------------------ durum
 var coins := 120
@@ -47,7 +48,8 @@ var level := 1
 var day_time := 0.33
 var day := 1
 var tool := "hand"
-var sel := {"seed": "wheat", "tree": "apple", "animal": "chicken", "decor": "path"}
+var sel := {"seed": "wheat", "tree": "apple", "animal": "chicken", "decor": "path", "garden": "daisy"}
+var flv := {}            # çiçek türü -> {"lv", "n"}
 var muted := false
 var medals := 0
 var res := {}            # kaynak -> adet
@@ -536,7 +538,10 @@ func _add_entity(d: Dictionary) -> Dictionary:
 	var e := d.duplicate()
 	var g := Node3D.new()
 	e.group = g
-	if e.kind == "building":
+	if e.kind == "pond":
+		e.w = 2
+		e.d = 2
+	if e.has("w"):
 		g.position = Vector3(e.x + e.w / 2.0, 0, e.z + e.d / 2.0)
 		for i in int(e.w):
 			for j in int(e.d):
@@ -545,7 +550,7 @@ func _add_entity(d: Dictionary) -> Dictionary:
 		g.position = tile_center(e.x, e.z)
 		tiles[key(e.x, e.z)] = e
 	if not e.has("rot"):
-		var flat: bool = e.kind == "plot" or e.get("type", "") == "fence" or e.get("type", "") == "path"
+		var flat: bool = e.kind == "plot" or e.kind == "pond" or e.get("type", "") == "fence" or e.get("type", "") == "path"
 		e.rot = 0.0 if flat else float(randi() % 8) * PI / 4.0
 	g.rotation.y = e.rot
 	add_child(g)
@@ -562,6 +567,16 @@ func _add_entity(d: Dictionary) -> Dictionary:
 			e.lv = 1
 		if not e.has("hv"):
 			e.hv = 0
+	if e.kind == "flower" or e.kind == "pond":
+		if not e.has("t"):
+			e.t = 0.0
+		if not e.has("ready"):
+			e.ready = false
+	if e.kind == "flower":
+		if not e.has("water"):
+			e.water = 0.0
+		if not e.has("wet_t"):
+			e.wet_t = 0.0
 	if e.kind == "plot":
 		if e.has("watered"):
 			e.water = 1.0 if e.watered else 0.0
@@ -582,7 +597,12 @@ func _add_entity(d: Dictionary) -> Dictionary:
 func _remove_entity(e: Dictionary) -> void:
 	e.group.queue_free()
 	entities.erase(e)
-	tiles.erase(key(e.x, e.z))
+	if e.has("w"):
+		for i in int(e.w):
+			for j in int(e.d):
+				tiles.erase(key(e.x + i, e.z + j))
+	else:
+		tiles.erase(key(e.x, e.z))
 	lanterns.erase(e)
 	if e.get("type", "") == "fence":
 		_refresh_fence_neighbors(e.x, e.z)
@@ -649,6 +669,26 @@ func _refresh(e: Dictionary) -> void:
 			g.add_child(hl)
 			e.hungry_lbl = hl
 			_update_hungry(e)
+		"flower":
+			var f = Data.FLOWERS[e.type]
+			e.wet_shown = _wet(e)
+			e.stage = 3 if e.ready else mini(2, int(e.t * 3.0))
+			g.add_child(Models.flower_bed(f.color, f.center, e.stage, e.wet_shown))
+		"pond":
+			g.add_child(Models.fish_pond())
+			var fl := Label3D.new()
+			fl.text = "🐟"
+			fl.font = font
+			fl.font_size = 64
+			fl.pixel_size = 0.012
+			fl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+			fl.no_depth_test = true
+			fl.outline_size = 12
+			fl.outline_modulate = Color(0.1, 0.2, 0.3, 0.6)
+			fl.position.y = 0.9
+			fl.visible = e.ready
+			g.add_child(fl)
+			e.icon = fl
 		"decor":
 			g.add_child(Visuals.decor(e.type, {"n": _is_fence(e.x, e.z - 1), "s": _is_fence(e.x, e.z + 1), "e": _is_fence(e.x + 1, e.z), "w": _is_fence(e.x - 1, e.z)}))
 		"building":
@@ -710,6 +750,30 @@ func _simulate(dt: float) -> void:
 						e.has_fruit = true
 						e.fruit_t = 0.0
 						_refresh(e)
+			"flower":
+				if weather == "rain":
+					e.water = minf(1.0, e.water + dt / 8.0)
+				elif e.water > 0.0:
+					e.water = maxf(0.0, e.water - drain)
+				if not e.ready:
+					var ft: float = Data.FLOWERS[e.type].time
+					var step := minf(dt, (1.0 - e.t) * ft)
+					if _wet(e) or weather == "snow":
+						e.wet_t += step
+					e.t += step / ft
+					if e.t >= 0.9999:
+						e.t = 1.0
+						e.ready = true
+				var st := 3 if e.ready else mini(2, int(e.t * 3.0))
+				if st != e.stage or _wet(e) != e.wet_shown:
+					_refresh(e)
+			"pond":
+				if not e.ready:
+					e.t += dt / Data.POND.time
+					if e.t >= 1.0:
+						e.t = 0.0
+						e.ready = true
+						e.icon.visible = true
 			"animal":
 				if not e.ready and e.food > 0.0:
 					var at: float = Data.ANIMALS[e.type].time
@@ -780,6 +844,14 @@ func _resolve(t: String, arg, x: int, z: int):
 				return null
 			if e.kind == "tree" and e.has_fruit:
 				return "harvest"
+			if e.kind == "pond" and e.ready:
+				return "harvest"
+			if e.kind == "flower":
+				if e.ready:
+					return "harvest"
+				if e.water < Data.WATER_REFILL and weather != "snow":
+					return "water"
+				return null
 			if e.kind == "animal":
 				if e.ready:
 					return "harvest"
@@ -792,6 +864,8 @@ func _resolve(t: String, arg, x: int, z: int):
 			var c = Data.CROPS.get(arg)
 			return "plant" if e != null and e.kind == "plot" and e.crop == null and _unlocked(c) and _in_season(c) and coins >= c.cost else null
 		"water":
+			if e != null and e.kind == "flower":
+				return "water" if e.water < Data.WATER_REFILL and weather != "snow" and not e.ready else null
 			return "water" if e != null and e.kind == "plot" and e.water < Data.WATER_REFILL and weather != "snow" and (e.crop == null or e.progress < 1.0) else null
 		"tree":
 			var c = Data.TREES.get(arg)
@@ -802,9 +876,21 @@ func _resolve(t: String, arg, x: int, z: int):
 		"decor":
 			var c = Data.DECOR.get(arg)
 			return "decor" if e == null and _unlocked(c) and coins >= c.cost else null
+		"garden":
+			if arg == "pond":
+				return "pond" if _unlocked(Data.POND) and coins >= Data.POND.cost and _free_area(x, z, 2, 2) else null
+			var c = Data.FLOWERS.get(arg)
+			return "flower" if e == null and _unlocked(c) and coins >= c.cost else null
 		"remove":
 			return "remove" if e != null and e.kind != "building" else null
 	return null
+
+func _free_area(x: int, z: int, w: int, d: int) -> bool:
+	for i in w:
+		for j in d:
+			if not in_farm(x + i, z + j) or tiles.has(key(x + i, z + j)):
+				return false
+	return true
 
 func _perform(item: Dictionary) -> bool:
 	var x: int = item.x
@@ -862,9 +948,34 @@ func _perform(item: Dictionary) -> bool:
 				_store(e.type, pos, Data.animal_extra_yield(e.lv))
 				_animal_harvested(e, pos)
 				_update_hungry(e)
+			elif e.kind == "flower":
+				_harvest_flower(e, pos)
+			elif e.kind == "pond":
+				var pd = Data.POND
+				e.ready = false
+				e.t = 0.0
+				e.icon.visible = false
+				var pc := Vector3(e.x + 1.0, 0, e.z + 1.0)
+				_burst(pc + Vector3(0, 0.4, 0), "#4fc3f7", 14, 3.5)
+				_gain(pd.sell, pd.xp, pc, pd.icon)
+				_store("pond", pc)
 			_sfx("harvest")
 		"feed":
 			_feed_pen(e)
+		"flower":
+			var f = Data.FLOWERS[arg]
+			_spend(f.cost)
+			_add_entity({"kind": "flower", "type": arg, "x": x, "z": z})
+			_float_text(pos, "-%d 🪙" % f.cost, Color("#ffb4a8"))
+			_burst(pos + Vector3(0, 0.2, 0), f.color, 8, 2.0)
+			_sfx("plant")
+		"pond":
+			_spend(Data.POND.cost)
+			_add_entity({"kind": "pond", "type": "pond", "x": x, "z": z})
+			var pc := Vector3(x + 1.0, 0, z + 1.0)
+			_float_text(pc, "-%d 🪙" % Data.POND.cost, Color("#ffb4a8"))
+			_burst(pc + Vector3(0, 0.3, 0), "#4fc3f7", 16, 3.0)
+			_sfx("water")
 		"tree":
 			var t = Data.TREES[arg]
 			_spend(t.cost)
@@ -893,6 +1004,10 @@ func _perform(item: Dictionary) -> bool:
 				def = Data.ANIMALS[e.type]
 			elif e.kind == "decor":
 				def = Data.DECOR[e.type]
+			elif e.kind == "flower":
+				def = Data.FLOWERS[e.type]
+			elif e.kind == "pond":
+				def = Data.POND
 			_remove_entity(e)
 			_burst(pos + Vector3(0, 0.3, 0), "#9e9e9e", 10, 2.5)
 			if def != null and def.cost >= 8:
@@ -908,6 +1023,7 @@ func _current_arg():
 		"hand", "seed": return sel.seed
 		"tree": return sel.tree
 		"animal": return sel.animal
+		"garden": return sel.garden
 		"decor": return sel.decor
 	return null
 
@@ -941,7 +1057,7 @@ func _enqueue(t: Vector2i) -> void:
 
 func _explain_fail(arg, x: int, z: int) -> void:
 	var e = tiles.get(key(x, z))
-	var list = {"seed": Data.CROPS, "hand": Data.CROPS, "tree": Data.TREES, "animal": Data.ANIMALS, "decor": Data.DECOR}.get(tool)
+	var list = {"seed": Data.CROPS, "hand": Data.CROPS, "tree": Data.TREES, "animal": Data.ANIMALS, "decor": Data.DECOR, "garden": Data.garden()}.get(tool)
 	var def = list.get(arg) if list != null and arg != null else null
 	if def != null and not _unlocked(def):
 		_toast("🔒 %s için seviye %d gerekli" % [def.name, def.level], "warn")
@@ -962,6 +1078,9 @@ func _explain_fail(arg, x: int, z: int) -> void:
 	if def != null and coins < def.cost and target_ok:
 		_sfx("error")
 		_toast("🪙 Yeterli altının yok", "warn")
+		return
+	if tool == "garden" and arg == "pond" and not _free_area(x, z, 2, 2):
+		_toast("🐟 Gölet için 2×2 boş alan gerekli", "hint")
 		return
 	if tool == "seed" and e == null:
 		_toast("⛏️ Önce Çapa ile toprağı sür (2)", "hint")
@@ -997,7 +1116,10 @@ func _update_farmer(dt: float) -> void:
 			var tgt := tile_center(q.x, q.z)
 			var d := Vector3(tgt.x - farmer.position.x, 0, tgt.z - farmer.position.z)
 			var target_e = tiles.get(key(q.x, q.z))
-			var reach := 1.0 if q.tool == "tree" or q.tool == "animal" or (target_e != null and target_e.kind == "tree") else 0.75
+			if q.tool == "garden" and q.arg == "pond" or (target_e != null and target_e.kind == "pond"):
+				tgt = Vector3(target_e.x + 1.0, 0, target_e.z + 1.0) if target_e != null else Vector3(q.x + 1.0, 0, q.z + 1.0)
+				d = Vector3(tgt.x - farmer.position.x, 0, tgt.z - farmer.position.z)
+			var reach := 1.6 if q.tool == "garden" and q.arg == "pond" or (target_e != null and target_e.kind == "pond") else 1.0 if q.tool == "tree" or q.tool == "animal" or (target_e != null and target_e.kind == "tree") else 0.75
 			if d.length() > reach:
 				dir = d.normalized()
 			else:
@@ -1118,7 +1240,7 @@ func _unhandled_input(ev: InputEvent) -> void:
 				cam_dist = clampf(cam_dist * 1.1, 7.0, 45.0)
 	elif ev is InputEventKey and ev.pressed and not ev.echo:
 		var k: int = ev.physical_keycode
-		if k >= KEY_1 and k <= KEY_8:
+		if k >= KEY_1 and k <= KEY_9 and k - KEY_1 < TOOLS.size():
 			_set_tool(TOOLS[k - KEY_1].id)
 		elif k == KEY_ESCAPE:
 			_clear_queue()
@@ -1156,9 +1278,12 @@ func _update_cursor() -> void:
 	var e = tiles.get(key(x, z))
 	var c := tile_center(x, z)
 	var s := Vector3.ONE
-	if e != null and e.kind == "building":
+	if e != null and e.has("w"):
 		c = Vector3(e.x + e.w / 2.0, 0, e.z + e.d / 2.0)
 		s = Vector3(e.w, 1, e.d)
+	elif e == null and tool == "garden" and arg == "pond":
+		c = Vector3(x + 1.0, 0, z + 1.0)
+		s = Vector3(2, 1, 2)
 	cursor.position = c + Vector3(0, 0.13, 0)
 	cursor.scale = s
 	cursor_edge.position = cursor.position
@@ -1227,6 +1352,24 @@ func _describe(e, act, arg, x: int, z: int) -> String:
 					s += "\n🍽️ Aç! Üretim durdu"
 				else:
 					s += "\n🌾 yem " + bar(e.food)
+			"flower":
+				var f = Data.FLOWERS[e.type]
+				var fl := _flower_lv(e.type)
+				s = "%s %s · ⭐ Sv %d" % [f.icon, f.name, fl.lv]
+				if fl.lv < Data.FLOWER_MAX_LV:
+					s += " (%d/%d)" % [fl.n, fl.lv * Data.FLOWER_HARVESTS_PER_LV]
+				s += "\n"
+				s += "✅ Çiçekler açtı!" if e.ready else "%s · %s" % [bar(e.t), fmt_time((1.0 - e.t) * f.time)]
+				s += "\n💐 sulama bonusu ×%.1f" % (1.0 + Data.FLOWER_WET_BONUS * _flower_wet_frac(e))
+				if weather == "snow":
+					s += " · 🌨️ kar sular"
+				elif _wet(e):
+					s += " · 💧 " + bar(e.water)
+				else:
+					s += " · 🏜️ kuru"
+			"pond":
+				s = "🐟 %s\n" % Data.POND.name
+				s += "✅ Balıklar hazır!" if e.ready else "🐟 " + bar(e.t)
 			"decor":
 				s = "%s %s" % [Data.DECOR[e.type].icon, Data.DECOR[e.type].name]
 			"building":
@@ -1236,6 +1379,8 @@ func _describe(e, act, arg, x: int, z: int) -> String:
 		match act:
 			"plant": extra = " %s %s  -%d🪙" % [Data.CROPS[arg].icon, Data.CROPS[arg].name, Data.CROPS[arg].cost]
 			"feed": extra = " " + _feed_cost_text(e)
+			"flower": extra = " %s %s  -%d🪙" % [Data.FLOWERS[arg].icon, Data.FLOWERS[arg].name, Data.FLOWERS[arg].cost]
+			"pond": extra = "  -%d🪙" % Data.POND.cost
 			"tree": extra = " %s  -%d🪙" % [Data.TREES[arg].icon, Data.TREES[arg].cost]
 			"animal": extra = " %s  -%d🪙" % [Data.ANIMALS[arg].icon, Data.ANIMALS[arg].cost]
 			"decor": extra = " %s  -%d🪙" % [Data.DECOR[arg].icon, Data.DECOR[arg].cost]
@@ -1454,6 +1599,9 @@ func _animate_world(dt: float) -> void:
 		if c.position.x > 65.0:
 			c.position.x = -65.0
 	for e in entities:
+		if e.kind == "pond" and e.ready:
+			e.icon.position.y = 0.9 + absf(sin(clock_t * 3.0 + e.x)) * 0.25
+			continue
 		if e.kind != "animal":
 			continue
 		var w = e.wander
@@ -1717,7 +1865,7 @@ func _build_ui() -> void:
 	var body := Label.new()
 	body.custom_minimum_size = Vector2(520, 0)
 	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	body.text = "Toprağı sür, tohum ek, sula, hasat et; altınla ağaç, hayvan ve dekor al. Seviye atladıkça yeni ekinler açılır.\n\n• Sol tık / sürükle — seçili aleti karelere uygula (çiftçi sırayla yapar)\n• Sağ tık sürükle veya Q / E — kamerayı döndür · Tekerlek — yakınlaştır\n• Boş yere tıkla — çiftçi oraya yürür · WASD / oklar — yürüt\n• 1–8 — alet seç · B — 📦 Ambar (kaynak sat, sipariş teslim et) · Esc — iptal\n• ✋ El akıllıdır: boş tarlaya seçili tohumu eker, susuzu sular, hazırı toplar.\n• 💧 Sulanan toprak bir süre ıslak kalır (2× hız), sonra kurur · 🧑‍🌾 Korkuluk çevresine +%25 hız verir.\n• 🐔 Hayvanlar yem ister (tahıl; yoksa altın). Aç hayvan üretmez; ✋ ile yemle. Yan yana aynı tür hayvanlar ağıl olur, biri yemlenince hepsi yer. Topladıkça seviye atlar, daha çok kazandırır.\n• 🌸 Dört mevsim (10'ar dk): bazı tohumlar yalnız kendi mevsiminde ekilir. 🌧️ Yağmur sular, 🔥 kuraklıkta su çabuk biter, 🌨️ karda sulamaya gerek yok.\n• Oyun otomatik kaydedilir; sen yokken de çiftlik büyür."
+	body.text = "Toprağı sür, tohum ek, sula, hasat et; altınla ağaç, hayvan ve dekor al. Seviye atladıkça yeni ekinler açılır.\n\n• Sol tık / sürükle — seçili aleti karelere uygula (çiftçi sırayla yapar)\n• Sağ tık sürükle veya Q / E — kamerayı döndür · Tekerlek — yakınlaştır\n• Boş yere tıkla — çiftçi oraya yürür · WASD / oklar — yürüt\n• 1–9 — alet seç · B — 📦 Ambar (kaynak sat, sipariş teslim et) · Esc — iptal\n• ✋ El akıllıdır: boş tarlaya seçili tohumu eker, susuzu sular, hazırı toplar.\n• 💧 Sulanan toprak bir süre ıslak kalır (2× hız), sonra kurur · 🧑‍🌾 Korkuluk çevresine +%25 hız verir.\n• 🐔 Hayvanlar yem ister (tahıl; yoksa altın). Aç hayvan üretmez; ✋ ile yemle. Yan yana aynı tür hayvanlar ağıl olur, biri yemlenince hepsi yer. Topladıkça seviye atlar, daha çok kazandırır.\n• 🌼 Bahçe (9): çiçek tarhları kalıcıdır, sabit sürede açar; büyürken sulu kalırsa 3 kata kadar kazanç. 🐟 Gölet 2×2 kare, kendiliğinden balık verir.\n• 🌸 Dört mevsim (10'ar dk): bazı tohumlar yalnız kendi mevsiminde ekilir. 🌧️ Yağmur sular, 🔥 kuraklıkta su çabuk biter, 🌨️ karda sulamaya gerek yok.\n• Oyun otomatik kaydedilir; sen yokken de çiftlik büyür."
 	hv.add_child(body)
 	var go := Button.new()
 	go.text = "Başlayalım!"
@@ -1780,7 +1928,7 @@ func _render_shelf() -> void:
 	shelf_panel.visible = true
 	for c in shelf_box.get_children():
 		c.queue_free()
-	var list = {"seed": Data.CROPS, "tree": Data.TREES, "animal": Data.ANIMALS, "decor": Data.DECOR}[cat]
+	var list = {"seed": Data.CROPS, "tree": Data.TREES, "animal": Data.ANIMALS, "decor": Data.DECOR, "garden": Data.garden()}[cat]
 	for k in list:
 		var it = list[k]
 		var locked: bool = it.level > level
@@ -1790,12 +1938,19 @@ func _render_shelf() -> void:
 			"tree": meta = "🍃%s → %d🪙" % [fmt_time(it.regrow), it.sell]
 			"animal": meta = "%s%s → %d🪙" % [it.picon, fmt_time(it.time), it.sell]
 			"decor": meta = "✨ bonus" if it.has("info") else " "
+			"garden":
+				if k == "pond":
+					meta = "🐟%s → %d🪙" % [fmt_time(it.time), it.sell]
+				else:
+					meta = "⏱%s → %d🪙 💧×3" % [fmt_time(it.time), int(round(it.sell * Data.flower_mult(_flower_lv(k).lv)))]
 		var b := Button.new()
 		b.focus_mode = Control.FOCUS_NONE
 		b.custom_minimum_size = Vector2(98, 92)
 		b.add_theme_font_size_override("font_size", 12)
 		b.text = "%s\n%s\n🪙 %d\n%s" % [it.icon, it.name, it.cost, ("🔒 Sv %d" % it.level) if locked else meta]
 		b.tooltip_text = it.get("info", it.name)
+		if cat == "garden" and k != "pond":
+			b.tooltip_text = "%s · Sv %d\nKalıcı tarh: hasattan sonra yeniden açar.\nBüyürken sulu tutarsan kazanç 3 katına kadar çıkar." % [it.name, _flower_lv(k).lv]
 		if cat == "seed":
 			b.tooltip_text = "%s\nMevsim: %s" % [it.name, Data.season_names(it.seasons)]
 		var selected: bool = sel[cat] == k
@@ -1859,10 +2014,18 @@ func _save() -> void:
 				s.at = e.t
 				s.rd = e.ready
 				s.fd = snappedf(e.food, 0.001)
+			"flower":
+				s.at = e.t
+				s.rd = e.ready
+				s.wa = snappedf(e.water, 0.001)
+				s.wt = snappedf(e.wet_t, 0.01)
+			"pond":
+				s.at = e.t
+				s.rd = e.ready
 				s.lv = e.lv
 				s.hv = e.hv
 		ents.append(s)
-	var data := {"v": 1, "season": season, "season_t": season_t, "year": year, "weather": weather, "weather_t": weather_t, "medals": medals, "res": res, "order": order, "coins": coins, "xp": xp, "level": level, "day_time": day_time, "day": day, "sel": sel, "muted": muted,
+	var data := {"v": 1, "flv": flv, "season": season, "season_t": season_t, "year": year, "weather": weather, "weather_t": weather_t, "medals": medals, "res": res, "order": order, "coins": coins, "xp": xp, "level": level, "day_time": day_time, "day": day, "sel": sel, "muted": muted,
 		"saved_at": Time.get_unix_time_from_system(), "ents": ents, "fx": farmer.position.x, "fz": farmer.position.z}
 	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if f:
@@ -1881,6 +2044,11 @@ func _load() -> bool:
 	day = int(data.get("day", 1))
 	muted = bool(data.get("muted", false))
 	medals = int(data.get("medals", 0))
+	flv = {}
+	var fd = data.get("flv", {})
+	if typeof(fd) == TYPE_DICTIONARY:
+		for k in fd:
+			flv[k] = {"lv": int(fd[k].lv), "n": int(fd[k].n)}
 	season = clampi(int(data.get("season", 0)), 0, 3)
 	season_t = float(data.get("season_t", 0.0))
 	year = int(data.get("year", 1))
@@ -1922,6 +2090,11 @@ func _load() -> bool:
 				base.t = float(s.get("at", 0.0))
 				base.ready = bool(s.get("rd", false))
 				base.food = float(s.get("fd", 1.0))
+			"flower", "pond":
+				base.t = float(s.get("at", 0.0))
+				base.ready = bool(s.get("rd", false))
+				base.water = float(s.get("wa", 0.0))
+				base.wet_t = float(s.get("wt", 0.0))
 				base.lv = int(s.get("lv", 1))
 				base.hv = int(s.get("hv", 0))
 		_add_entity(base)
@@ -2061,6 +2234,7 @@ func _selftest() -> void:
 	res = {}
 	_selftest_seasons(fails)
 	_selftest_animals(fails)
+	_selftest_garden(fails)
 	var n_before := entities.size()
 	_save()
 	var data = JSON.parse_string(FileAccess.get_file_as_string(SAVE_PATH))
@@ -2088,9 +2262,88 @@ func _demo() -> void:
 	for t in tr:
 		if not tiles.has(key(t[1], t[2])):
 			_add_entity({"kind": "tree", "type": t[0], "x": t[1], "z": t[2], "age": t[3], "fruit_t": 0.0, "has_fruit": t[4]})
+	var fls := [["daisy", 8, 0.0, false, 1.0], ["tulip", 9, 0.5, false, 0.0], ["rose", 10, 0.8, false, 1.0], ["lavender", 11, 1.0, true, 0.0], ["tulip", 7, 1.0, true, 1.0]]
+	for f in fls:
+		if not tiles.has(key(f[1], -1)):
+			_add_entity({"kind": "flower", "type": f[0], "x": f[1], "z": -1, "t": f[2], "ready": f[3], "water": f[4]})
+	if _free_area(8, -4, 2, 2):
+		_add_entity({"kind": "pond", "type": "pond", "x": 8, "z": -4, "ready": true})
 	farmer.position = Vector3(6.5, 0, 1.5)
 	cam_target = farmer.position
 	cam_dist = 11.0
+
+# ============================================================ çiçekler ve gölet (Aşama 4)
+func _flower_lv(t: String) -> Dictionary:
+	if not flv.has(t):
+		flv[t] = {"lv": 1, "n": 0}
+	return flv[t]
+
+func _flower_wet_frac(e: Dictionary) -> float:
+	return clampf(e.wet_t / Data.FLOWERS[e.type].time, 0.0, 1.0)
+
+func _harvest_flower(e: Dictionary, pos: Vector3) -> void:
+	var f = Data.FLOWERS[e.type]
+	var frac := _flower_wet_frac(e)
+	var fl := _flower_lv(e.type)
+	var mult := (1.0 + Data.FLOWER_WET_BONUS * frac) * Data.flower_mult(fl.lv)
+	_burst(pos + Vector3(0, 0.4, 0), f.color, 14, 3.5)
+	_gain(int(round(f.sell * mult)), int(round(f.xp * (1.0 + Data.FLOWER_WET_BONUS * frac))), pos, f.icon)
+	_store(e.type, pos, int(round(frac * 2.0)))
+	if frac > 0.95:
+		_float_text(pos + Vector3(0, 0.75, 0), "💐 ×%.0f" % (1.0 + Data.FLOWER_WET_BONUS), Color("#ffb3e6"))
+	e.ready = false
+	e.t = 0.0
+	e.wet_t = 0.0
+	_refresh(e)
+	if fl.lv < Data.FLOWER_MAX_LV:
+		fl.n += 1
+		if fl.n >= fl.lv * Data.FLOWER_HARVESTS_PER_LV:
+			fl.n = 0
+			fl.lv += 1
+			_toast("%s %s seviye %d! Tüm %s tarhları +%%%d kazanç" % [f.icon, f.name, fl.lv, f.name, int(round((Data.flower_mult(fl.lv) - 1.0) * 100.0))], "level")
+			if tool == "garden":
+				_render_shelf()
+
+func _selftest_garden(fails: Array) -> void:
+	coins = 2000
+	level = 6
+	res = {}
+	flv = {}
+	weather = ""
+	if not _perform({"x": 10, "z": 11, "tool": "garden", "arg": "daisy"}): fails.append("çiçek dikme")
+	var f = tiles[key(10, 11)]
+	if not _perform({"x": 10, "z": 11, "tool": "water", "arg": null}): fails.append("çiçek sulama")
+	_simulate(60.0)
+	if not f.ready: fails.append("çiçek açmadı %.3f" % f.t)
+	var c0 := coins
+	if not _perform({"x": 10, "z": 11, "tool": "hand", "arg": "wheat"}): fails.append("çiçek hasadı")
+	if coins - c0 != 30: fails.append("sulu çiçek kazancı %d" % (coins - c0))
+	if res.get("flower", 0) != 4: fails.append("çiçek kaynağı %s" % res)
+	if f.ready or f.t != 0.0 or not tiles.has(key(10, 11)): fails.append("çiçek yeniden açmıyor")
+	f.water = 0.0
+	_simulate(60.0)
+	c0 = coins
+	_perform({"x": 10, "z": 11, "tool": "hand", "arg": "wheat"})
+	if coins - c0 != 10: fails.append("kuru çiçek kazancı %d" % (coins - c0))
+	flv.daisy.n = Data.FLOWER_HARVESTS_PER_LV - 1
+	f.water = 0.0
+	_simulate(60.0)
+	_perform({"x": 10, "z": 11, "tool": "hand", "arg": "wheat"})
+	if flv.daisy.lv != 2: fails.append("çiçek seviyesi %s" % flv.daisy)
+	# gölet
+	if _resolve("garden", "pond", 10, 10) != null: fails.append("gölet dolu alana kuruldu")
+	if not _perform({"x": 8, "z": 9, "tool": "garden", "arg": "pond"}): fails.append("gölet kurma")
+	var pd = tiles.get(key(9, 10))
+	if pd == null or pd.kind != "pond": fails.append("gölet 2×2 değil")
+	if _resolve("garden", "daisy", 9, 9) != null: fails.append("gölet üstüne çiçek")
+	_simulate(Data.POND.time + 0.5)
+	if not pd.ready: fails.append("gölet balık üretmedi")
+	res = {}
+	if not _perform({"x": 9, "z": 10, "tool": "hand", "arg": "wheat"}): fails.append("balık toplama")
+	if res.get("fish", 0) != 4: fails.append("balık kaynağı %s" % res)
+	if not _perform({"x": 9, "z": 10, "tool": "remove", "arg": null}): fails.append("gölet kaldırma")
+	if tiles.has(key(8, 9)) or tiles.has(key(9, 10)): fails.append("gölet kareleri boşalmadı")
+	res = {}
 
 # ============================================================ hayvan yemi, ağıl, seviye (Aşama 3)
 ## Bitişik (4 yön) aynı tür hayvanlar bir ağıldır.
@@ -2335,7 +2588,7 @@ func _sell(r: String, n: int) -> void:
 ## Oyuncunun seviyesinde üretebildiği kaynaklardan rastgele bir sipariş.
 func _new_order() -> void:
 	var avail := []
-	for list in [Data.CROPS, Data.TREES, Data.ANIMALS]:
+	for list in [Data.CROPS, Data.TREES, Data.ANIMALS, Data.garden()]:
 		for k in list:
 			if list[k].level <= level and Data.YIELD.has(k):
 				var r: String = Data.YIELD[k][0]

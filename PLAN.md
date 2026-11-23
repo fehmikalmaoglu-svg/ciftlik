@@ -13,8 +13,8 @@ Kaynak: Farm Together Wiki, *Game Basics* ve *Crops* sayfaları (okundu: 23.11.2
 | Kaynak envanteri (sebze, tahıl, meyve, süt, yumurta, kumaş…) | ✓ | ✓ Aşama 1 (ambar, satış, sipariş, madalya) |
 | Mevsimler + hava (yağmur, kuraklık, kar) | ✓ 17 dk'da bir | ✓ Aşama 2 (10 dk mevsim, su seviyesi) |
 | Hayvan yemleme, ağıl (bitişik aynı tür yemi paylaşır), hayvan seviyesi | ✓ | ✓ Aşama 3 |
-| Çiçekler (sulanınca çok daha fazla kazanç, seviye) | ✓ | ✗ |
-| Göletler / balık | ✓ | ✗ |
+| Çiçekler (sulanınca çok daha fazla kazanç, seviye) | ✓ | ✓ Aşama 4 |
+| Göletler / balık | ✓ | ✓ Aşama 4 (basit) |
 | Görevler (aynı anda 4, madalya/elmas/XP ödülü) | ✓ | ✗ |
 | İşleme binaları (meyve → reçel, süt → peynir) ve tezgahlar | ✓ | ✗ |
 | Arazi genişletme (seviye şartı + artan maliyet) | ✓ | ✗ |
@@ -45,7 +45,9 @@ Her aşama kendi içinde oynanabilir biter; sonunda `--selftest` genişletilir v
 - Bitişik aynı tür hayvan kareleri **ağıl** olur, yemi paylaşır, tek tıkla hepsi yemlenir.
 - Her N toplamada hayvan seviye atlar, kazancı biraz artar.
 
-### 4. Çiçekler ve gölet
+### 4. Çiçekler ve gölet ✅ (tamamlandı)
+- Yeni alet 🌼 Bahçe (9). Çiçekler: papatya, lale, gül, lavanta; kalıcı tarh, hasattan sonra yeniden açar. Islak geçen süre oranı kazancı ×3'e, kaynağı +2'ye kadar artırır. Tür seviyesi: 5·n hasatta bir, +%20.
+- Gölet 2×2, 350🪙, Sv 3; 2,5 dk'da 4 balık. Sonra: farklı balık türleri, olta mini oyunu.
 - Yeni kategori çiçek: sabit büyüme süresi; sulu tutulursa kazanç ve XP çok daha yüksek; hasatla seviye atlar.
 - Gölet kareleri (2×2): balık yetiştir/tut. Balık kaynağı.
 

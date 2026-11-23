@@ -35,6 +35,29 @@ const DECOR := {
 	"scarecrow": {"name": "Korkuluk", "icon": "🧑‍🌾", "cost": 80, "level": 4, "info": "Çevresindeki (3 kare) ekinler %25 hızlı büyür"},
 }
 
+## Çiçekler (Aşama 4): kalıcı tarh, sabit büyüme süresi; hasattan sonra yeniden açar.
+## Büyürken ıslak geçen süre oranı kazancı en fazla 3 katına çıkarır.
+const FLOWERS := {
+	"daisy":    {"name": "Papatya", "icon": "🌼", "cost": 25,  "time": 60.0,  "sell": 10, "xp": 3,  "level": 1, "color": "#ffffff", "center": "#fdd835"},
+	"tulip":    {"name": "Lale",    "icon": "🌷", "cost": 45,  "time": 120.0, "sell": 22, "xp": 6,  "level": 2, "color": "#ec407a", "center": "#ffd54f"},
+	"rose":     {"name": "Gül",     "icon": "🌹", "cost": 90,  "time": 200.0, "sell": 40, "xp": 10, "level": 4, "color": "#d32f2f", "center": "#8e0000"},
+	"lavender": {"name": "Lavanta", "icon": "💜", "cost": 130, "time": 300.0, "sell": 62, "xp": 15, "level": 5, "color": "#9575cd", "center": "#673ab7"},
+}
+const FLOWER_WET_BONUS := 2.0   # tamamen sulu: ×(1 + 2)
+const FLOWER_MAX_LV := 5
+const FLOWER_HARVESTS_PER_LV := 5
+
+## Balık göleti (Aşama 4): 2×2 kare, yem istemez.
+const POND := {"name": "Balık Göleti", "icon": "🐟", "cost": 350, "time": 150.0, "sell": 40, "xp": 10, "level": 3, "info": "2×2 kare. Kendiliğinden balık üretir."}
+
+static func garden() -> Dictionary:
+	var d := FLOWERS.duplicate()
+	d["pond"] = POND
+	return d
+
+static func flower_mult(lv: int) -> float:
+	return 1.0 + 0.2 * (lv - 1)
+
 const BUILDINGS := {
 	"house": "Çiftlik Evi", "barn": "Ahır", "silo": "Silo", "well": "Kuyu", "windmill": "Yel Değirmeni",
 }
@@ -49,6 +72,8 @@ const RESOURCES := {
 	"wool":     {"name": "Yün",       "icon": "🧶", "price": 9},
 	"mushroom": {"name": "Mantar",    "icon": "🍄", "price": 12},
 	"milk":     {"name": "Süt",       "icon": "🥛", "price": 14},
+	"flower":   {"name": "Çiçek",     "icon": "🌷", "price": 7},
+	"fish":     {"name": "Balık",     "icon": "🐟", "price": 10},
 }
 
 ## Hangi hasat hangi kaynaktan kaç tane verir.
@@ -57,6 +82,8 @@ const YIELD := {
 	"sunflower": ["nut", 3], "pumpkin": ["veg", 6],
 	"apple": ["fruit", 3], "orange": ["fruit", 4], "cherry": ["fruit", 5],
 	"chicken": ["egg", 2], "sheep": ["wool", 2], "pig": ["mushroom", 2], "cow": ["milk", 3],
+	"daisy": ["flower", 2], "tulip": ["flower", 3], "rose": ["flower", 4], "lavender": ["flower", 5],
+	"pond": ["fish", 4],
 }
 
 const BARN_CAP := 150

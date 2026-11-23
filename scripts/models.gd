@@ -252,6 +252,50 @@ static func soil(wet := false) -> Node3D:
 		add(g, box(0.86, 0.035, 0.1, groove, 0, 0.11, z))
 	return g
 
+## Kalıcı çiçek tarhı: yuvarlak toprak, 5 bitki. stage 0..3.
+static func flower_bed(color: String, center: String, stage: int, wet: bool) -> Node3D:
+	var g := node()
+	add(g, cyl(0.44, 0.47, 0.09, 10, "#5d3a26" if wet else "#7a5136", 0, 0.045, 0))
+	add(g, torus(0.45, 0.035, "#7cb342", 0, 0.08, 0))
+	var spots := [[0.0, 0.0], [-0.22, -0.18], [0.22, -0.18], [-0.2, 0.2], [0.2, 0.2]]
+	var hs := [0.0, 0.1, 0.18, 0.26]
+	for i in spots.size():
+		var x: float = spots[i][0]
+		var z: float = spots[i][1]
+		if stage == 0:
+			var sp := _sprout(x, z)
+			sp.position.y = 0.08
+			add(g, sp)
+			continue
+		var h: float = hs[stage] + (i % 3) * 0.025
+		add(g, cyl(0.012, 0.014, h, 4, "#558b2f", x, 0.09 + h / 2.0, z))
+		add(g, rot(box(0.09, 0.015, 0.04, "#7cb342", x + 0.04, 0.09 + h * 0.45, z), 0, 0.5 * i, 0.5))
+		var top := 0.09 + h
+		if stage == 2:
+			add(g, ball(0.035, "#8bc34a", x, top, z))
+			add(g, ball(0.025, color, x, top + 0.025, z))
+		elif stage == 3:
+			for k in 5:
+				var a := TAU * k / 5.0 + i
+				add(g, ball(0.045, color, x + cos(a) * 0.05, top, z + sin(a) * 0.05))
+			add(g, ball(0.035, center, x, top + 0.02, z))
+	return g
+
+## 2×2 balık göleti: taş kenar, su, nilüfer yaprakları. Merkez orijinde.
+static func fish_pond() -> Node3D:
+	var g := node()
+	add(g, cyl(0.98, 1.0, 0.06, 16, "#8d6e63", 0, 0.03, 0))
+	add(g, cyl(0.84, 0.84, 0.05, 18, water(), 0, 0.075, 0))
+	for k in 14:
+		var a := TAU * k / 14.0
+		add(g, rot(dodec(0.13 + (k % 3) * 0.02, "#9e9e9e" if k % 2 == 0 else "#bdbdbd", cos(a) * 0.9, 0.09, sin(a) * 0.9), 0.3 * k, a, 0))
+	for lp in [[-0.35, 0.2], [0.3, -0.3], [0.1, 0.42]]:
+		add(g, cyl(0.12, 0.12, 0.012, 7, "#66bb6a", lp[0], 0.11, lp[1]))
+	add(g, ball(0.04, "#f8bbd0", -0.35, 0.13, 0.2))
+	add(g, cone(0.04, 0.4, 4, "#7cb342", -0.7, 0.25, -0.55))
+	add(g, cone(0.035, 0.32, 4, "#8bc34a", -0.6, 0.2, -0.68))
+	return g
+
 const SPOTS4 := [[-0.22, -0.22], [0.22, -0.22], [-0.22, 0.22], [0.22, 0.22]]
 const SPOTS9 := [[-0.28, -0.28], [-0.28, 0.0], [-0.28, 0.28], [0.0, -0.28], [0.0, 0.0], [0.0, 0.28], [0.28, -0.28], [0.28, 0.0], [0.28, 0.28]]
 

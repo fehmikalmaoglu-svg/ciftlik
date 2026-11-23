@@ -19,9 +19,11 @@ Web sürümüyle aynı: ⛏️ Çapa ile sür, 🌱 ek, 💧 sula (2× hız), �
 
 **Hayvanlar:** yem ister (tahıl, yoksa altın); aç hayvanın üstünde 🌾❔ çıkar ve üretmez. ✋ ile yemle. Yan yana aynı tür hayvanlar ağıl olur: birini yemlemek hepsini doyurur. Her hayvan topladıkça seviye atlar (Sv 5'e kadar), daha çok altın ve ürün verir.
 
+**Bahçe (9):** 🌼 çiçek tarhları kalıcıdır; sabit sürede açar, hasattan sonra yeniden büyür. Büyürken toprağı ıslak tutarsan kazanç 3 katına çıkar. Her çiçek türü hasat edildikçe seviye atlar. 🐟 Balık göleti 2×2 kare kaplar, kendiliğinden balık üretir.
+
 **Ambar (B):** hasat, altının yanında kaynak da verir (tahıl, sebze, meyve, yumurta, süt…). Ambarda sat ya da pazar siparişini teslim edip 🏅 madalya kazan. Ambara/siloya tıklamak da açar.
 
-**Kontroller:** boş yere tıkla = oraya yürü · sol tık/sürükle = alet · sağ tık sürükle veya Q/E = kamera · tekerlek = yakınlaştır · WASD = yürü · 1–8 = alet · Esc = iş sırasını iptal.
+**Kontroller:** boş yere tıkla = oraya yürü · sol tık/sürükle = alet · sağ tık sürükle veya Q/E = kamera · tekerlek = yakınlaştır · WASD = yürü · 1–9 = alet · Esc = iş sırasını iptal.
 
 ## Dosyalar
 
