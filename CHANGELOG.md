@@ -1,5 +1,12 @@
 # Çiftliğim 3D — Sürüm Notları
 
+## v0.13.2 · Erken Erişim
+- 📐 Nesneler artık çapraz durmuyor: korkuluk, hayvan, ağaç, dekor hep karelere düz (0°, 90°, 180°, 270°) yerleşir. Eski kayıtlardaki çapraz nesneler de yüklenince düzelir.
+- 🌷 Çiçeklik yenilendi: ahşap saksı kutusu, içinde taç yapraklı, yapraklı gerçek çiçekler.
+- 🌼 Çiçek tarhları artık **bir kez** açar: hasattan sonra tarh kalkar, yeniden ekmek için tohum parası gerekir (bedava sonsuz hasat yok).
+- 🐄 Hayvanlar büyüdü: inek en büyük, sonra koyun ve domuz; tavuk da biraz büyüdü.
+- 🐑 Koyun, domuz ve tavuk yürürken artık adım adım sallanıyor (önceden kayıyorlardı).
+
 ## v0.13.1 · Erken Erişim
 - 🖼️ Oyunun exe'si artık kendi çiftlik simgesini taşıyor (görev çubuğu, Alt+Tab, dosya gezgini).
 - 📉 Resmî Godot dışa aktarma şablonuyla derleniyor: oyun dosyası 181 MB'tan 109 MB'a indi, editör parçaları çıkarıldı.

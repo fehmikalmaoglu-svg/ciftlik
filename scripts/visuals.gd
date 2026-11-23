@@ -20,9 +20,9 @@ const SPOTS := {
 const TREE_ASSET := {"apple": "Apple", "orange": "Orange"}
 # hayvan: [dosya, ölçek, bekleme animasyonu, yürüme animasyonu]
 const ANIMAL_ASSET := {
-	"cow": ["Cow.fbx", 0.1, "Armature|Idle", "Armature|WalkSlow"],
-	"pig": ["Pig.fbx", 0.085, "Armature|Idle", ""],
-	"sheep": ["Sheep.fbx", 0.13, "Armature|Idle", ""],
+	"cow": ["Cow.fbx", 0.165, "Armature|Idle", "Armature|WalkSlow"],
+	"pig": ["Pig.fbx", 0.115, "Armature|Idle", ""],
+	"sheep": ["Sheep.fbx", 0.17, "Armature|Idle", ""],
 }
 
 static func crop(type: String, stage: int) -> Node3D:
@@ -66,7 +66,9 @@ static func animal(type: String) -> Node3D:
 				n.set_meta("idle", cfg[2])
 				n.set_meta("walk", cfg[3] if cfg[3] != "" and ap.has_animation(cfg[3]) else "")
 			return n
-	return Models.animal(type)
+	var m := Models.animal(type)
+	m.scale *= 1.25
+	return m
 
 static func decor(type: String, conn: Dictionary) -> Node3D:
 	match type:

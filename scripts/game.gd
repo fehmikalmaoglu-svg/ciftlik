@@ -172,7 +172,7 @@ const HELP_PAGES := [
 		["🚪", "Çiftçi çitlerden, kayalardan ve ağaçlardan geçmez; ağıla kapıdan girer."],
 	]],
 	["🌼  Bahçe ve Görevler", [
-		["🌷", "Bahçe (9): çiçek tarhları kalıcıdır, sabit sürede açar. Büyürken sulu kalırsa 3 kata kadar kazandırır."],
+		["🌷", "Bahçe (9): çiçek tarhı sabit sürede bir kez açar; hasattan sonra yeniden ekmen gerekir. Büyürken sulu kalırsa 3 kata kadar kazandırır."],
 		["🐟", "Gölet 2×2 kare kaplar ve kendiliğinden balık verir."],
 		["📜", "Aynı anda 4 görev olur. Biten görev 🏅 madalya, 💎 elmas ve XP verir."],
 		["✖️", "Günde bir görevi ücretsiz silebilirsin; sonrası 2 💎."],
@@ -1576,7 +1576,7 @@ func _add_entity(d: Dictionary) -> Dictionary:
 		tiles[key(e.x, e.z)] = e
 	if not e.has("rot"):
 		var flat: bool = e.kind == "plot" or e.kind == "pond" or e.kind == "coop" or e.get("type", "") == "gate" or e.get("type", "") == "fence" or e.get("type", "") == "path"
-		e.rot = 0.0 if flat else float(randi() % 8) * PI / 4.0
+		e.rot = 0.0 if flat else float(randi() % 4) * PI / 2.0
 	g.rotation.y = e.rot
 	add_child(g)
 	entities.append(e)
@@ -4004,12 +4004,21 @@ func _animate_world(dt: float) -> void:
 			if d < 0.02:
 				w.wait = 1.0 + randf() * 3.0
 				_animal_anim(m, false)
+				m.rotation.z = 0.0
+				m.rotation.x = 0.0
+				m.position.y = 0.0
 			else:
 				var s := minf(d, dt * 0.45)
 				w.x += dx / d * s
 				w.z += dz / d * s
 				m.rotation.y = atan2(dx, dz)
-				m.position.y = absf(sin(clock_t * 12.0)) * 0.03
+				if str(m.get_meta("walk", "")) == "":
+					# yürüme animasyonu yok (koyun, domuz, tavuk): adım adım zıpla ve yalpala
+					m.position.y = absf(sin(clock_t * 11.0 + w.phase)) * 0.07
+					m.rotation.z = sin(clock_t * 11.0 + w.phase) * 0.09
+					m.rotation.x = -absf(sin(clock_t * 11.0 + w.phase)) * 0.06
+				else:
+					m.position.y = absf(sin(clock_t * 12.0)) * 0.03
 		m.position.x = w.x
 		m.position.z = w.z
 		if e.has("name_lbl"):
@@ -5822,7 +5831,7 @@ func _render_shelf() -> void:
 		b.text = "%s\n%s\n%s\n%s" % [it.icon, it.name, "🏆 Kupa" if it.get("event", false) else "🪙 %d" % it.cost, ("🔒 Sv %d" % it.level) if locked else meta]
 		b.tooltip_text = it.get("info", it.name)
 		if cat == "garden" and k != "pond":
-			b.tooltip_text = "%s · Sv %d\nKalıcı tarh: hasattan sonra yeniden açar.\nBüyürken sulu tutarsan kazanç 3 katına kadar çıkar." % [it.name, _flower_lv(k).lv]
+			b.tooltip_text = "%s · Sv %d\nBir kez açar: hasattan sonra yeniden ekilir.\nBüyürken sulu tutarsan kazanç 3 katına kadar çıkar." % [it.name, _flower_lv(k).lv]
 		if cat == "seed":
 			b.tooltip_text = "%s\nMevsim: %s" % [it.name, Data.season_names(it.seasons)]
 		var selected: bool = sel[cat] == k
@@ -6060,7 +6069,7 @@ func _load_dict(data, offline: bool) -> bool:
 func _ent_base(s: Dictionary) -> Dictionary:
 		var x := int(s.x)
 		var z := int(s.z)
-		var base := {"kind": s.k, "x": x, "z": z, "rot": float(s.get("r", 0.0))}
+		var base := {"kind": s.k, "x": x, "z": z, "rot": fposmod(snappedf(float(s.get("r", 0.0)), PI / 2.0), TAU)}
 		if s.has("t"):
 			base.type = s.t
 		if s.has("ow"):
@@ -6283,6 +6292,14 @@ func _process(delta: float) -> void:
 					_set_tool(a.substr(7), true)
 				elif a == "--wheel":
 					_open_wheel(Vector2(640, 380))
+				elif a == "--zoo":   # geliştirici: hayvan boyları ve çiçeklik
+					level = maxi(level, 6)
+					var z0 := _free_spot(9, 5) + Vector2i(0, 2)
+					var kinds := [["decor", "flowers"], ["animal", "chicken"], ["animal", "sheep"], ["animal", "pig"], ["animal", "cow"], ["decor", "scarecrow"]]
+					for i in kinds.size():
+						_add_entity({"kind": kinds[i][0], "type": kinds[i][1], "x": z0.x + i * 1 + (1 if i > 3 else 0), "z": z0.y})
+					farmer.position = Vector3(z0.x + 3.5, 0, z0.y + 2.6) if not args_has("--planter") else Vector3(z0.x - 0.6, 0, z0.y + 1.6)
+					cam_target = Vector3(z0.x + 3.5, 0, z0.y + 0.5) if not args_has("--planter") else Vector3(z0.x + 0.5, 0.3, z0.y + 0.5)
 				elif a == "--chat":   # geliştirici: sohbet, bayrak ve ortak görev görünümü
 					net_fake_online = true
 					var f1 := _free_spot(3, 3)
@@ -8152,6 +8169,7 @@ func _selftest_build(fails: Array) -> void:
 	_selftest_pets(fails)
 	_selftest_coop(fails)
 	_selftest_backup(fails)
+	_selftest_grid_rot(fails)
 	var rb := _refund_of(tiles.get(key(sp.x, sp.y)))
 	var c2 := coins
 	if not _perform({"x": sp.x, "z": sp.y, "tool": "remove", "arg": null}) or _count_buildings("barn") != b0: fails.append("bina kaldırma")
@@ -8927,10 +8945,7 @@ func _harvest_flower(e: Dictionary, pos: Vector3) -> void:
 	_quest_event("flower", e.type, 1)
 	if frac > 0.95:
 		_float_text(pos + Vector3(0, 0.75, 0), "💐 ×%.0f" % (1.0 + Data.FLOWER_WET_BONUS), Color("#ffb3e6"))
-	e.ready = false
-	e.t = 0.0
-	e.wet_t = 0.0
-	_refresh(e)
+	_remove_entity(e)   # tarh bir kez açar: yeniden ekmek tohum parası ister
 	if fl.lv < Data.FLOWER_MAX_LV:
 		fl.n += 1
 		if fl.n >= fl.lv * Data.FLOWER_HARVESTS_PER_LV:
@@ -8939,6 +8954,19 @@ func _harvest_flower(e: Dictionary, pos: Vector3) -> void:
 			_toast("%s %s seviye %d! Tüm %s tarhları +%%%d kazanç" % [f.icon, f.name, fl.lv, f.name, int(round((Data.flower_mult(fl.lv) - 1.0) * 100.0))], "level")
 			if tool == "garden":
 				_render_shelf()
+
+func _selftest_grid_rot(fails: Array) -> void:
+	for i in 20:
+		var sp := _free_spot(1, 1)
+		if sp.x == 999:
+			return
+		var e := _add_entity({"kind": "decor", "type": "rock", "x": sp.x, "z": sp.y})
+		var q: float = e.rot / (PI / 2.0)
+		if absf(q - round(q)) > 0.001:
+			fails.append("çapraz yerleşme %.2f" % e.rot)
+		_remove_entity(e)
+	if absf(float(_ent_base({"k": "decor", "t": "rock", "x": 0, "z": 0, "r": PI / 4.0 + 0.01}).rot) - PI / 2.0) > 0.001 and absf(float(_ent_base({"k": "decor", "t": "rock", "x": 0, "z": 0, "r": PI / 4.0 + 0.01}).rot)) > 0.001:
+		fails.append("eski çapraz kayıt düzelmedi")
 
 func _selftest_garden(fails: Array) -> void:
 	coins = 2000
@@ -8955,17 +8983,22 @@ func _selftest_garden(fails: Array) -> void:
 	if not _perform({"x": 10, "z": 11, "tool": "hand", "arg": "wheat"}): fails.append("çiçek hasadı")
 	if coins - c0 != 30: fails.append("sulu çiçek kazancı %d" % (coins - c0))
 	if res.get("flower", 0) != 4: fails.append("çiçek kaynağı %s" % res)
-	if f.ready or f.t != 0.0 or not tiles.has(key(10, 11)): fails.append("çiçek yeniden açmıyor")
+	if tiles.has(key(10, 11)): fails.append("çiçek hasattan sonra kendiliğinden kaldı")
+	if not _perform({"x": 10, "z": 11, "tool": "garden", "arg": "daisy"}): fails.append("çiçek yeniden ekme")
+	f = tiles[key(10, 11)]
 	f.water = 0.0
 	_simulate(Data.FLOWERS.daisy.time)
 	c0 = coins
 	_perform({"x": 10, "z": 11, "tool": "hand", "arg": "wheat"})
 	if coins - c0 != 10: fails.append("kuru çiçek kazancı %d" % (coins - c0))
 	flv.daisy.n = Data.FLOWER_HARVESTS_PER_LV - 1
+	_perform({"x": 10, "z": 11, "tool": "garden", "arg": "daisy"})
+	f = tiles[key(10, 11)]
 	f.water = 0.0
 	_simulate(Data.FLOWERS.daisy.time)
 	_perform({"x": 10, "z": 11, "tool": "hand", "arg": "wheat"})
 	if flv.daisy.lv != 2: fails.append("çiçek seviyesi %s" % flv.daisy)
+	_perform({"x": 10, "z": 11, "tool": "garden", "arg": "daisy"})   # gölet denemesi için alan dolu olsun
 	# gölet
 	if _resolve("garden", "pond", 10, 10) != null: fails.append("gölet dolu alana kuruldu")
 	if not _perform({"x": 8, "z": 9, "tool": "garden", "arg": "pond"}): fails.append("gölet kurma")

@@ -1001,20 +1001,29 @@ static func decor(type: String, conn := {}) -> Node3D:
 			var ps := [[-0.23, -0.23], [0.23, -0.23], [-0.23, 0.23], [0.23, 0.23]]
 			for i in 4:
 				add(g, box(0.43, 0.05, 0.43, cols[i], ps[i][0], 0.025, ps[i][1]))
-		"flowers":
-			add(g, box(0.9, 0.1, 0.9, "#6d4c41", 0, 0.05, 0))
-			for x in [-0.45, 0.45]:
-				add(g, box(0.06, 0.16, 0.94, "#a1887f", x, 0.08, 0))
-			for z in [-0.45, 0.45]:
-				add(g, box(0.94, 0.16, 0.06, "#a1887f", 0, 0.08, z))
-			var i := 0
-			for x in [-0.25, 0.0, 0.25]:
-				for z in [-0.25, 0.0, 0.25]:
-					var h := 0.18 + float((i * 7) % 5) * 0.03
-					add(g, cyl(0.012, 0.012, h, 3, "#558b2f", x, 0.1 + h / 2.0, z))
-					add(g, ball(0.07, FLOWER_COLS[(i * 5) % FLOWER_COLS.size()], x, 0.12 + h, z))
-					add(g, ball(0.03, "#ffeb3b", x, 0.16 + h, z))
-					i += 1
+		"flowers":   # ahşap saksı kutusu, içinde gerçek taç yapraklı çiçekler
+			add(g, box(0.86, 0.26, 0.86, "#8d5a34", 0, 0.13, 0))
+			for k in 3:
+				add(g, box(0.88, 0.025, 0.88, "#6d4228", 0, 0.05 + k * 0.09, 0))
+			for x in [-0.43, 0.43]:
+				add(g, box(0.06, 0.3, 0.06, "#5d3a22", x, 0.15, -0.43))
+				add(g, box(0.06, 0.3, 0.06, "#5d3a22", x, 0.15, 0.43))
+			add(g, box(0.78, 0.04, 0.78, "#4e342e", 0, 0.27, 0))
+			for b in [[-0.24, -0.22], [0.25, 0.2], [-0.2, 0.26], [0.22, -0.25], [0.0, 0.0]]:
+				add(g, scl(ball(0.13, "#4f9a3a", b[0], 0.33, b[1]), 1.0, 0.6, 1.0))
+			var spots := [[-0.22, -0.2, 0.34], [0.2, -0.24, 0.28], [0.0, 0.02, 0.42], [-0.24, 0.2, 0.3], [0.22, 0.18, 0.36], [0.05, -0.05, 0.22], [-0.05, 0.26, 0.24]]
+			var cols := ["#ff5c8a", "#ffd23f", "#b388ff", "#ff7043", "#ffffff", "#ff5c8a", "#4fc3f7"]
+			for i in spots.size():
+				var sx: float = spots[i][0]
+				var sz: float = spots[i][1]
+				var h: float = spots[i][2]
+				add(g, cyl(0.012, 0.015, h, 4, "#3e7d2c", sx, 0.28 + h / 2.0, sz))
+				add(g, rot(scl(ball(0.045, "#5aa83f", sx + 0.04, 0.3 + h * 0.4, sz), 1.6, 0.4, 0.8), 0, i * 0.9, 0.4))
+				var top := 0.28 + h
+				for p in 5:
+					var a := TAU * p / 5.0 + i
+					add(g, scl(ball(0.04, cols[i], sx + cos(a) * 0.045, top, sz + sin(a) * 0.045), 1.0, 0.45, 1.0))
+				add(g, ball(0.025, "#ffeb3b" if cols[i] != "#ffd23f" else "#8d5a34", sx, top + 0.012, sz))
 		"rock":
 			add(g, scl(dodec(0.3, "#9e9e9e", 0, 0.18, 0), 1.2, 0.8, 1))
 			add(g, scl(dodec(0.18, "#bdbdbd", 0.28, 0.1, 0.15), 1, 0.8, 1))
