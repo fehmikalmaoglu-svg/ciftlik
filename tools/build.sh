@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Windows sürümü üretir: oyunu .pck olarak dışa aktarır, Godot çalıştırıcısını yanına
 # Ciftligim3D.exe adıyla koyar (aynı adlı .pck'yi kendiliğinden açar) ve zip'ler.
-# Dışa aktarma şablonu gerekmez. Kullanım: bash tools/build.sh
+# Dışa aktarma şablonu gerekmez. Inno Setup varsa kurulum exe'si de üretir. Kullanım: bash tools/build.sh
 set -e
 cd "$(dirname "$0")/.."
 GD="${GODOT_DIR:-/c/Users/$USERNAME/AppData/Local/Microsoft/WinGet/Packages/GodotEngine.GodotEngine_Microsoft.Winget.Source_8wekyb3d8bbwe}"
@@ -22,4 +22,10 @@ with zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as z:
         z.write(os.path.join(src, f), "Ciftligim3D/" + f)
 print("zip:", dst, os.path.getsize(dst) // (1024 * 1024), "MB")
 PY
+# Windows kurulum dosyası (Inno Setup 6 kuruluysa): ../surumler/Ciftligim3D-Kurulum-v<sürüm>.exe
+ISCC="${ISCC:-$LOCALAPPDATA/Programs/Inno Setup 6/ISCC.exe}"
+if [ -f "$ISCC" ]; then
+  (cd installer && MSYS_NO_PATHCONV=1 "$ISCC" /Q /DAppVer="$VER" ciftlik.iss)
+  echo "kurulum: ../surumler/Ciftligim3D-Kurulum-v$VER.exe"
+fi
 echo "BUILD OK v$VER"
