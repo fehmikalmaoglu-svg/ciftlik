@@ -13,7 +13,7 @@ Web sürümündeki (`../ciftlik`) low-poly çiftlik oyununun Godot 4.7 karşıl�
 
 ## Oynanış
 
-Web sürümüyle aynı: ⛏️ Çapa ile sür, 🌱 ek, 💧 sula (2× hız), ✋ El ile topla. Sürükleyerek çok kareye iş ver; çiftçi sırayla yapar. Altınla meyve ağaçları, hayvanlar ve dekor al; seviye atladıkça yeni ekinler açılır. 🧑‍🌾 Korkuluk çevresini %25 hızlandırır. 5 dakikalık gün/gece; fenerler geceleri yanar. Otomatik kayıt (`user://save.json`), sen yokken 6 saate kadar büyüme.
+Web sürümüyle aynı: ⛏️ Çapa ile sür, 🌱 ek, 💧 sula (2× hız), ✋ El ile topla. Sürükleyerek çok kareye iş ver; çiftçi sırayla yapar. Altınla meyve ağaçları, hayvanlar ve dekor al; seviye atladıkça yeni ekinler açılır. 🧑‍🌾 Korkuluk çevresini %25 hızlandırır. 15 dakikalık gün (gece kısa); fenerler geceleri yanar. Otomatik kayıt (`user://save.json`), sen yokken 6 saate kadar büyüme.
 
 **Su ve mevsimler:** sulanan toprak ~90 sn ıslak kalır (2× hız), sonra kurur; elle ya da 💧 ile yeniden sula. 10'ar dakikalık 4 mevsim var, her tohum yalnız kendi mevsiminde ekilir (rafta 🚫 ile gösterilir). Mevsim başında ağaçlar meyve verir (kış hariç) ve hava olayı gelebilir: 🌧️ yağmur tarlaları sular, 🔥 kuraklıkta su 3× hızlı biter, 🌨️ karda sulamaya gerek yok.
 
@@ -25,7 +25,13 @@ Web sürümüyle aynı: ⛏️ Çapa ile sür, 🌱 ek, 💧 sula (2× hız), �
 
 **Ambar (B):** hasat, altının yanında kaynak da verir (tahıl, sebze, meyve, yumurta, süt…). Ambarda sat ya da pazar siparişini teslim edip 🏅 madalya kazan. Ambara/siloya tıklamak da açar.
 
-**Kontroller:** boş yere tıkla = oraya yürü · sol tık/sürükle = alet · sağ tık sürükle veya Q/E = kamera · tekerlek = yakınlaştır · WASD = yürü · 1–9 = alet · Esc = iş sırasını iptal.
+**Ana menü ve kariyerler:** açılışta yükleme ekranı ve ana menü gelir. 3 kariyer yuvası var: *Yeni Kariyer* (çiftliğine ad ver), *Kariyerler* (yükle / iki basışla sil), *Devam Et*. Oyun içindeki 🏠 düğmesi kaydedip menüye döner; sıfırlama yok.
+
+**Arazi:** başlangıçta ortadaki 24×24 alan açık. Çevresindeki 8×8 parsellere tıklayıp seviye ve altınla satın alırsın; her parsel bir öncekinden pahalı.
+
+**Hayvanlar ve çitler:** çiftçi çitlerden, kayalardan, ağaçlardan ve binalardan geçmez, etrafından dolaşır; ağıla 🚪 çit kapısından girer. 🛖 Kümes (Hayvan rafı): çevresindeki 6 karedeki tavuklar yumurtayı kümese bırakır, kümese tıklayınca hepsi toplanır.
+
+**Kontroller:** boş yere tıkla = oraya yürü · sol tık/sürükle = alet · WASD = yürü · sağ tık sürükle = döndür/eğ · orta tık sürükle veya ok tuşları = haritada gez · Boşluk = çiftçiye dön · Q/E döndür · R/F eğ · tekerlek = yakınlaştır · 1–9 = alet · J = görevler · B = ambar · Esc = iptal.
 
 ## Dosyalar
 
@@ -40,7 +46,7 @@ Web sürümüyle aynı: ⛏️ Çapa ile sür, 🌱 ek, 💧 sula (2× hız), �
 
 ## Geliştirici bayrakları
 
-`--` sonrasına verilir: `--fresh` (kaydı yok say), `--night` (geceden başla), `--selftest` (oyun mantığını test edip çıkar), `--shot=yol.png` (4 sn sonra ekran görüntüsü alıp çıkar).
+`--` sonrasına verilir. Geliştirici bayrakları kariyer dosyalarına dokunmaz (`--slot=N` verilmedikçe). `--fresh` (kaydı yok say), `--menu` (menüyle başla), `--slot=1..3` (kariyer seç), `--cam=40` (kamera uzaklığı), `--fps` (8 sn FPS ölç), `--night` (geceden başla), `--selftest` (oyun mantığını test edip çıkar), `--shot=yol.png` (4 sn sonra ekran görüntüsü alıp çıkar).
 
 ```powershell
 & "<godot_console.exe>" --headless --path D:\klonlama\ciftlik-godot -- --fresh --selftest
@@ -56,4 +62,4 @@ Editörde *Proje → Dışa Aktar*. İlk seferde Godot "dışa aktarma şablonla
 - [Quaternius LowPoly Crops](https://opengameart.org/node/126983) — ekinler ve meyve ağaçları (`assets/crops`)
 - [Quaternius Farm Animals](https://opengameart.org/content/lowpoly-animated-farm-animal-pack) — inek, domuz, koyun (`assets/animals`)
 
-Geliştirici araçları: `tools/probe.gd` (model boyut/animasyon listesi), `tools/preview.gd` (modelleri tek karede önizle). Ek bayraklar: `--demo` (her türden örnek), `--barn` (ambarı açık başlat), `--season=0..3` (mevsim seç), `--weather=rain|drought|snow` (hava olayı başlat).
+Geliştirici araçları: `tools/career_test.gd` (kariyer akışı testi: `--headless --script res://tools/career_test.gd`), `tools/probe.gd` (model boyut/animasyon listesi), `tools/preview.gd` (modelleri tek karede önizle). Ek bayraklar: `--demo` (her türden örnek), `--barn` (ambarı açık başlat), `--season=0..3` (mevsim seç), `--weather=rain|drought|snow` (hava olayı başlat).

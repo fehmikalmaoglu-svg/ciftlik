@@ -17,7 +17,7 @@ Kaynak: Farm Together Wiki, *Game Basics* ve *Crops* sayfaları (okundu: 23.11.2
 | Göletler / balık | ✓ | ✓ Aşama 4 (basit) |
 | Görevler (aynı anda 4, madalya/elmas/XP ödülü) | ✓ | ✓ Aşama 5 |
 | İşleme binaları (meyve → reçel, süt → peynir) ve tezgahlar | ✓ | ✗ |
-| Arazi genişletme (seviye şartı + artan maliyet) | ✓ | ✗ |
+| Arazi genişletme (seviye şartı + artan maliyet) | ✓ | ✓ (8×8 parseller) |
 | Araçlar, ev içi işler, bilet | ✓ | ✗ |
 | Çok oyunculu: başka çiftlikte çalışınca 2× bonus, izinler | ✓ | ✗ (sonraya) |
 
@@ -62,7 +62,8 @@ Her aşama kendi içinde oynanabilir biter; sonunda `--selftest` genişletilir v
 - **Meyve presi**: meyve → reçel. **Mandıra**: süt → peynir. Zamanlayıcılı üretim kuyruğu.
 - **Tezgahlar**: reçel/peynir madalya karşılığı satılır.
 
-### 7. Arazi genişletme
+### 7. Arazi genişletme ✅ (tamamlandı, öne alındı)
+- Dünya -20..19; ortadaki 24×24 açık, çevresinde 16 parsel. n. parsel: 500·n^1.6 altın, seviye 2+n; yalnız açık araziye kenar komşusu alınır.
 - Başlangıç alanı küçülür (ör. 12×12), çevresi 6×6'lık kilitli parseller.
 - Parsel n: seviye `2n+1` şartı, maliyet `25·n²` altın (wiki'deki eğriye benzer artış). Kilitli parsel üstünde fiyat tabelası.
 
@@ -77,6 +78,10 @@ Her aşama kendi içinde oynanabilir biter; sonunda `--selftest` genişletilir v
 - 5 büyüme aşamalı ekinler: [Quaternius LowPoly Crops](https://opengameart.org/node/126983) (CC0, 100+ model).
 - Godot 4.7 FBX ve GLB'yi doğrudan içe aktarır; dönüştürmeye gerek yok. Prosedürel modeller yedek olarak kalır (asset yoksa onlar kullanılır).
 - Karakter özelleştirme (şapka, renk).
+
+### Geri bildirim turu (23.11.2026) ✅
+- Çarpışma + A* yol bulma, çit kapısı, tavuk kümesi; serbest kamera; ana menü, yükleme ekranı, 3 kariyer yuvası (sıfırlama kaldırıldı); üretim ~3× yavaş, 15 dk gün, 30 dk mevsim; güneş adımsız (gölge titremesi).
+- Sırada: modellerin elden geçirilmesi (karakter, ekinler, çim), ekran görüntüsündeki kalitede ama kendi tasarımımızla.
 
 ### Sonraya
 - Çok oyunculu ziyaret, bonus sayacı, izinler — ağ altyapısı gerektirir.

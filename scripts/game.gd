@@ -8,7 +8,11 @@ const WORLD_MIN := -20
 const WORLD_MAX := 19
 const PARCEL := 8
 const DAY_LEN := 900.0   # gündüz ~%70, gece ~%30
-const SAVE_PATH := "user://save.json"
+const OLD_SAVE := "user://save.json"
+const PROFILE := "user://profile.json"
+const SLOTS := 3
+## Sahne yeniden yüklenince hangi kariyerin açılacağı: {"slot": n, "new": bool, "name": str}
+static var boot := {}
 const POND_X := 29.0
 const POND_Z := 6.0
 const POND_R := 4.2
@@ -166,6 +170,15 @@ var player_i := 0
 
 # hata ayıklama: --shot=yol.png, --fresh, --night
 var shot_path := ""
+var save_path := ""      # açık kariyerin dosyası; boşsa kaydedilmez
+var slot := 0
+var playing := false
+var ready_done := false
+var menu_layer: CanvasLayer
+var menu_box: VBoxContainer
+var load_layer: CanvasLayer
+var load_bar: ProgressBar
+var del_armed := {}
 var shot_t := 0.0
 
 # ============================================================ yardımcılar
@@ -243,12 +256,18 @@ func height_at(x: float, z: float) -> float:
 # ============================================================ başlat
 func _ready() -> void:
 	randomize()
+	get_tree().auto_accept_quit = false
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--shot="):
 			shot_path = a.substr(7)
 	_make_font()
+	_build_loading()
+	await get_tree().process_frame
+	await get_tree().process_frame
 	_build_env()
 	_build_terrain()
+	_load_step(0.35)
+	await get_tree().process_frame
 	_build_surroundings()
 	_build_farm_frame()
 	_build_cursor()
@@ -256,8 +275,13 @@ func _ready() -> void:
 	fparts = farmer.get_meta("parts")
 	farmer.position = Vector3(0.5, 0, 9)
 	add_child(farmer)
+	_load_step(0.6)
+	await get_tree().process_frame
 	_build_sounds()
 	_build_ui()
+	_build_menu()
+	_load_step(0.8)
+	await get_tree().process_frame
 
 	_add_entity({"kind": "building", "type": "house", "x": -11, "z": -12, "w": 4, "d": 4, "rot": 0.0})
 	_add_entity({"kind": "building", "type": "barn", "x": 5, "z": -12, "w": 4, "d": 4, "rot": 0.0})
@@ -265,10 +289,34 @@ func _ready() -> void:
 	_add_entity({"kind": "building", "type": "well", "x": -5, "z": -10, "w": 1, "d": 1, "rot": 0.0})
 
 	var args := OS.get_cmdline_user_args()
-	if args.has("--fresh") or not _load():
+	_migrate_old_save()
+	var dev := args.has("--selftest") or args.has("--fps") or args.has("--fresh") or args.has("--demo") or args.has("--barn") or shot_path != ""
+	var start_play := dev
+	var is_new := false
+	if boot.has("slot"):
+		slot = int(boot.slot)
+		is_new = bool(boot.get("new", false))
+		if is_new:
+			farm_name = str(boot.get("name", "Çiftliğim"))
+		boot = {}
+		start_play = true
+	elif dev:
+		slot = 0   # geliştirici çalıştırmaları kariyerlere dokunmaz (--slot=N verilmedikçe)
+		for a in args:
+			if a.begins_with("--slot="):
+				slot = clampi(int(a.substr(7)), 1, SLOTS)
+	else:
+		slot = _last_slot()
+	save_path = _slot_path(slot) if slot > 0 else ""
+	if args.has("--selftest"):
+		save_path = "user://selftest.json"
+	var loaded := false
+	if save_path != "" and not is_new and not args.has("--fresh"):
+		loaded = _load()
+	if not loaded:
+		var nm := farm_name
 		_new_game()
-		if shot_path == "":
-			help.visible = true
+		farm_name = nm
 	if args.has("--night"):
 		day_time = 0.88
 	for a in args:
@@ -287,14 +335,26 @@ func _ready() -> void:
 		_open_barn()
 	_refresh_parcels()
 	_render_quests()
-	if args.has("--selftest"):
-		_selftest()
 	_set_tool(tool)
 	hud_dirty = true
-	get_tree().auto_accept_quit = true
+	ready_done = true
+	_load_step(1.0)
+	_finish_loading()
+	if args.has("--menu"):
+		start_play = false
+	if start_play:
+		_start_play(is_new or (not loaded and not dev))
+	else:
+		_show_menu()
+	if args.has("--selftest"):
+		_selftest()
 
 func _notification(what: int) -> void:
-	if what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_APPLICATION_PAUSED:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST:
+		if ready_done:
+			_save()
+		get_tree().quit()
+	elif what == NOTIFICATION_APPLICATION_PAUSED and ready_done:
 		_save()
 
 # ============================================================ dünya
@@ -1624,6 +1684,8 @@ func _pan_camera(v: Vector2) -> void:
 	cam_follow = false
 
 func _input(ev: InputEvent) -> void:
+	if not playing:
+		return
 	if ev is InputEventMouseMotion:
 		mouse_pos = ev.position
 		if rotating:
@@ -1640,6 +1702,8 @@ func _input(ev: InputEvent) -> void:
 			panning = false
 
 func _unhandled_input(ev: InputEvent) -> void:
+	if not playing:
+		return
 	if ev is InputEventMouseButton and ev.pressed:
 		match ev.button_index:
 			MOUSE_BUTTON_LEFT:
@@ -2220,8 +2284,10 @@ func _build_ui() -> void:
 	var bh := _icon_btn("❔", "Yardım")
 	bh.pressed.connect(func(): help.visible = not help.visible)
 	ah.add_child(bh)
-	var br := _icon_btn("♻️", "Sıfırla (iki kez bas)")
-	br.pressed.connect(_on_reset)
+	var br := _icon_btn("🏠", "Ana menü (kaydeder)")
+	br.pressed.connect(func():
+		_save()
+		_show_menu())
 	ah.add_child(br)
 
 	# --- alt: raf + alet çubuğu
@@ -2344,13 +2410,257 @@ func _icon_btn(icon: String, tip: String) -> Button:
 	_btn_styles(b, Color(0, 0, 0, 0), Color("#f3e6cf"))
 	return b
 
-func _on_reset() -> void:
-	if Time.get_ticks_msec() / 1000.0 - reset_armed < 3.0:
-		DirAccess.remove_absolute(ProjectSettings.globalize_path(SAVE_PATH))
-		get_tree().reload_current_scene()
+# ============================================================ yükleme, ana menü, kariyerler
+func _build_loading() -> void:
+	load_layer = CanvasLayer.new()
+	load_layer.layer = 20
+	add_child(load_layer)
+	var bg := ColorRect.new()
+	bg.color = Color("#8fd16a")
+	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	load_layer.add_child(bg)
+	var cc := CenterContainer.new()
+	cc.set_anchors_preset(Control.PRESET_FULL_RECT)
+	bg.add_child(cc)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 14)
+	cc.add_child(v)
+	var t := Label.new()
+	t.text = "🌾 Çiftliğim 3D"
+	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	t.add_theme_font_override("font", font)
+	t.add_theme_font_size_override("font_size", 54)
+	t.add_theme_color_override("font_color", Color.WHITE)
+	t.add_theme_color_override("font_outline_color", Color("#4a7a2a"))
+	t.add_theme_constant_override("outline_size", 12)
+	v.add_child(t)
+	load_bar = ProgressBar.new()
+	load_bar.custom_minimum_size = Vector2(380, 16)
+	load_bar.show_percentage = false
+	load_bar.max_value = 1.0
+	load_bar.value = 0.1
+	var sb_bg := StyleBoxFlat.new()
+	sb_bg.bg_color = Color(1, 1, 1, 0.35)
+	sb_bg.set_corner_radius_all(8)
+	var sb_fill := StyleBoxFlat.new()
+	sb_fill.bg_color = Color("#fff3c4")
+	sb_fill.set_corner_radius_all(8)
+	load_bar.add_theme_stylebox_override("background", sb_bg)
+	load_bar.add_theme_stylebox_override("fill", sb_fill)
+	v.add_child(load_bar)
+	var tips := ["İpucu: Sulanan toprak bir süre ıslak kalır.", "İpucu: Kümes kur, tavuklar yumurtayı oraya bıraksın.", "İpucu: Orta tıkla sürükleyerek haritada gezebilirsin.", "İpucu: Görevler madalya ve elmas verir."]
+	var tl := Label.new()
+	tl.text = "Yükleniyor…\n" + tips[randi() % tips.size()]
+	tl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	tl.add_theme_font_override("font", font)
+	tl.add_theme_font_size_override("font_size", 16)
+	tl.add_theme_color_override("font_color", Color("#2f5a17"))
+	v.add_child(tl)
+
+func _load_step(f: float) -> void:
+	if load_bar != null:
+		load_bar.value = f
+
+func _finish_loading() -> void:
+	var tw := create_tween()
+	tw.tween_interval(0.15)
+	tw.tween_property(load_layer.get_child(0), "modulate:a", 0.0, 0.5)
+	tw.tween_callback(load_layer.queue_free)
+
+static func _slot_path(n: int) -> String:
+	return "user://career_%d.json" % n
+
+func _slot_info(n: int) -> Dictionary:
+	var pth := _slot_path(n)
+	if not FileAccess.file_exists(pth):
+		return {}
+	var d = JSON.parse_string(FileAccess.get_file_as_string(pth))
+	if typeof(d) != TYPE_DICTIONARY:
+		return {}
+	return {"name": str(d.get("name", "Çiftliğim")), "level": int(d.get("level", 1)), "coins": int(d.get("coins", 0)),
+		"day": int(d.get("day", 1)), "saved_at": float(d.get("saved_at", 0))}
+
+func _last_slot() -> int:
+	if FileAccess.file_exists(PROFILE):
+		var d = JSON.parse_string(FileAccess.get_file_as_string(PROFILE))
+		if typeof(d) == TYPE_DICTIONARY:
+			var n := int(d.get("last", 0))
+			if n >= 1 and n <= SLOTS and FileAccess.file_exists(_slot_path(n)):
+				return n
+	for n in range(1, SLOTS + 1):
+		if FileAccess.file_exists(_slot_path(n)):
+			return n
+	return 0
+
+func _set_last(n: int) -> void:
+	var f := FileAccess.open(PROFILE, FileAccess.WRITE)
+	if f:
+		f.store_string(JSON.stringify({"last": n}))
+		f.close()
+
+## Eski tek kayıt dosyası (save.json) ilk kariyer yuvasına taşınır.
+func _migrate_old_save() -> void:
+	if FileAccess.file_exists(OLD_SAVE) and not FileAccess.file_exists(_slot_path(1)):
+		DirAccess.rename_absolute(ProjectSettings.globalize_path(OLD_SAVE), ProjectSettings.globalize_path(_slot_path(1)))
+		_set_last(1)
+
+func _start_play(show_help := false) -> void:
+	playing = true
+	menu_layer.visible = false
+	ui.visible = true
+	cam_follow = true
+	cam_dist = 20.0
+	cam_target = farmer.position
+	hud_dirty = true
+	if slot > 0:
+		_set_last(slot)
+	_save()
+	if show_help and shot_path == "":
+		help.visible = true
+
+func _show_menu() -> void:
+	playing = false
+	_clear_queue()
+	painting = false
+	rotating = false
+	panning = false
+	ui.visible = false
+	menu_layer.visible = true
+	_render_menu("main")
+
+func _build_menu() -> void:
+	menu_layer = CanvasLayer.new()
+	menu_layer.layer = 10
+	add_child(menu_layer)
+	var root := Control.new()
+	root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.theme = ui.theme
+	menu_layer.add_child(root)
+	var shade := ColorRect.new()
+	shade.color = Color(0.1, 0.18, 0.06, 0.25)
+	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.add_child(shade)
+	var p := _panel(26)
+	p.position = Vector2(48, 60)
+	p.custom_minimum_size = Vector2(400, 0)
+	root.add_child(p)
+	menu_box = VBoxContainer.new()
+	menu_box.add_theme_constant_override("separation", 10)
+	p.add_child(menu_box)
+	menu_layer.visible = false
+
+func _menu_btn(text: String, cb: Callable, primary := false, enabled := true) -> Button:
+	var b := _small_btn(text, cb, enabled, primary)
+	b.custom_minimum_size = Vector2(0, 46)
+	b.add_theme_font_size_override("font_size", 18)
+	return b
+
+func _render_menu(page: String, arg := 0) -> void:
+	for c in menu_box.get_children():
+		menu_box.remove_child(c)
+		c.queue_free()
+	var t := Label.new()
+	t.text = "🌾 Çiftliğim 3D"
+	t.add_theme_font_size_override("font_size", 36)
+	menu_box.add_child(t)
+	match page:
+		"main":
+			var cur := _slot_info(slot) if slot > 0 else {}
+			if not cur.is_empty():
+				var sub := Label.new()
+				sub.text = "%s · Seviye %d · 🪙 %d" % [cur.name, cur.level, cur.coins]
+				sub.add_theme_color_override("font_color", Color("#8a7260"))
+				menu_box.add_child(sub)
+				menu_box.add_child(_menu_btn("▶  Devam Et", func(): _start_play(), true))
+			menu_box.add_child(_menu_btn("🌱  Yeni Kariyer", func(): _render_menu("new", _free_slot()), cur.is_empty()))
+			menu_box.add_child(_menu_btn("📂  Kariyerler", func(): _render_menu("list")))
+			menu_box.add_child(_menu_btn("❔  Nasıl Oynanır", func():
+				_start_play()
+				help.visible = true, false, not cur.is_empty()))
+			menu_box.add_child(_menu_btn("🚪  Çıkış", func():
+				_save()
+				get_tree().quit()))
+		"list":
+			var h := Label.new()
+			h.text = "📂 Kariyerler"
+			h.add_theme_font_size_override("font_size", 20)
+			menu_box.add_child(h)
+			for n in range(1, SLOTS + 1):
+				var info := _slot_info(n)
+				var row := HBoxContainer.new()
+				row.add_theme_constant_override("separation", 8)
+				var l := Label.new()
+				l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+				l.custom_minimum_size = Vector2(250, 0)
+				if info.is_empty():
+					l.text = "%d. Boş yuva" % n
+					l.add_theme_color_override("font_color", Color("#a89580"))
+					row.add_child(l)
+					var nn := n
+					row.add_child(_small_btn(" Yeni ", func(): _render_menu("new", nn), true, true))
+				else:
+					var when := Time.get_datetime_string_from_unix_time(int(info.saved_at) + int(Time.get_time_zone_from_system().bias) * 60, true).substr(0, 16)
+					l.text = "%d. %s%s\nSeviye %d · 🪙 %d · %s" % [n, info.name, "  (açık)" if n == slot else "", info.level, info.coins, when]
+					row.add_child(l)
+					var nn := n
+					row.add_child(_small_btn(" Oyna ", func(): _open_slot(nn), true, true))
+					row.add_child(_small_btn(" Sil " if not del_armed.get(n, false) else " Emin misin? ", func(): _delete_slot(nn)))
+				menu_box.add_child(row)
+			menu_box.add_child(_menu_btn("←  Geri", func(): _render_menu("main")))
+		"new":
+			if arg <= 0:
+				var w := Label.new()
+				w.text = "Tüm yuvalar dolu. Kariyerler'den birini sil."
+				w.add_theme_color_override("font_color", Color("#c62828"))
+				menu_box.add_child(w)
+				menu_box.add_child(_menu_btn("←  Geri", func(): _render_menu("main")))
+				return
+			var h := Label.new()
+			h.text = "🌱 Yeni Kariyer (%d. yuva)\nÇiftliğinin adı:" % arg
+			menu_box.add_child(h)
+			var le := LineEdit.new()
+			le.text = "Çiftliğim"
+			le.max_length = 18
+			le.custom_minimum_size = Vector2(0, 40)
+			le.add_theme_font_size_override("font_size", 18)
+			menu_box.add_child(le)
+			var nn := arg
+			menu_box.add_child(_menu_btn("Başla", func(): _new_career(nn, le.text), true))
+			menu_box.add_child(_menu_btn("←  Geri", func(): _render_menu("main")))
+
+func _free_slot() -> int:
+	for n in range(1, SLOTS + 1):
+		if not FileAccess.file_exists(_slot_path(n)):
+			return n
+	return 0
+
+func _new_career(n: int, nm: String) -> void:
+	nm = nm.strip_edges()
+	if nm == "":
+		nm = "Çiftliğim"
+	_save()
+	boot = {"slot": n, "new": true, "name": nm}
+	get_tree().reload_current_scene()
+
+func _open_slot(n: int) -> void:
+	if n == slot and save_path != "":
+		_start_play()
 		return
-	reset_armed = Time.get_ticks_msec() / 1000.0
-	_toast("♻️ Sıfırlamak için 3 sn içinde tekrar bas", "warn")
+	_save()
+	boot = {"slot": n}
+	get_tree().reload_current_scene()
+
+func _delete_slot(n: int) -> void:
+	if not del_armed.get(n, false):
+		del_armed[n] = true
+		_render_menu("list")
+		return
+	del_armed.erase(n)
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(_slot_path(n)))
+	if n == slot:
+		slot = 0
+		save_path = ""
+	_render_menu("list")
 
 func _set_tool(id: String) -> void:
 	tool = id
@@ -2448,6 +2758,8 @@ func _update_hud(dt: float) -> void:
 
 # ============================================================ kayıt
 func _save() -> void:
+	if save_path == "" or not playing:
+		return
 	var ents := []
 	for e in entities:
 		if e.kind == "building":
@@ -2485,14 +2797,15 @@ func _save() -> void:
 		ents.append(s)
 	var data := {"v": 1, "parcels": parcels, "name": farm_name, "gems": gems, "quests": quests, "qskip": quest_skip_at, "flv": flv, "season": season, "season_t": season_t, "year": year, "weather": weather, "weather_t": weather_t, "medals": medals, "res": res, "order": order, "coins": coins, "xp": xp, "level": level, "day_time": day_time, "day": day, "sel": sel, "muted": muted,
 		"saved_at": Time.get_unix_time_from_system(), "ents": ents, "fx": farmer.position.x, "fz": farmer.position.z}
-	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
+	var f := FileAccess.open(save_path, FileAccess.WRITE)
 	if f:
 		f.store_string(JSON.stringify(data))
+		f.close()
 
 func _load() -> bool:
-	if not FileAccess.file_exists(SAVE_PATH):
+	if not FileAccess.file_exists(save_path):
 		return false
-	var data = JSON.parse_string(FileAccess.get_file_as_string(SAVE_PATH))
+	var data = JSON.parse_string(FileAccess.get_file_as_string(save_path))
 	if typeof(data) != TYPE_DICTIONARY or int(data.get("v", 0)) != 1:
 		return false
 	coins = int(data.coins)
@@ -2636,7 +2949,30 @@ func _new_game() -> void:
 
 # ============================================================ döngü
 func _process(delta: float) -> void:
+	if not ready_done:
+		return
 	var dt := minf(0.1, delta)
+	if shot_path != "" and not playing:
+		shot_t += delta
+		if shot_t > 4.0:
+			get_viewport().get_texture().get_image().save_png(shot_path)
+			get_tree().quit()
+	if not playing:
+		sim_acc += dt
+		if sim_acc > 0.1:
+			_simulate(sim_acc)
+			sim_acc = 0.0
+		cam_follow = false
+		cam_yaw += dt * 0.04
+		cam_target = cam_target.lerp(Vector3(0, 0, 0), minf(1.0, dt * 0.8))
+		cam_dist = lerpf(cam_dist, 34.0, minf(1.0, dt * 0.8))
+		_update_camera(dt)
+		_update_day(dt)
+		_update_lamps(dt)
+		_animate_world(dt)
+		_update_parts(dt)
+		_update_floats(dt)
+		return
 	if painting and not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
 		painting = false
 	sim_acc += dt
@@ -2674,6 +3010,7 @@ func _process(delta: float) -> void:
 # ============================================================ öz test (--selftest)
 func _selftest() -> void:
 	var fails := []
+	playing = true
 	quests = []
 	season = 0
 	season_t = 0.0
@@ -2737,14 +3074,14 @@ func _selftest() -> void:
 	_selftest_parcels(fails)
 	var n_before := entities.size()
 	_save()
-	var data = JSON.parse_string(FileAccess.get_file_as_string(SAVE_PATH))
+	var data = JSON.parse_string(FileAccess.get_file_as_string(save_path))
 	var lv_ok := false
 	for se in data.ents:
 		if se.k == "animal" and se.has("lv"):
 			lv_ok = true
 	if not lv_ok: fails.append("hayvan seviyesi kaydedilmedi")
 	if data.ents.size() != n_before - 4: fails.append("kayıt varlık sayısı %d / %d" % [data.ents.size(), n_before - 4])
-	DirAccess.remove_absolute(ProjectSettings.globalize_path(SAVE_PATH))
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(save_path))
 	print("SELFTEST ", "OK" if fails.is_empty() else "FAIL: " + ", ".join(fails))
 	get_tree().quit()
 
