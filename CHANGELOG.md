@@ -1,5 +1,13 @@
 # Çiftliğim 3D — Sürüm Notları
 
+## v0.6.0 · Erken Erişim
+- 🎣 Balık tutma! Gölün batı kıyısında Balıkçı tezgâhı var: Bambu Olta (120 🪙), Usta Oltası (900 🪙, Sv 5), Solucan ×10 (30 🪙), Parlak Yem ×5 (80 🪙, Sv 3).
+  - Göle tıkla: çiftçi kıyıya yürür ve oltayı atar. Şamandıra batıp ❗ çıkınca tıkla (ya da Boşluk).
+  - Mini oyun: basılı tutarak yeşil alanı sağa it, bırakınca sola kayar; balığı alanın içinde tutarak çubuğu doldur. Zor balıklar daha çok kaçar; Usta Oltası alanı genişletir.
+  - 6 tür: Kızılkanat, Sazan, Alabalık, Turna, Yayın Balığı (geceleri) ve çok nadir Altın Sazan (+1 💎). Balıklar ambara gider, XP verir, "balık tut" görevlerine sayılır.
+  - 📖 Balık defteri tezgâhta: her türden kaç tane tuttuğun ve en büyük ağırlık; yeni rekorda duyuru.
+  - Online: olta, yem ve defter çiftlikte ortak; arkadaşın da balık tutabilir.
+
 ## v0.5.0 · Erken Erişim
 - 😄 Emote: üst çubuktaki 😄 düğmesi ya da G tuşu. El salla, gül, kalp, beğen, kahkaha, kutla, şaşır, üzül. Balon karakterinin başında çıkar; yakında arkadaşın varsa karakterin ona döner. Online iki tarafta da görünür (çubuk açıkken 1–8 tuşları).
 - Online: arkadaşın da ambarı açıp ürün satabilir ve sipariş teslim edebilir; para ve ambar iki tarafta eşitlenir.

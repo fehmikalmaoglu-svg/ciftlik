@@ -145,6 +145,7 @@ const HELP_PAGES := [
 		["1 – 9 · 0 · -", "Aleti doğrudan seç: El, Çapa, Tohum, Sula, Ağaç, Hayvan, Dekor, Bahçe, Kaldır; 0 Yapı, - Taşı."],
 		["🚚 · 🗑️", "Taşı: nesneye tıkla, sonra yeni yerine tıkla; seçiliyken kendisine tıkla ya da T ile döndür (Esc vazgeçer). Binanın üstünde basılı tut: Döndür / Taşı / Kaldır menüsü; ambar, ev, ağaç, hayvan, çit… hepsi taşınır, bedava. Kaldır: nesneyi siler, yarı fiyatı geri gelir."],
 		["B · J · Esc", "B ambarı, J görev panelini açar; Esc iş kuyruğunu ve pencereleri kapatır."],
+		["🎣", "Balık tutma: gölün batı kıyısındaki 🎣 Balıkçı tezgâhından olta ve yem al. Göle tıkla; ❗ çıkınca tıkla (ya da Boşluk), mini oyunda basılı tutarak yeşil alanı balığın üstünde tut. 6 tür var, yayın balığı geceleri çıkar; tezgâhta balık defterin durur."],
 		["G · 😄", "Emote çubuğu: el salla, gül, kalp, alkış… Yakında arkadaşın varsa karakterin ona döner; online iki tarafta da görünür."],
 	]],
 	["🌱  Tarım", [
@@ -384,6 +385,40 @@ var entrance_doors := []
 var frame_block := {}
 var frame_fences := {}   # Vector2i → sınır çiti parçası (oyuncu çiti yanına gelince yeniden çizilir)
 var frame_gate_z := 0
+## Göl balıkçılığı. diff: mini oyunda ne kadar kaçak (0..1); w: kg aralığı; amt: ambara giden balık; chance: ağırlık.
+const FISH := [
+	{"id": "kizilkanat", "name": "Kızılkanat", "icon": "🐟", "diff": 0.12, "w": [0.1, 0.4], "amt": 1, "xp": 3, "chance": 40},
+	{"id": "sazan", "name": "Sazan", "icon": "🐟", "diff": 0.32, "w": [0.8, 4.0], "amt": 2, "xp": 6, "chance": 30},
+	{"id": "alabalik", "name": "Alabalık", "icon": "🐠", "diff": 0.5, "w": [0.4, 2.5], "amt": 2, "xp": 9, "chance": 18},
+	{"id": "turna", "name": "Turna", "icon": "🐟", "diff": 0.68, "w": [1.5, 8.0], "amt": 3, "xp": 14, "chance": 8},
+	{"id": "yayin", "name": "Yayın Balığı", "icon": "🐡", "diff": 0.8, "w": [4.0, 20.0], "amt": 4, "xp": 20, "chance": 3, "night": true},
+	{"id": "altin", "name": "Altın Sazan", "icon": "✨", "diff": 0.9, "w": [1.0, 3.0], "amt": 5, "xp": 35, "chance": 1, "gems": 1},
+]
+## Balıkçı tezgâhı: [id, ad, fiyat, seviye, açıklama]
+const FISH_SHOP := [
+	["rod1", "🎣 Bambu Olta", 120, 1, "Balık tutmaya başla. Yakalama alanı dar."],
+	["rod2", "🎣 Usta Oltası", 900, 5, "Yakalama alanı geniş, makara hızlı."],
+	["bait", "🪱 Solucan ×10", 30, 1, "Her atış bir yem. Göldeki her balık sever."],
+	["bait2", "✨ Parlak Yem ×5", 80, 3, "Nadir balıkları (alabalık, turna, yayın, altın sazan) 3 kat çeker."],
+]
+const STALL := Vector3(23.4, 0, 0.6)   # gölün batı kıyısı
+var fishgear := {"rod": 0, "bait": 0, "bait2": 0, "use2": false, "log": {}}
+var fish_state := ""      # "" | walk | wait | bite | game
+var fish_t := 0.0
+var fish_at := Vector3.ZERO      # şamandıra
+var fish_shore := Vector3.ZERO   # çiftçinin duracağı kıyı
+var fish_bait2 := false          # bu atışta parlak yem mi
+var fish_pick := {}              # oltaya gelen tür
+var fish_g := {}                 # mini oyun durumu
+var bobber: Node3D
+var fish_line: MeshInstance3D
+var fish_rod: Node3D
+var fish_ui: PanelContainer
+var fish_zone: ColorRect
+var fish_icon: Label
+var fish_bar: ProgressBar
+var fish_track_w := 440.0
+var shop_open := false
 const EMOTES := ["👋", "😄", "❤️", "👍", "😂", "🎉", "😮", "😢"]
 var emote_fx := []        # [{"n": Label3D, "t": float}]
 var emote_bar: PanelContainer
@@ -468,6 +503,20 @@ var grass_frac := 1.0
 var set_layer: CanvasLayer
 var set_box: VBoxContainer
 var fps_lbl: Label
+
+func _load_fishgear(d) -> void:
+	fishgear = {"rod": 0, "bait": 0, "bait2": 0, "use2": false, "log": {}}
+	if typeof(d) != TYPE_DICTIONARY:
+		return
+	fishgear.rod = clampi(int(d.get("rod", 0)), 0, 2)
+	fishgear.bait = maxi(0, int(d.get("bait", 0)))
+	fishgear.bait2 = maxi(0, int(d.get("bait2", 0)))
+	fishgear.use2 = bool(d.get("use2", false))
+	var lg = d.get("log", {})
+	if typeof(lg) == TYPE_DICTIONARY:
+		for k in lg:
+			if typeof(lg[k]) == TYPE_DICTIONARY:
+				fishgear.log[str(k)] = {"n": int(lg[k].get("n", 0)), "best": float(lg[k].get("best", 0.0))}
 
 ## Sıradaki genişleme adımı [yarı boy, altın, seviye]; en büyük karedeyse boş.
 func _expand_next() -> Array:
@@ -570,6 +619,7 @@ func _ready() -> void:
 	await get_tree().process_frame
 	_build_surroundings()
 	_build_outskirts()
+	_build_stall()
 	_build_farm_frame()
 	_build_grass()
 	_build_cursor()
@@ -2649,6 +2699,8 @@ func _walkable(x: int, z: int) -> bool:
 		return false
 	if frame_block.has(Vector2i(x, z)):
 		return false
+	if absf(x + 0.5 - STALL.x) < 1.3 and absf(z + 0.5 - STALL.z) < 1.3:   # balıkçı tezgâhı
+		return false
 	if Vector2(x + 0.5 - POND_X, z + 0.5 - POND_Z).length() < POND_R - 0.2:
 		return false
 	var t = tiles.get(key(x, z))
@@ -2890,6 +2942,15 @@ func _unhandled_input(ev: InputEvent) -> void:
 				if ctx_menu != null and ctx_menu.visible:
 					ctx_menu.visible = false
 					return
+				if fish_state != "" and _fish_click():
+					return
+				var gp = _pick_point(ev.position)
+				if gp != null and _near_stall(gp):
+					_open_fish_shop()
+					return
+				if gp != null and _in_lake(gp):
+					_start_fishing(gp)
+					return
 				painting = true
 				drag_moved = false
 				hover = _pick(ev.position)
@@ -2948,6 +3009,8 @@ func _unhandled_input(ev: InputEvent) -> void:
 				_close_wheel()
 			else:
 				_open_wheel(mouse_pos)
+		elif k == KEY_SPACE and (fish_state == "bite" or fish_state == "wait"):
+			_fish_click()
 		elif k == KEY_G:
 			_toggle_emote_bar()
 		elif k == KEY_T:
@@ -2958,6 +3021,9 @@ func _unhandled_input(ev: InputEvent) -> void:
 		elif k == KEY_ESCAPE:
 			if ctx_menu != null and ctx_menu.visible:
 				ctx_menu.visible = false
+				return
+			if fish_state != "":
+				_fish_end()
 				return
 			if emote_bar != null and emote_bar.visible:
 				emote_bar.visible = false
@@ -3238,6 +3304,8 @@ func _build_sounds() -> void:
 		"animal": _synth([[700, 900, "square", 0.06, 0.12, 0.0], [900, 650, "square", 0.08, 0.12, 0.08]]),
 		"remove": _synth([[400, 120, "saw", 0.15, 0.15, 0.0]]),
 		"error": _synth([[220, 160, "saw", 0.12, 0.15, 0.0]]),
+		"cast": _synth([[900, 300, "sine", 0.22, 0.18, 0.0]]),
+		"bite": _synth([[300, 160, "sine", 0.12, 0.35, 0.0], [520, 300, "sine", 0.1, 0.3, 0.1]]),
 		"level": _synth([[523, 528, "tri", 0.22, 0.3, 0.0], [659, 665, "tri", 0.22, 0.3, 0.11], [784, 791, "tri", 0.22, 0.3, 0.22], [1046, 1056, "tri", 0.3, 0.3, 0.33]]),
 	}
 	for i in 6:
@@ -4309,6 +4377,22 @@ func net_req(t: String, a: String, x: int, z: int) -> void:
 		_deliver()
 		net_quest_dirty = true
 		return
+	if t == "@fishbuy":
+		_fish_buy(a)
+		return
+	if t == "@bait":
+		if a == "2":
+			fishgear.bait2 = maxi(0, int(fishgear.bait2) - 1)
+		else:
+			fishgear.bait = maxi(0, int(fishgear.bait) - 1)
+		net_quest_dirty = true
+		return
+	if t == "@fish":
+		if not _fish_def(a).is_empty():
+			_fish_reward(a, clampf(x / 10.0, 0.1, 25.0))
+			if net_players.has(multiplayer.get_remote_sender_id()):
+				_toast("🎣 %s %s yakaladı!" % [net_players[multiplayer.get_remote_sender_id()].name, _fish_def(a).name], "hint")
+		return
 	if t == "@emote":
 		var sid := multiplayer.get_remote_sender_id()
 		if net_players.has(sid):
@@ -4381,7 +4465,7 @@ func _net_sync_dict() -> Dictionary:
 	for e in entities:
 		ents.append(_ent_dict(e))
 	return {"coins": coins, "xp": xp, "level": level, "day_time": day_time, "day": day, "season": season, "season_t": season_t,
-		"year": year, "weather": weather, "weather_t": weather_t, "fh": farm_h, "res": res, "ents": ents, "q": _net_quest_dict(), "order": order}
+		"year": year, "weather": weather, "weather_t": weather_t, "fh": farm_h, "res": res, "ents": ents, "q": _net_quest_dict(), "order": order, "fg": fishgear}
 
 @rpc("authority", "reliable")
 func net_sync(d: Dictionary) -> void:
@@ -4412,6 +4496,12 @@ func net_sync(d: Dictionary) -> void:
 		net_quests(d.q)
 	if d.has("order") and typeof(d.order) == TYPE_DICTIONARY:
 		order = d.order
+	if d.has("fg"):
+		var use2 := bool(fishgear.use2)
+		_load_fishgear(d.fg)
+		fishgear.use2 = use2   # yem seçimi her oyuncunun kendisinde
+		if shop_open and land_dlg.visible:
+			_open_fish_shop()
 	if barn != null and barn.visible:
 		_render_barn()
 	hud_dirty = true
@@ -4545,11 +4635,12 @@ func _net_host_probe() -> void:
 		_render_quests()
 	var plots0 := entities.filter(func(e): return e.kind == "plot").size()
 	var seen := 0
-	for i in 140:
+	for i in 170:
 		await get_tree().create_timer(0.1).timeout
 		seen = maxi(seen, net_players.size())
 	var plots1 := entities.filter(func(e): return e.kind == "plot").size()
 	if int(res.get("cereal", 0)) != 7: qok_sell_fail = true
+	if int(fishgear.rod) != 1: qok_sell_fail = true
 	var qok: bool = not qok_sell_fail and (quests.is_empty() or quests[0].kind != "plow" or quests[0].have == 1)
 	print("NET HOST ", "OK" if plots1 == plots0 + 1 and seen == 1 and qok else "FAIL", " tarla %d→%d oyuncu=%d görev+satış=%s" % [plots0, plots1, seen, qok])
 	get_tree().quit()
@@ -4580,6 +4671,11 @@ func _net_selftest() -> void:
 	_sell("cereal", 3)
 	await get_tree().create_timer(2.5).timeout
 	if int(res.get("cereal", 0)) != 7 or coins <= c0: fails.append("misafir satışı")
+	if int(fishgear.rod) != 0: fails.append("olta baştan var")
+	_fish_buy("rod1")
+	_fish_reward("turna", 5.0)
+	await get_tree().create_timer(2.0).timeout
+	if int(fishgear.rod) != 1: fails.append("misafirin oltası eşitlenmedi")
 	var plow_q := false
 	for q in quests:
 		if q.kind == "plow":
@@ -5213,7 +5309,7 @@ func _state_dict() -> Dictionary:
 	var ents := []
 	for e in entities:
 		ents.append(_ent_dict(e))
-	return {"v": 1, "bv": 1, "sv": 2, "story": story_step, "sh": story_have, "fh": farm_h, "name": farm_name, "gems": gems, "quests": quests, "qskip": quest_skip_at, "flv": flv, "season": season, "season_t": season_t, "year": year, "weather": weather, "weather_t": weather_t, "medals": medals, "res": res, "order": order, "coins": coins, "xp": xp, "level": level, "day_time": day_time, "day": day, "sel": sel, "muted": muted,
+	return {"v": 1, "bv": 1, "sv": 2, "story": story_step, "sh": story_have, "fh": farm_h, "fg": fishgear, "name": farm_name, "gems": gems, "quests": quests, "qskip": quest_skip_at, "flv": flv, "season": season, "season_t": season_t, "year": year, "weather": weather, "weather_t": weather_t, "medals": medals, "res": res, "order": order, "coins": coins, "xp": xp, "level": level, "day_time": day_time, "day": day, "sel": sel, "muted": muted,
 		"saved_at": Time.get_unix_time_from_system(), "ents": ents, "fx": farmer.position.x, "fz": farmer.position.z}
 
 func _ent_dict(e: Dictionary) -> Dictionary:
@@ -5266,6 +5362,7 @@ func _load_dict(data, offline: bool) -> bool:
 	muted = bool(data.get("muted", false))
 	medals = int(data.get("medals", 0))
 	gems = int(data.get("gems", 0))
+	_load_fishgear(data.get("fg", {}))
 	farm_h = int(data.get("fh", 0))
 	if farm_h <= 0:
 		farm_h = _farm_h_from_parcels(data.get("parcels", []))
@@ -5486,6 +5583,7 @@ func _process(delta: float) -> void:
 		painting = false
 	_update_hold(dt)
 	_update_emotes(dt)
+	_update_fishing(dt)
 	sim_acc += dt
 	if sim_acc > 0.1:
 		_simulate(sim_acc)
@@ -5523,6 +5621,22 @@ func _process(delta: float) -> void:
 					_set_tool(a.substr(7), true)
 				elif a == "--wheel":
 					_open_wheel(Vector2(640, 380))
+				elif a == "--fishshop":   # geliştirici: balıkçı tezgâhı
+					fishgear.rod = 1
+					fishgear.bait = 7
+					fishgear.log = {"sazan": {"n": 3, "best": 2.4}, "kizilkanat": {"n": 5, "best": 0.3}}
+					_open_fish_shop()
+				elif a == "--fishgame":   # geliştirici: mini oyun
+					fishgear.rod = 1
+					fishgear.bait = 5
+					farmer.position = Vector3(POND_X - POND_R - 0.75, 0, POND_Z)
+					fish_shore = farmer.position
+					fish_at = Vector3(POND_X - 1.5, 0, POND_Z)
+					_fish_cast()
+					fish_state = "bite"
+					_fish_start_game()
+					fish_g.fx = 0.45
+					fish_g.p = 0.6
 				elif a == "--emote":   # geliştirici: emote çubuğu ve balon
 					_toggle_emote_bar()
 					_show_emote(farmer, 2)
@@ -5663,6 +5777,440 @@ func _demo() -> void:
 	cam_target = farmer.position
 	cam_dist = 11.0
 
+# ============================================================ balıkçılık
+func _in_lake(p: Vector3) -> bool:
+	return Vector2(p.x - POND_X, p.z - POND_Z).length() < POND_R - 0.2
+
+func _near_stall(p: Vector3) -> bool:
+	return Vector2(p.x - STALL.x, p.z - STALL.z).length() < 1.7
+
+## Gölün kıyısındaki balıkçı tezgâhı.
+func _build_stall() -> void:
+	var g := Models.node(STALL.x, height_at(STALL.x, STALL.z), STALL.z)
+	g.rotation.y = -PI / 2.0   # yüzü çiftliğe (batıya)
+	for x in [-1.0, 1.0]:
+		for z in [-0.55, 0.55]:
+			g.add_child(Models.box(0.12, 2.1, 0.12, "#8d5f3a", x, 1.05, z))
+	g.add_child(Models.box(2.3, 0.8, 0.9, "#c79a6a", 0, 0.4, 0.15))
+	g.add_child(Models.box(2.4, 0.08, 1.0, "#a0703f", 0, 0.82, 0.15))
+	for i in 6:   # çizgili tente
+		g.add_child(Models.box(0.4, 0.07, 1.5, "#e57373" if i % 2 == 0 else "#fff3e0", -1.0 + i * 0.4, 2.15, 0.05))
+	g.add_child(Models.box(1.0, 0.25, 0.5, "#7a5030", 0.6, 0.98, 0.15))   # balık kasası
+	for i in 3:
+		g.add_child(Models.ball(0.12, "#90caf9", 0.35 + i * 0.25, 1.12, 0.15))
+	g.add_child(Models.cyl(0.03, 0.03, 1.4, 6, "#5d4037", -0.85, 1.4, 0.45))   # dayalı olta
+	var l := Label3D.new()
+	l.font = font
+	l.text = "🎣 BALIKÇI"
+	l.font_size = 72
+	l.pixel_size = 0.006
+	l.outline_size = 10
+	l.outline_modulate = Color(0.2, 0.12, 0.05, 0.8)
+	l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	l.position = Vector3(0, 2.7, 0)
+	g.add_child(l)
+	add_child(g)
+
+func _fish_def(id: String) -> Dictionary:
+	for f in FISH:
+		if f.id == id:
+			return f
+	return {}
+
+## Oltaya hangi tür gelir: gece yayın balığı, parlak yemde nadirler daha sık.
+func _fish_roll(special: bool) -> Dictionary:
+	var night := day_time > 0.78 or day_time < 0.22
+	var total := 0.0
+	var ws := []
+	for f in FISH:
+		var c := float(f.chance)
+		if f.get("night", false):
+			c *= 6.0 if night else 0.3
+		if special and float(f.diff) >= 0.5:
+			c *= 3.0
+		ws.append(c)
+		total += c
+	var r := randf() * total
+	for i in FISH.size():
+		r -= ws[i]
+		if r <= 0.0:
+			return FISH[i]
+	return FISH[0]
+
+func _fish_buy(id: String) -> bool:
+	for it in FISH_SHOP:
+		if it[0] != id:
+			continue
+		if coins < int(it[2]) or level < int(it[3]):
+			return false
+		if (id == "rod1" and int(fishgear.rod) >= 1) or (id == "rod2" and int(fishgear.rod) >= 2):
+			return false
+		if net_role == "guest":
+			rpc_id(1, "net_req", "@fishbuy", id, 0, 0)
+			_toast("🎣 %s alındı" % it[1], "level")
+			return true
+		_spend(int(it[2]))
+		match id:
+			"rod1": fishgear.rod = 1
+			"rod2": fishgear.rod = 2
+			"bait": fishgear.bait = int(fishgear.bait) + 10
+			"bait2": fishgear.bait2 = int(fishgear.bait2) + 5
+		_toast("🎣 %s alındı" % it[1], "level")
+		_sfx("place")
+		net_quest_dirty = true
+		if shop_open:
+			_open_fish_shop()
+		return true
+	return false
+
+## Yakalanan balık: ambara balık, XP, defter (en büyük ağırlık), görev.
+func _fish_reward(id: String, w: float) -> void:
+	var f := _fish_def(id)
+	if f.is_empty():
+		return
+	var lg: Dictionary = fishgear.log
+	var rec: Dictionary = lg.get(id, {"n": 0, "best": 0.0})
+	var record := w > float(rec.best)
+	lg[id] = {"n": int(rec.n) + 1, "best": maxf(float(rec.best), w)}
+	if net_role == "guest":
+		return
+	var pos := fish_shore if fish_state != "" else farmer.position
+	if _barn_cap() > 0:
+		var add := mini(int(f.amt), _barn_cap() - _res_total())
+		if add > 0:
+			res["fish"] = res.get("fish", 0) + add
+		if add < int(f.amt):
+			_toast("📦 Ambar dolu! B ile aç, kaynak sat.", "warn")
+	else:
+		_toast("📦 Ambarın yok: balık saklanamadı. 🏗️ Yapı ile ambar kur.", "warn")
+	gems += int(f.get("gems", 0))
+	_gain(0, int(f.xp), pos, f.icon)
+	_quest_event("fish", "", 1)
+	net_quest_dirty = true
+	if barn.visible:
+		_render_barn()
+	if record and int(rec.n) > 0:
+		_toast("🏆 Yeni rekor: %s %.1f kg!" % [f.name, w], "level")
+
+## Göle tıklandı: kıyıya yürü, sonra oltayı at.
+func _start_fishing(p: Vector3) -> void:
+	if int(fishgear.rod) <= 0:
+		_toast("🎣 Oltan yok. Gölün kıyısındaki 🎣 Balıkçı tezgâhından al.", "hint")
+		return
+	if int(fishgear.bait) <= 0 and int(fishgear.bait2) <= 0:
+		_toast("🪱 Yemin bitti. 🎣 Balıkçı tezgâhından yem al.", "hint")
+		return
+	_fish_end(false)
+	var c := Vector3(POND_X, 0, POND_Z)
+	var d := Vector3(p.x - c.x, 0, p.z - c.z)
+	if d.length() < 0.1:
+		d = Vector3(farmer.position.x - c.x, 0, farmer.position.z - c.z)
+	d = d.normalized()
+	fish_shore = c + d * (POND_R + 0.75)
+	fish_at = c + d * clampf(Vector2(p.x - c.x, p.z - c.z).length(), 0.6, POND_R - 1.2)
+	fish_state = "walk"
+	fish_t = 0.0
+	_walk_to(fish_shore)
+
+func _fish_cast() -> void:
+	fish_bait2 = bool(fishgear.use2) and int(fishgear.bait2) > 0
+	if fish_bait2:
+		fishgear.bait2 = int(fishgear.bait2) - 1
+	elif int(fishgear.bait) > 0:
+		fishgear.bait = int(fishgear.bait) - 1
+	else:
+		fish_bait2 = int(fishgear.bait2) > 0
+		fishgear.bait2 = int(fishgear.bait2) - 1
+	if net_role == "guest":
+		rpc_id(1, "net_req", "@bait", "2" if fish_bait2 else "1", 0, 0)
+	net_quest_dirty = true
+	farmer.rotation.y = atan2(fish_at.x - farmer.position.x, fish_at.z - farmer.position.z)
+	if fish_rod == null:
+		fish_rod = Node3D.new()
+		var stick := Models.cyl(0.02, 0.035, 1.7, 6, "#6d4c41", 0, 0.85, 0)
+		fish_rod.add_child(stick)
+		fish_rod.add_child(Models.cyl(0.06, 0.06, 0.08, 8, "#9e9e9e", 0, 0.25, 0.05))
+		fish_rod.position = Vector3(0.28, 0.85, 0.2)
+		fish_rod.rotation.x = 0.95
+		farmer.add_child(fish_rod)
+	fish_rod.visible = true
+	if bobber == null:
+		bobber = Node3D.new()
+		bobber.add_child(Models.ball(0.09, "#e53935", 0, 0.03, 0))
+		bobber.add_child(Models.ball(0.08, "#fafafa", 0, -0.04, 0))
+		var ex := Label3D.new()
+		ex.name = "Ex"
+		ex.text = "❗"
+		ex.font = font
+		ex.font_size = 96
+		ex.pixel_size = 0.006
+		ex.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		ex.no_depth_test = true
+		ex.position = Vector3(0, 0.7, 0)
+		bobber.add_child(ex)
+		add_child(bobber)
+		fish_line = MeshInstance3D.new()
+		var lm := StandardMaterial3D.new()
+		lm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		lm.albedo_color = Color(1, 1, 1, 0.8)
+		lm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		fish_line.material_override = lm
+		fish_line.mesh = ImmediateMesh.new()
+		add_child(fish_line)
+	bobber.get_node("Ex").visible = false
+	bobber.position = fish_at + Vector3(0, -0.06, 0)
+	bobber.visible = true
+	fish_line.visible = true
+	_burst(fish_at, "#bbdefb", 10, 2.0)
+	_sfx("cast")
+	fish_state = "wait"
+	fish_t = randf_range(2.0, 6.5) * (0.8 if fish_bait2 else 1.0)
+
+## Balığı bitir/iptal et. keep: kamera ve çiftçi kalsın mı (zararsız).
+func _fish_end(_keep := true) -> void:
+	fish_state = ""
+	fish_g = {}
+	if bobber != null:
+		bobber.visible = false
+	if fish_line != null:
+		fish_line.visible = false
+	if fish_rod != null:
+		fish_rod.visible = false
+	if fish_ui != null:
+		fish_ui.visible = false
+
+## Balıkçılık sırasında sol tık / boşluk. true: tık burada tüketildi.
+func _fish_click() -> bool:
+	match fish_state:
+		"wait":
+			_toast("🎣 Oltayı erken çektin, yem suya gitti.", "hint")
+			_fish_end()
+			return true
+		"bite":
+			_fish_start_game()
+			return true
+		"game":
+			return true
+		"walk":
+			_fish_end()
+	return false
+
+func _fish_start_game() -> void:
+	fish_pick = _fish_roll(fish_bait2)
+	var rod := int(fishgear.rod)
+	fish_g = {"zx": 0.35, "zv": 0.0, "zw": 0.30 if rod <= 1 else 0.40, "fx": 0.5, "ftx": 0.5, "ft": 0.0,
+		"p": 0.35, "diff": float(fish_pick.diff), "fill": 0.30 if rod <= 1 else 0.38}
+	fish_state = "game"
+	bobber.get_node("Ex").visible = false
+	_build_fish_ui()
+	fish_ui.visible = true
+	_sfx("bite")
+
+## Mini oyunun bir adımı (testte de kullanılır). hold: tuş basılı. "" sürüyor, "catch", "escape".
+func _fish_game_step(dt: float, hold: bool) -> String:
+	var g := fish_g
+	g.zv = clampf(float(g.zv) + (2.8 if hold else -2.4) * dt, -1.1, 1.1)
+	g.zx = float(g.zx) + float(g.zv) * dt
+	if g.zx < 0.0:
+		g.zx = 0.0
+		g.zv = 0.0
+	elif g.zx > 1.0 - float(g.zw):
+		g.zx = 1.0 - float(g.zw)
+		g.zv = 0.0
+	var dif := float(g.diff)
+	g.ft = float(g.ft) - dt
+	if g.ft <= 0.0:
+		g.ftx = clampf(float(g.fx) + randf_range(-0.6, 0.6) * (0.4 + dif), 0.03, 0.97)
+		g.ft = randf_range(0.35, 1.7 - dif)
+	g.fx = move_toward(float(g.fx), float(g.ftx), (0.18 + dif * 0.85) * dt)
+	var inside: bool = g.fx >= g.zx and g.fx <= g.zx + g.zw
+	g.p = float(g.p) + (float(g.fill) * dt if inside else -(0.12 + 0.16 * dif) * dt)
+	g["in"] = inside
+	if g.p >= 1.0:
+		return "catch"
+	if g.p <= 0.0:
+		return "escape"
+	return ""
+
+func _build_fish_ui() -> void:
+	if fish_ui != null:
+		return
+	fish_ui = _panel(14)
+	fish_ui.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ui.add_child(fish_ui)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 8)
+	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	fish_ui.add_child(v)
+	var t := Label.new()
+	t.text = "🎣 Balık takıldı!  Basılı tut (sol tık / Boşluk): yeşil alanı sağa it. Balığı alanın içinde tut."
+	t.add_theme_font_size_override("font_size", 15)
+	v.add_child(t)
+	var track := Control.new()
+	track.custom_minimum_size = Vector2(fish_track_w, 46)
+	track.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	v.add_child(track)
+	var bg := ColorRect.new()
+	bg.color = Color("#4f7fa8")
+	bg.size = Vector2(fish_track_w, 46)
+	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	track.add_child(bg)
+	fish_zone = ColorRect.new()
+	fish_zone.color = Color(0.55, 0.9, 0.35, 0.75)
+	fish_zone.size = Vector2(100, 46)
+	fish_zone.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	track.add_child(fish_zone)
+	fish_icon = Label.new()
+	fish_icon.text = "🐟"
+	fish_icon.add_theme_font_size_override("font_size", 30)
+	fish_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	track.add_child(fish_icon)
+	fish_bar = ProgressBar.new()
+	fish_bar.show_percentage = false
+	fish_bar.custom_minimum_size = Vector2(fish_track_w, 12)
+	fish_bar.max_value = 1.0
+	fish_bar.step = 0.001
+	fish_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	fish_bar.add_theme_stylebox_override("background", _sb(Color("#eadcc6"), 4, Color(0, 0, 0, 0), 0, 0))
+	fish_bar.add_theme_stylebox_override("fill", _sb(Color("#f2a900"), 4, Color(0, 0, 0, 0), 0, 0))
+	v.add_child(fish_bar)
+
+func _layout_fish_ui() -> void:
+	var g := fish_g
+	fish_zone.position.x = float(g.zx) * fish_track_w
+	fish_zone.size.x = float(g.zw) * fish_track_w
+	fish_zone.color = Color(0.55, 0.9, 0.35, 0.85) if g.get("in", false) else Color(0.55, 0.9, 0.35, 0.45)
+	fish_icon.position = Vector2(float(g.fx) * fish_track_w - 18.0, 2.0)
+	fish_bar.value = float(g.p)
+	fish_ui.reset_size()
+	var vs := get_viewport().get_visible_rect().size
+	fish_ui.position = Vector2((vs.x - fish_ui.size.x) / 2.0, vs.y - fish_ui.size.y - 130)
+
+func _update_fishing(dt: float) -> void:
+	if fish_state == "":
+		return
+	match fish_state:
+		"walk":
+			var d := Vector2(farmer.position.x - fish_shore.x, farmer.position.z - fish_shore.z).length()
+			if d < 0.6 or (move_target == null and d < 1.6):
+				_fish_cast()
+			elif move_target == null:
+				_toast("🚧 Kıyıya ulaşılamadı", "hint")
+				_fish_end()
+			return
+		"wait", "bite":
+			if Vector2(farmer.position.x - fish_shore.x, farmer.position.z - fish_shore.z).length() > 1.8:
+				_fish_end()   # yürüyüp gitti
+				return
+			fish_t -= dt
+			var tm := float(Time.get_ticks_msec()) / 1000.0
+			if fish_state == "wait":
+				bobber.position.y = -0.06 + sin(tm * 3.0) * 0.015
+				if fish_t <= 0.0:
+					fish_state = "bite"
+					fish_t = 1.3
+					bobber.get_node("Ex").visible = true
+					_burst(fish_at, "#e3f2fd", 8, 1.5)
+					_sfx("bite")
+			else:
+				bobber.position.y = -0.16 + sin(tm * 18.0) * 0.04
+				if fish_t <= 0.0:
+					_toast("🐟 Balık yemi kaptı ve kaçtı! Ünlem çıkınca hemen tıkla.", "hint")
+					_fish_end()
+					return
+		"game":
+			var hold := Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) or Input.is_key_pressed(KEY_SPACE)
+			var r := _fish_game_step(dt, hold)
+			_layout_fish_ui()
+			bobber.position.y = -0.12 + sin(float(Time.get_ticks_msec()) / 60.0) * 0.03
+			if r == "catch":
+				var w := snappedf(randf_range(fish_pick.w[0], fish_pick.w[1]), 0.1)
+				_toast("%s %s yakaladın!  %.1f kg  +%d 🐟" % [fish_pick.icon, fish_pick.name, w, fish_pick.amt], "level")
+				_sfx("harvest")
+				_burst(fish_at + Vector3(0, 0.3, 0), "#90caf9", 16, 3.0)
+				if net_role == "guest":
+					rpc_id(1, "net_req", "@fish", fish_pick.id, int(w * 10.0), 0)
+				_fish_reward(fish_pick.id, w)
+				_fish_end()
+				return
+			if r == "escape":
+				_toast("🐟 %s kaçtı… Bir dahaki sefere!" % fish_pick.name, "hint")
+				_sfx("error")
+				_fish_end()
+				return
+	if fish_rod != null and fish_rod.visible and fish_line != null:
+		var tip := fish_rod.global_transform * Vector3(0, 1.7, 0)
+		var im: ImmediateMesh = fish_line.mesh
+		im.clear_surfaces()
+		im.surface_begin(Mesh.PRIMITIVE_LINES)
+		im.surface_add_vertex(tip)
+		im.surface_add_vertex(bobber.position + Vector3(0, 0.05, 0))
+		im.surface_end()
+
+## Balıkçı tezgâhı: olta, yem, yem seçimi ve balık defteri.
+func _open_fish_shop() -> void:
+	for c in land_box.get_children():
+		land_box.remove_child(c)
+		c.queue_free()
+	shop_open = true
+	var t := Label.new()
+	t.text = "🎣 Balıkçı Tezgâhı"
+	t.add_theme_font_size_override("font_size", 26)
+	land_box.add_child(t)
+	var st := Label.new()
+	var rods := ["yok", "Bambu Olta", "Usta Oltası"]
+	st.text = "Oltan: %s   ·   🪱 %d   ✨ %d" % [rods[clampi(int(fishgear.rod), 0, 2)], int(fishgear.bait), int(fishgear.bait2)]
+	st.add_theme_color_override("font_color", Color("#7a5a3a"))
+	land_box.add_child(st)
+	for it in FISH_SHOP:
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 8)
+		var l := Label.new()
+		l.text = "%s\n%s" % [it[1], it[4]]
+		l.custom_minimum_size = Vector2(300, 0)
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		l.add_theme_font_size_override("font_size", 13)
+		row.add_child(l)
+		var owned: bool = (it[0] == "rod1" and int(fishgear.rod) >= 1) or (it[0] == "rod2" and int(fishgear.rod) >= 2)
+		var lbl := "Sende" if owned else ("🔒 Sv %d" % it[3] if level < int(it[3]) else "%d 🪙" % it[2])
+		var id: String = it[0]
+		row.add_child(_small_btn("  %s  " % lbl, func(): _fish_buy(id), not owned and level >= int(it[3]) and coins >= int(it[2]), true))
+		land_box.add_child(row)
+	if int(fishgear.bait2) > 0:
+		var tg := CheckBox.new()
+		tg.text = "✨ Parlak yemi kullan (bitince solucana geçer)"
+		tg.button_pressed = bool(fishgear.use2)
+		tg.toggled.connect(func(on: bool): fishgear.use2 = on)
+		land_box.add_child(tg)
+	var jt := Label.new()
+	jt.text = "📖 Balık defteri"
+	jt.add_theme_font_size_override("font_size", 18)
+	land_box.add_child(jt)
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 18)
+	for f in FISH:
+		var e: Dictionary = fishgear.log.get(f.id, {})
+		var fl := Label.new()
+		fl.add_theme_font_size_override("font_size", 13)
+		if e.is_empty():
+			fl.text = "❔ ???"
+			fl.add_theme_color_override("font_color", Color("#a08a70"))
+		else:
+			fl.text = "%s %s  ×%d · en büyük %.1f kg" % [f.icon, f.name, int(e.n), float(e.best)]
+		grid.add_child(fl)
+	land_box.add_child(grid)
+	var hint := Label.new()
+	hint.text = "Göle tıkla: çiftçi kıyıya yürür, oltayı atar. ❗ çıkınca tıkla, sonra mini oyunda balığı yeşil alanda tut. Yayın balığı geceleri çıkar."
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	hint.add_theme_font_size_override("font_size", 12)
+	hint.add_theme_color_override("font_color", Color("#8a7260"))
+	land_box.add_child(hint)
+	land_box.add_child(_small_btn("  Kapat  ", func():
+		shop_open = false
+		land_dlg.visible = false, true, true))
+	land_dlg.visible = true
+
 # ============================================================ arazi (parseller)
 func _build_land_ui() -> void:
 	land_dlg = ColorRect.new()
@@ -5682,6 +6230,7 @@ func _build_land_ui() -> void:
 	land_dlg.visible = false
 
 func _open_land() -> void:
+	shop_open = false
 	if net_role == "guest":
 		_toast("🗺️ Arazi genişletme çiftlik sahibinde.", "hint")
 		return
@@ -5889,6 +6438,7 @@ func _selftest_build(fails: Array) -> void:
 	if emote_fx.is_empty(): fails.append("emote balonu")
 	_update_emotes(3.5)
 	if not emote_fx.is_empty(): fails.append("emote kaybolmadı")
+	_selftest_fish(fails)
 	var rb := _refund_of(tiles.get(key(sp.x, sp.y)))
 	var c2 := coins
 	if not _perform({"x": sp.x, "z": sp.y, "tool": "remove", "arg": null}) or _count_buildings("barn") != b0: fails.append("bina kaldırma")
@@ -5899,6 +6449,55 @@ func _selftest_build(fails: Array) -> void:
 	var pe2 = tiles.get(key(ps.x, ps.y))
 	if pe2 != null and pe2.kind == "plot":
 		_remove_entity(pe2)
+
+func _selftest_fish(fails: Array) -> void:
+	var keep_g := fishgear.duplicate(true)
+	var keep_res := res.duplicate()
+	fishgear = {"rod": 0, "bait": 0, "bait2": 0, "use2": false, "log": {}}
+	coins = 5000
+	level = 10
+	_start_fishing(Vector3(POND_X, 0, POND_Z))
+	if fish_state != "": fails.append("oltasız balık tutuldu")
+	if not _fish_buy("rod1") or int(fishgear.rod) != 1: fails.append("olta alma")
+	if _fish_buy("rod1"): fails.append("olta iki kez alındı")
+	if not _fish_buy("bait") or int(fishgear.bait) != 10: fails.append("yem alma")
+	if not _in_lake(Vector3(POND_X, 0, POND_Z)) or _in_lake(Vector3(0, 0, 0)): fails.append("göl algılama")
+	if not _near_stall(STALL) or _walkable(floori(STALL.x), floori(STALL.z)): fails.append("tezgâh")
+	var counts := {}
+	for i in 400:
+		var f := _fish_roll(false)
+		counts[f.id] = counts.get(f.id, 0) + 1
+	if counts.get("kizilkanat", 0) < counts.get("turna", 0): fails.append("balık olasılıkları")
+	# mini oyun: alanı balığın üstünde tutunca yakalanır, hiç tutmayınca kaçar
+	fish_pick = FISH[1]
+	fish_g = {"zx": 0.35, "zv": 0.0, "zw": 0.3, "fx": 0.5, "ftx": 0.5, "ft": 99.0, "p": 0.35, "diff": 0.0, "fill": 0.3}
+	var r := ""
+	for i in 200:
+		r = _fish_game_step(0.05, false)
+		fish_g.zx = clampf(float(fish_g.fx) - 0.1, 0.0, 0.7)
+		if r != "":
+			break
+	if r != "catch": fails.append("mini oyun yakalama (%s)" % r)
+	fish_g = {"zx": 0.0, "zv": 0.0, "zw": 0.3, "fx": 0.9, "ftx": 0.9, "ft": 99.0, "p": 0.35, "diff": 0.5, "fill": 0.3}
+	r = ""
+	for i in 400:
+		r = _fish_game_step(0.05, false)
+		if r != "":
+			break
+	if r != "escape": fails.append("mini oyun kaçma (%s)" % r)
+	res = {}
+	var x0 := xp
+	_fish_reward("sazan", 2.5)
+	if int(res.get("fish", 0)) != 2 or fishgear.log.get("sazan", {}).get("n", 0) != 1: fails.append("balık ödülü")
+	_fish_reward("sazan", 1.0)
+	if absf(float(fishgear.log.sazan.best) - 2.5) > 0.01 or int(fishgear.log.sazan.n) != 2: fails.append("balık defteri")
+	if xp == x0 and level == 10: fails.append("balık XP")
+	var sv: Dictionary = _state_dict()
+	_load_fishgear(sv.fg)
+	if int(fishgear.rod) != 1 or int(fishgear.log.sazan.n) != 2: fails.append("balık kaydı")
+	_fish_end()
+	fishgear = keep_g
+	res = keep_res
 
 func _selftest_parcels(fails: Array) -> void:
 	var keep_h := farm_h
