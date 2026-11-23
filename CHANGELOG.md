@@ -1,5 +1,9 @@
 # Çiftliğim 3D — Sürüm Notları
 
+## v0.13.1 · Erken Erişim
+- 🖼️ Oyunun exe'si artık kendi çiftlik simgesini taşıyor (görev çubuğu, Alt+Tab, dosya gezgini).
+- 📉 Resmî Godot dışa aktarma şablonuyla derleniyor: oyun dosyası 181 MB'tan 109 MB'a indi, editör parçaları çıkarıldı.
+
 ## v0.13.0 · Erken Erişim
 - ♻️ **Otomatik yedek**: oyun her açılışta ve oynarken 10 dakikada bir kariyerinin yedeğini alır (son 3 yedek saklanır).
 - 🛟 Kayıt dosyası bozulursa oyun kendiliğinden en yeni sağlam yedekten açar.
