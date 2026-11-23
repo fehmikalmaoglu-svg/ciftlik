@@ -146,6 +146,7 @@ const HELP_PAGES := [
 		["🚚 · 🗑️", "Taşı: nesneye tıkla, sonra yeni yerine tıkla; seçiliyken kendisine tıkla ya da T ile döndür (Esc vazgeçer). Her nesnenin (bina, fener, çit, ağaç, hayvan…) üstünde basılı tut: Döndür / Taşı / Kaldır menüsü; ambar, ev, ağaç, hayvan, çit… hepsi taşınır, bedava. Kaldır: nesneyi siler, yarı fiyatı geri gelir."],
 		["B · J · Esc", "B ambarı, J görev panelini açar; Esc iş kuyruğunu ve pencereleri kapatır."],
 		["🎣", "Balık tutma: gölün batı kıyısındaki 🎣 Balıkçı tezgâhından olta ve yem al. Göle tıkla; ❗ çıkınca tıkla (ya da Boşluk), mini oyunda basılı tutarak yeşil alanı balığın üstünde tut. 6 tür var, yayın balığı geceleri çıkar; tezgâhta balık defterin durur."],
+		["🤗", "Hayvanın üstünde basılı tut: Sev (günde bir, mutluluk artar) ve isim ver. Mutlu hayvan %25'e kadar hızlı üretir, üzgün olan yavaşlar. Yemlemek de mutlu eder. 🐮 Ahır: çevresindeki koyun, domuz ve ineklerin mutluluğu yavaş düşer."],
 		["🎪", "Mevsim etkinliği: ilkbaharda Çiçek Şenliği, yazın Balık Yarışması, sonbaharda Hasat Festivali, kışın Kardan Adam (pazarın çevresinde kar topla). Bronz, gümüş, altın derece ödülleri; altında kalıcı kupa dekoru."],
 		["🏘️", "Kasaba pazarı yolun güneyinde: 4 köylü var. Her sabah her biri bir şey ister; getirirsen altın ve ❤ dostluk. Günde bir hediye verebilirsin (çok sevdiği şey ❤ ×2). Her kalpte hediye, 5 kalpte kalıcı bir yetenek açılır."],
 		["🔥", "Fırın (Yapı, seviye 3, 2×2): un ile poğaça (+yumurta), balık ekmek (+balık) ve meyveli turta (+süt, meyve) pişir. Tıkla ya da Boşluk ile körükle, ısıyı yeşil bantta tut; çabuk pişirirsen +1 ürün."],
@@ -447,6 +448,8 @@ var trophies := {}
 var snow_nodes := []
 var snowman: Node3D
 var ev_open := false
+var stable_rects := []   # ahırların kapladığı alan (Rect2i)
+const HAPPY_DAY := 2.0   # tam mutluluk ~2 günde sıfırlanır
 const HEART_PTS := 10
 const HEARTS_MAX := 5
 var vill := {}           # id → {"pts", "r", "n", "done", "gd"}
@@ -1577,6 +1580,12 @@ func _add_entity(d: Dictionary) -> Dictionary:
 			e.lv = 1
 		if not e.has("hv"):
 			e.hv = 0
+		if not e.has("hp"):
+			e.hp = 0.6
+		if not e.has("pd"):
+			e.pd = -1
+		if not e.has("nm"):
+			e.nm = ""
 	if e.kind == "flower" or e.kind == "pond":
 		if not e.has("t"):
 			e.t = 0.0
@@ -1642,6 +1651,10 @@ func _scarecrow_near(x: int, z: int) -> bool:
 	return false
 
 func _recompute_boosts() -> void:
+	stable_rects.clear()
+	for e in entities:
+		if e.kind == "building" and e.type == "stable":
+			stable_rects.append(Rect2i(e.x, e.z, 2, 2))
 	for e in entities:
 		if e.kind == "plot":
 			e.boost = _scarecrow_near(e.x, e.z)
@@ -1700,6 +1713,20 @@ func _refresh(e: Dictionary) -> void:
 			g.add_child(hl)
 			e.hungry_lbl = hl
 			_update_hungry(e)
+			if str(e.nm) != "":
+				var nl := Label3D.new()
+				nl.text = str(e.nm)
+				nl.font = font
+				nl.font_size = 40
+				nl.pixel_size = 0.006
+				nl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+				nl.outline_size = 10
+				nl.outline_modulate = Color(0.15, 0.1, 0.05, 0.7)
+				nl.position.y = {"chicken": 0.75, "sheep": 1.05, "pig": 1.0, "cow": 1.35}.get(e.type, 1.3)
+				g.add_child(nl)
+				e.name_lbl = nl
+			else:
+				e.erase("name_lbl")
 		"flower":
 			var f = Data.FLOWERS[e.type]
 			e.wet_shown = _wet(e)
@@ -1823,11 +1850,15 @@ func _simulate(dt: float) -> void:
 						e.ready = true
 						e.icon.visible = true
 			"animal":
+				var cozy := _in_stable(e)
+				e.hp = maxf(0.5 if cozy else 0.0, e.hp - dt / (DAY_LEN * HAPPY_DAY) * (0.35 if cozy else 1.0))
+				if cozy and e.hp < 0.5:
+					e.hp = 0.5
 				if not e.ready and e.food > 0.0:
 					var at: float = Data.ANIMALS[e.type].time
 					var step := minf(dt, e.food * at * Data.FEED_CYCLES)
 					e.food = maxf(0.0, e.food - step / (at * Data.FEED_CYCLES))
-					e.t += step / at
+					e.t += step / at * _happy_mult(e)
 					if e.t >= 1.0:
 						e.t = 0.0
 						if not _lay_egg(e):
@@ -2085,6 +2116,32 @@ func _open_ctx(e) -> void:
 	t.add_theme_font_size_override("font_size", 17)
 	ctx_box.add_child(t)
 	var ee = e
+	if e.kind == "animal":
+		if str(e.nm) != "":
+			t.text += "  «%s»" % e.nm
+		var ml := Label.new()
+		ml.text = "%s Mutluluk %d%%  ·  üretim ×%.2f%s" % [_mood(e), int(round(e.hp * 100.0)), _happy_mult(e), "  ·  🐮 ahırda" if _in_stable(e) else ""]
+		ml.add_theme_font_size_override("font_size", 13)
+		ml.add_theme_color_override("font_color", Color("#8a7260"))
+		ctx_box.add_child(ml)
+		var petted: bool = int(e.pd) == day
+		ctx_box.add_child(_small_btn("  🤗 Sev  " if not petted else "  🤗 Bugün sevildi  ", func():
+			ctx_menu.visible = false
+			_pet_animal(ee), not petted, true))
+		var nr := HBoxContainer.new()
+		var le := LineEdit.new()
+		le.placeholder_text = "İsim ver…"
+		le.text = str(e.nm)
+		le.max_length = 14
+		le.custom_minimum_size = Vector2(130, 0)
+		nr.add_child(le)
+		var setn := func():
+			_name_animal(ee, le.text)
+			le.release_focus()
+			ctx_menu.visible = false
+		le.text_submitted.connect(func(_t): setn.call())
+		nr.add_child(_small_btn(" ✏️ ", setn))
+		ctx_box.add_child(nr)
 	ctx_box.add_child(_small_btn("  🔄 Döndür  ", func():
 		_turn_entity(ee)))
 	ctx_box.add_child(_small_btn("  🚚 Taşı  ", func():
@@ -2191,6 +2248,61 @@ func _barn_cap() -> int:
 			elif e.type == "silo":
 				cap += Data.SILO_CAP
 	return cap if _count_buildings("barn") > 0 else 0
+
+# ============================================================ hayvan bakımı
+## Mutluluk üretim hızını etkiler: üzgün ×0.75 … çok mutlu ×1.25.
+func _happy_mult(e: Dictionary) -> float:
+	return 0.75 + 0.5 * clampf(float(e.get("hp", 0.6)), 0.0, 1.0)
+
+func _in_stable(e: Dictionary) -> bool:
+	if not Data.STABLE_ANIMALS.has(e.type):
+		return false
+	for r in stable_rects:
+		var dx := maxi(maxi(r.position.x - e.x, e.x - (r.position.x + r.size.x - 1)), 0)
+		var dz := maxi(maxi(r.position.y - e.z, e.z - (r.position.y + r.size.y - 1)), 0)
+		if maxi(dx, dz) <= Data.STABLE_RANGE:
+			return true
+	return false
+
+func _mood(e: Dictionary) -> String:
+	var h := float(e.get("hp", 0.6))
+	return "😍" if h >= 0.85 else ("😊" if h >= 0.6 else ("😐" if h >= 0.3 else "😢"))
+
+## Sev: günde bir kez, mutluluk +0.3, kalpler uçuşur.
+func _pet_animal(e) -> bool:
+	if e == null or e.kind != "animal" or int(e.pd) == day:
+		return false
+	_pet_fx(e)
+	if net_role == "guest":
+		rpc_id(1, "net_req", "@pet", "", e.x, e.z)
+		return true
+	e.pd = day
+	e.hp = minf(1.0, e.hp + 0.3)
+	_gain(0, 1, e.group.position, "❤️")
+	_quest_event("pet", e.type, 1)
+	net_quest_dirty = true
+	return true
+
+func _pet_fx(e: Dictionary) -> void:
+	var p: Vector3 = e.group.position
+	_burst(p + Vector3(0, 0.9, 0), "#ff6b9a", 10, 2.2)
+	_show_emote(e.group, 2)
+	if not emote_fx.is_empty():
+		emote_fx.back().n.position.y = {"chicken": 1.0, "sheep": 1.5, "pig": 1.4, "cow": 2.0}.get(e.type, 1.5)
+	e.hop_t = 1.0
+	_sfx("animal")
+
+func _name_animal(e, nm: String) -> bool:
+	nm = nm.strip_edges().replace("\n", " ").left(14)
+	if e == null or e.kind != "animal":
+		return false
+	if net_role == "guest":
+		rpc_id(1, "net_req", "@name", nm, e.x, e.z)
+		return true
+	e.nm = nm
+	_refresh(e)
+	net_quest_dirty = true
+	return true
 
 func _well_near(x: int, z: int) -> bool:
 	for e in entities:
@@ -3302,7 +3414,7 @@ func _describe(e, act, arg, x: int, z: int) -> String:
 					s += "meyve " + bar(e.fruit_t)
 			"animal":
 				var a = Data.ANIMALS[e.type]
-				s = "%s %s · ⭐ Sv %d" % [a.icon, a.name, e.lv]
+				s = "%s %s%s · ⭐ Sv %d · %s %d%%" % [a.icon, a.name, (" «%s»" % e.nm) if str(e.nm) != "" else "", e.lv, _mood(e), int(round(e.hp * 100.0))]
 				if e.lv < Data.ANIMAL_MAX_LV:
 					s += " (%d/%d)" % [e.hv, e.lv * Data.HARVESTS_PER_LV]
 				var pen := _pen(e)
@@ -3677,6 +3789,9 @@ func _animate_world(dt: float) -> void:
 				m.position.y = absf(sin(clock_t * 12.0)) * 0.03
 		m.position.x = w.x
 		m.position.z = w.z
+		if e.has("name_lbl"):
+			e.name_lbl.position.x = w.x
+			e.name_lbl.position.z = w.z
 		if e.get("hop_t", 0.0) > 0.0:
 			e.hop_t -= dt
 			m.position.y = absf(sin(e.hop_t * 11.0)) * 0.22 * minf(1.0, e.hop_t)
@@ -4536,6 +4651,14 @@ func net_req(t: String, a: String, x: int, z: int) -> void:
 		_deliver()
 		net_quest_dirty = true
 		return
+	if t == "@pet" or t == "@name":
+		var pe = tiles.get(key(x, z))
+		if pe != null and pe.kind == "animal":
+			if t == "@pet":
+				_pet_animal(pe)
+			else:
+				_name_animal(pe, a)
+		return
 	if t == "@snow":
 		_snow_collect(x)
 		return
@@ -4696,7 +4819,7 @@ func _vis_sig(e: Dictionary) -> String:
 	match e.kind:
 		"plot": return "%s|%d|%s" % [e.crop, crop_stage(e) if e.crop != null else -1, _wet(e)]
 		"tree": return "%s|%s" % [e.age >= 1.0, e.has_fruit]
-		"animal": return "%s|%s" % [e.ready, e.food > 0.0]
+		"animal": return "%s|%s|%s" % [e.ready, e.food > 0.0, e.get("nm", "")]
 		"flower", "pond": return "%s|%d" % [e.ready, int(e.get("t", 0.0) * 3.0)]
 		"coop": return str(e.eggs)
 	return ""
@@ -5516,6 +5639,10 @@ func _ent_dict(e: Dictionary) -> Dictionary:
 				s.fd = snappedf(e.food, 0.001)
 				s.lv = e.lv
 				s.hv = e.hv
+				s.hp = snappedf(e.hp, 0.001)
+				s.pd = e.pd
+				if str(e.nm) != "":
+					s.nm = e.nm
 			"flower":
 				s.at = e.t
 				s.rd = e.ready
@@ -5620,6 +5747,9 @@ func _ent_base(s: Dictionary) -> Dictionary:
 				base.food = float(s.get("fd", 1.0))
 				base.lv = int(s.get("lv", 1))
 				base.hv = int(s.get("hv", 0))
+				base.hp = clampf(float(s.get("hp", 0.6)), 0.0, 1.0)
+				base.pd = int(s.get("pd", -1))
+				base.nm = str(s.get("nm", "")).left(14)
 			"coop":
 				base.eggs = int(s.get("eg", 0))
 				base.value = int(s.get("ev", 0))
@@ -5812,6 +5942,18 @@ func _process(delta: float) -> void:
 					_set_tool(a.substr(7), true)
 				elif a == "--wheel":
 					_open_wheel(Vector2(640, 380))
+				elif a == "--pets":   # geliştirici: adlı hayvanlar ve ahır, sevme menüsü
+					level = maxi(level, 6)
+					var f0 := _free_spot(6, 4)
+					_add_entity({"kind": "building", "type": "stable", "x": f0.x, "z": f0.y, "w": 2, "d": 2, "rot": 0.0})
+					_recompute_boosts()
+					var cw := _add_entity({"kind": "animal", "type": "cow", "x": f0.x + 3, "z": f0.y + 1, "nm": "Sarıkız", "hp": 0.9})
+					_add_entity({"kind": "animal", "type": "sheep", "x": f0.x + 4, "z": f0.y + 2, "nm": "Pamuk", "hp": 0.4})
+					farmer.position = Vector3(f0.x + 2.5, 0, f0.y + 4.5)
+					cam_target = Vector3(f0.x + 2.5, 0, f0.y + 1.5)
+					if not args_has("--nodlg"):
+						hold_at = Vector2(700, 300)
+						_open_ctx(cw)
 				elif a == "--event":   # geliştirici: etkinlik penceresi
 					ev.score = int(_ev_def().tiers[1]) + 3
 					ev.tier = 2
@@ -7648,6 +7790,7 @@ func _selftest_build(fails: Array) -> void:
 	_selftest_bake(fails)
 	_selftest_town(fails)
 	_selftest_events(fails)
+	_selftest_pets(fails)
 	var rb := _refund_of(tiles.get(key(sp.x, sp.y)))
 	var c2 := coins
 	if not _perform({"x": sp.x, "z": sp.y, "tool": "remove", "arg": null}) or _count_buildings("barn") != b0: fails.append("bina kaldırma")
@@ -7658,6 +7801,40 @@ func _selftest_build(fails: Array) -> void:
 	var pe2 = tiles.get(key(ps.x, ps.y))
 	if pe2 != null and pe2.kind == "plot":
 		_remove_entity(pe2)
+
+func _selftest_pets(fails: Array) -> void:
+	var f0 := _free_spot(8, 3)
+	if f0.x == 999:
+		return
+	var a := _add_entity({"kind": "animal", "type": "cow", "x": f0.x, "z": f0.y, "hp": 1.0})
+	var b := _add_entity({"kind": "animal", "type": "cow", "x": f0.x + 6, "z": f0.y, "hp": 0.0})
+	a.t = 0.0
+	b.t = 0.0
+	_simulate(30.0)
+	if not (a.t > b.t * 1.5): fails.append("mutluluk üretimi %.4f/%.4f" % [a.t, b.t])
+	if a.hp >= 1.0: fails.append("mutluluk düşmüyor")
+	var h0: float = b.hp
+	if not _pet_animal(b) or b.hp < h0 + 0.29 or int(b.pd) != day: fails.append("sevme")
+	if _pet_animal(b): fails.append("günde iki kez sevme")
+	_name_animal(a, "  Sarıkız  ")
+	if a.nm != "Sarıkız": fails.append("isim")
+	var sv := _ent_base(_ent_dict(a))
+	if sv.nm != "Sarıkız" or absf(float(sv.hp) - a.hp) > 0.01: fails.append("hayvan kaydı")
+	# ahır
+	if _in_stable(b): fails.append("ahırsız ahır")
+	var st := _add_entity({"kind": "building", "type": "stable", "x": f0.x + 6, "z": f0.y + 1, "w": 2, "d": 2, "rot": 0.0})
+	_recompute_boosts()
+	if not _in_stable(b): fails.append("ahır menzili")
+	b.hp = 0.1
+	_simulate(1.0)
+	if b.hp < 0.5: fails.append("ahır mutluluk tabanı")
+	_open_ctx(a)
+	if not ctx_menu.visible: fails.append("hayvan menüsü")
+	ctx_menu.visible = false
+	_remove_entity(st)
+	_recompute_boosts()
+	_remove_entity(a)
+	_remove_entity(b)
 
 func _selftest_events(fails: Array) -> void:
 	var keep := [season, coins, gems, medals, ev.duplicate(true), trophies.duplicate(), res.duplicate()]
@@ -7983,6 +8160,10 @@ func _make_quest(kind: String, arg: String) -> Dictionary:
 			need = 1 + lv / 5
 			val = 100.0
 			text = "🌳 %d ağaç dik" % need
+		"pet":
+			need = 2 + lv / 3
+			val = 40.0
+			text = "🤗 %d hayvanı sev (basılı tut)" % need
 		"villager":
 			need = 1 + lv / 5
 			val = 80.0
@@ -8017,6 +8198,12 @@ func _quest_candidates() -> Array:
 		out.append(["bake", ""])
 	if level >= 2:
 		out.append(["villager", ""])
+	var na := 0
+	for e in entities:
+		if e.kind == "animal":
+			na += 1
+	if na >= 2:
+		out.append(["pet", ""])
 	for k in ["plant", "water", "sell", "order", "earn"]:
 		out.append([k, ""])
 	if _owned_kind("animal"):
@@ -8410,6 +8597,7 @@ func _feed_pen(e: Dictionary) -> void:
 	_float_text(pos, ("-%d 🌾" % sp.x) if sp.x > 0 else ("-%d 🪙" % sp.y), Color("#ffe2a8"))
 	for a in _pen(e):
 		a.food = 1.0
+		a.hp = minf(1.0, a.hp + 0.1)
 		a.hop_t = 1.0 + randf() * 0.3
 		_update_hungry(a)
 		_burst(tile_center(a.x, a.z) + Vector3(0, 0.3, 0), "#f0c75e", 6, 2.0)

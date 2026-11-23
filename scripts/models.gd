@@ -767,6 +767,7 @@ static func building(type: String) -> Node3D:
 		"silo": return _silo()
 		"well": return _well()
 		"oven": return _oven()
+		"stable": return _stable()
 		_: return _windmill()
 
 static func _house() -> Node3D:
@@ -815,6 +816,30 @@ static func _oven() -> Node3D:
 	add(g, cyl(0.12, 0.14, 0.7, 8, "#8d8379", -0.35, 1.45, -0.35))
 	for i in 3:
 		add(g, cyl(0.07, 0.07, 0.6, 6, "#7a5030", 0.75, 0.66 + i * 0.13, -0.5 + i * 0.05))
+	return g
+
+## Ahır: ahşap duvarlar, açık ön, saman ve yalak.
+static func _stable() -> Node3D:
+	var g := node()
+	const W := "#a0683c"
+	add(g, box(1.85, 0.08, 1.75, "#d9b26f", 0, 0.04, 0))
+	add(g, box(1.85, 1.2, 0.1, W, 0, 0.6, -0.82))
+	for x in [-0.88, 0.88]:
+		add(g, box(0.1, 1.2, 1.75, W, x, 0.6, 0))
+	for x in [-0.88, -0.3, 0.3, 0.88]:
+		add(g, box(0.12, 1.3, 0.12, "#6d4228", x, 0.65, 0.82))
+	add(g, box(1.85, 0.1, 0.1, "#6d4228", 0, 0.55, 0.84))
+	for i in 5:
+		add(g, box(1.85, 0.03, 0.12, "#8a5a32", 0, 0.15 + i * 0.22, -0.88))
+	var roof := gable_roof(1.75, 1.95, 0.75, "#c48a52", "#7a3b2e", 0.2)
+	roof.rotation.y = PI / 2.0
+	roof.position.y = 1.25
+	add(g, roof)
+	add(g, rot(cyl(0.3, 0.3, 0.5, 10, "#e8c547", -0.45, 0.3, -0.45), 0, 0, PI / 2.0))
+	add(g, box(0.6, 0.25, 0.3, "#8d6e63", 0.4, 0.2, -0.5))
+	add(g, box(0.52, 0.06, 0.22, "#64b5f6", 0.4, 0.31, -0.5))
+	add(g, box(0.35, 0.2, 0.06, "#ffffff", 0, 1.65, 0.75))
+	add(g, box(0.25, 0.12, 0.07, "#7a3b2e", 0, 1.65, 0.76))
 	return g
 
 static func _barn() -> Node3D:

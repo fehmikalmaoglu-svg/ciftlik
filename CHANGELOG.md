@@ -1,5 +1,12 @@
 # Çiftliğim 3D — Sürüm Notları
 
+## v0.11.0 · Erken Erişim
+- 🤗 **Hayvan bakımı**: hayvanın üstünde basılı tut → **Sev** (günde bir) ve **isim ver**. İsimler hayvanın üstünde yazar.
+- 😊 **Mutluluk**: her hayvanın bir mutluluğu var. Mutlu hayvan %25'e kadar hızlı üretir, üzgün olan yavaşlar. Sevmek ve yemlemek mutlu eder; zamanla azalır.
+- 🐮 **Ahır** (🏗️ Yapı, seviye 5, 2×2, 450 🪙): çevresindeki (4 kare) koyun, domuz ve ineklerin mutluluğu yavaş düşer ve hiç yarının altına inmez.
+- 📜 Yeni görev: hayvanları sev.
+- 🌐 Online: sevme, isimler ve mutluluk iki oyuncuda da aynı.
+
 ## v0.10.0 · Erken Erişim
 - 🎪 **Mevsim etkinlikleri**: her mevsim bir yarışma. Üst çubuktaki 🎪 düğmesinden puanını ve ödülleri gör; saat çubuğunda da ilerlemen yazar.
   - 🌷 İlkbahar · Çiçek Şenliği: tarhlardan çiçek topla.
