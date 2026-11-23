@@ -21,7 +21,7 @@ const QUEST_SLOTS := 4
 ## Çiftçinin geçemediği dekorlar.
 ## İş animasyonu süreleri (sn); çiftçi bu sürede yerinde kalır.
 const ACT_DUR := {"plow": 0.55, "remove": 0.55, "water": 0.85, "plant": 0.55, "flower": 0.55, "tree": 0.6,
-	"harvest": 0.5, "feed": 0.8, "coop": 0.4, "pond": 0.4, "animal": 0.4, "decor": 0.35}
+	"harvest": 0.5, "feed": 0.8, "coop": 0.4, "pond": 0.4, "animal": 0.4, "decor": 0.35, "build": 0.6}
 const NET_PORT := 24565
 const NET_COLORS := ["#4a90d9", "#9c5bd6", "#e0912f", "#2fae8f", "#d94a8c"]
 const WALK_LIM := 56     # çiftçinin gezebileceği alan (±), görünen arazinin içi
@@ -160,6 +160,8 @@ const HELP_PAGES := [
 	]],
 	["🗺️  Arazi ve Mevsimler", [
 		["🔒", "Çiftliğin çevresinde 6 temalı bölge var: Orman Kenarı, Meyve Tepesi, Mera, Göl Kıyısı, Çiçek Vadisi, Güneş Bayırı. Sisli bölgeye ya da girişindeki tabelaya tıkla; altın ve seviyeyle açılır, çit kendiliğinden genişler."],
+		["🏗️", "Yeni çiftlikte hiçbir şey hazır değil: Yapı aletiyle (0 tuşu) ambar, kuyu, silo ve ev kurarsın. Ambar olmadan hasat saklanmaz; kuyu yakındaki tarlaları geç kurutur, silo ambara yer açar, ev her sabah hediye bırakır."],
+		["⚙️", "Ayarlar (⚙️ ya da ana menü): tam ekran (F11), grafik kalitesi, çözünürlük, gece parlaklığı ve ses."],
 		["✨", "Her bölgenin bonusu var: Mera'da hayvanlar, Göl Kıyısı'nda balık göletleri, Güneş Bayırı'nda ekinler daha hızlı; Meyve Tepesi'nde ağaçlar fazladan meyve verir."],
 		["🌸", "Dört mevsim var, her biri 30 dakika. Bazı tohumlar yalnız kendi mevsiminde ekilir."],
 		["🌧️", "Yağmur her şeyi sular. 🔥 Kuraklıkta su çabuk biter. 🌨️ Karda sulamaya gerek yok."],
@@ -188,7 +190,7 @@ const WILD_GRASS := ["Grass_Common_Short.gltf", "Grass_Common_Tall.gltf", "Grass
 ## Kenney küçük süsleri bu sahnede ufak kalıyor: önek başına ölçek çarpanı.
 const PROP_BOOST := {"flower_": 2.1, "mushroom_": 1.7, "grass_": 1.5, "plant_": 1.4, "rock_small": 1.4, "stone_small": 1.4, "lily_": 1.4}
 const BIG_TREES := ["CommonTree_1.gltf", "CommonTree_2.gltf", "CommonTree_3.gltf", "CommonTree_4.gltf", "CommonTree_5.gltf",
-	"Pine_1.gltf", "Pine_2.gltf", "Pine_4.gltf", "Pine_5.gltf", "TwistedTree_1.gltf", "TwistedTree_2.gltf", "DeadTree_1.gltf"]
+	"Pine_1.gltf", "Pine_2.gltf", "Pine_4.gltf", "Pine_5.gltf", "TwistedTree_1.gltf", "TwistedTree_2.gltf"]
 
 ## Temalı bölgeler: çiftliğin çevresindeki 16 parsel 6 adlı bölgeye ayrılır.
 ## Kayıt biçimi aynı kalır ("parcels" = açılmış parseller), bölge tümü açılınca sahiplenilmiş sayılır.
@@ -253,9 +255,10 @@ const TOOLS := [
 	{"id": "animal", "icon": "🐔", "name": "Hayvan", "shelf": "animal", "tip": "Hayvan al"},
 	{"id": "decor", "icon": "🌷", "name": "Dekor", "shelf": "decor", "tip": "Çit, yol, çiçek…"},
 	{"id": "garden", "icon": "🌼", "name": "Bahçe", "shelf": "garden", "tip": "Çiçek tarhı ve balık göleti"},
+	{"id": "build", "icon": "🏗️", "name": "Yapı", "shelf": "build", "tip": "Ambar, kuyu, silo, ev kur"},
 	{"id": "remove", "icon": "🗑️", "name": "Kaldır", "shelf": "", "tip": "Nesneyi kaldır (%25 iade)"},
 ]
-const ACT_TXT := {"plant": "🌱 Ek", "water": "💧 Sula", "harvest": "🧺 Topla", "feed": "🌾 Yemle", "flower": "🌼 Çiçek dik", "pond": "🐟 Gölet kur", "coop": "🛖 Kümes kur", "plow": "⛏️ Sür", "tree": "🌳 Dik", "animal": "🐾 Yerleştir", "decor": "🎨 Yerleştir", "remove": "🗑️ Kaldır"}
+const ACT_TXT := {"plant": "🌱 Ek", "water": "💧 Sula", "harvest": "🧺 Topla", "feed": "🌾 Yemle", "flower": "🌼 Çiçek dik", "pond": "🐟 Gölet kur", "build": "🏗️ Kur", "coop": "🛖 Kümes kur", "plow": "⛏️ Sür", "tree": "🌳 Dik", "animal": "🐾 Yerleştir", "decor": "🎨 Yerleştir", "remove": "🗑️ Kaldır"}
 ## Yeni kariyerin başında temizlenecek yabani şeyler: [modeller, ölçek, altın, XP, yolu kapatır mı]
 const DEBRIS := {
 	"weed": [["Grass_Wispy_Tall.gltf", "Fern_1.gltf", "Plant_1_Big.gltf"], 1.5, 2, 1, false],
@@ -267,6 +270,8 @@ const DEBRIS := {
 const STORY := [
 	{"kind": "clear", "arg": "", "need": 6, "text": "🪓 Araziyi temizle: 6 ot, taş ya da kütük kaldır (🗑️ Kaldır)", "coins": 40, "xp": 10,
 		"say": "Taşların altından kara, yumuşak bir toprak çıktı. Teyzen haklıymış!"},
+	{"kind": "build", "arg": "barn", "need": 1, "text": "📦 Hasat için bir ambar kur (🏗️ Yapı)", "coins": 30, "xp": 15,
+		"say": "Ambar hazır! Topladığın her şey burada saklanacak."},
 	{"kind": "plow", "arg": "", "need": 6, "text": "⛏️ Çapa ile 6 kare tarla sür", "coins": 30, "xp": 10,
 		"say": "Tarla hazır. Ambarın önündeki çuvalda buğday tohumu var."},
 	{"kind": "plant", "arg": "wheat", "need": 6, "text": "🌱 6 kare buğday ek (🌱 Tohum)", "coins": 20, "xp": 10,
@@ -282,20 +287,22 @@ const STORY := [
 	{"kind": "buy", "arg": "coop", "need": 1, "text": "🛖 Tavukların yanına kümes kur", "coins": 40, "xp": 20,
 		"say": "Kümes hazır! Tavukların yanında olduğu sürece yumurtalar oraya bırakılır."},
 	{"kind": "animal", "arg": "chicken", "need": 3, "text": "🥚 Kümesten 3 yumurta topla (✋ El)", "coins": 100, "xp": 30,
+		"say": "Çiftlik canlanıyor! Artık başını sokacak bir evin olmalı."},
+	{"kind": "build", "arg": "house", "need": 1, "text": "🏠 Kendine bir çiftlik evi kur (🏗️ Yapı)", "coins": 150, "xp": 40,
 		"say": ""},
 ]
 const STORY_PAGES := [
 	["📮", "Bir mektup", "Bir sabah kapına eski, mühürlü bir zarf bırakılmış. Üzerinde tanıdık bir el yazısı var: Nermin Teyze."],
 	["✉️", "Teyzenin sözleri", "\"Sevgili yeğenim, yaşım ilerledi, tepedeki çiftliğe artık bakamıyorum. Onu sana bırakıyorum. Her yeri ot ve taş bürüdü ama toprağı hâlâ bereketlidir. Ona iyi bak.\""],
 	["🧳", "Yola çıkış", "Bavulunu topladın, kasabanın dışındaki tepeye tırmandın. Gıcırdayan kapının üstünde solmuş bir tabela: %s."],
-	["🏚️", "Çiftlik", "İçeride eski bir ev, tozlu bir ambar ve ot bürümüş bir arazi var. Cebinde biraz para, ambarın önünde bir çuval buğday tohumu."],
+	["🏚️", "Çiftlik", "Eski ev de ambar da çoktan yıkılmış; geriye ot, taş ve kütük bürümüş bir arazi kalmış. Cebinde biraz para ve bir çuval buğday tohumu var. Her şeyi sen kuracaksın."],
 	["💪", "Hadi başlayalım!", "Önce araziyi temizle, sonra ilk tarlanı sür. Sol üstteki ⭐ Hikâye görevi sana yol gösterecek."],
 ]
 
 const SHELF_COLS := 4
 const SHELF_PER_PAGE := 8
-const SHELF_TITLES := {"seed": "🌱 Tohumlar", "tree": "🌳 Meyve Ağaçları", "animal": "🐔 Hayvanlar", "decor": "🌷 Dekor", "garden": "🌼 Bahçe"}
-const MARKER_COL := {"hand": "#ffffff", "plow": "#a1673f", "seed": "#8bc34a", "water": "#4fc3f7", "tree": "#2e7d32", "animal": "#ffca28", "decor": "#ce93d8", "garden": "#f48fb1", "remove": "#e53935"}
+const SHELF_TITLES := {"seed": "🌱 Tohumlar", "tree": "🌳 Meyve Ağaçları", "animal": "🐔 Hayvanlar", "decor": "🌷 Dekor", "garden": "🌼 Bahçe", "build": "🏗️ Yapılar"}
+const MARKER_COL := {"hand": "#ffffff", "plow": "#a1673f", "seed": "#8bc34a", "water": "#4fc3f7", "tree": "#2e7d32", "animal": "#ffca28", "decor": "#ce93d8", "garden": "#f48fb1", "build": "#a1887f", "remove": "#e53935"}
 
 # ------------------------------------------------------------ durum
 var coins := 120
@@ -304,7 +311,7 @@ var level := 1
 var day_time := 0.33
 var day := 1
 var tool := "hand"
-var sel := {"seed": "wheat", "tree": "apple", "animal": "chicken", "decor": "path", "garden": "daisy"}
+var sel := {"seed": "wheat", "tree": "apple", "animal": "chicken", "decor": "path", "garden": "daisy", "build": "barn"}
 var farm_name := "Çiftliğim"
 var flv := {}            # çiçek türü -> {"lv", "n"}
 var parcels: Array = []  # satın alınmış parseller: "px,pz"
@@ -496,10 +503,18 @@ static func _pc_center(pc: Vector2i) -> Vector3:
 	return Vector3(WORLD_MIN + pc.x * PARCEL + PARCEL / 2.0, 0, WORLD_MIN + pc.y * PARCEL + PARCEL / 2.0)
 
 var _reg_map := {}
-## Sürüm: project.godot application/config/version. Güncelleme duyurusu için ciftlik/update_url
-## şu JSON'u döndüren bir adrese ayarlanır: {"version": "0.2.0", "url": "https://…", "notes": "…"}
+## Sürüm: project.godot application/config/version. Güncelleme duyurusu: ciftlik/update_url
+## GitHub "releases/latest" API adresi ya da {"version": "0.2.0", "url": "https://…", "notes": "…"} döndüren bir adres.
 const CHANNEL := "Erken Erişim"
-var update_info := {}   # Vector2i parsel → bölge sözlüğü
+var update_info := {}
+## Ayarlar (profile.json "gfx"): kalite 0..3, tam ekran, vsync, çözünürlük %, FPS sınırı, ses %, gece parlaklığı %.
+const GFX_DEFAULT := {"q": 2, "fs": false, "vs": true, "scale": 100, "fps": 0, "vol": 80, "sfx": 100, "night": 50, "showfps": false}
+const QUALITY_NAMES := ["Düşük", "Orta", "Yüksek", "Ultra"]
+var gfx := GFX_DEFAULT.duplicate()
+var grass_frac := 1.0
+var set_layer: CanvasLayer
+var set_box: VBoxContainer
+var fps_lbl: Label   # Vector2i parsel → bölge sözlüğü
 
 func _region_of_pc(pc: Vector2i) -> Dictionary:
 	if _reg_map.is_empty():
@@ -628,14 +643,11 @@ func _ready() -> void:
 	_build_sounds()
 	_build_ui()
 	_build_menu()
+	_build_settings()
+	_load_gfx()
 	_check_update()
 	_load_step(0.8)
 	await get_tree().process_frame
-
-	_add_entity({"kind": "building", "type": "house", "x": -11, "z": -12, "w": 4, "d": 4, "rot": 0.0})
-	_add_entity({"kind": "building", "type": "barn", "x": 5, "z": -12, "w": 4, "d": 4, "rot": 0.0})
-	_add_entity({"kind": "building", "type": "silo", "x": 10, "z": -12, "w": 2, "d": 2, "rot": 0.0})
-	_add_entity({"kind": "building", "type": "well", "x": -5, "z": -10, "w": 1, "d": 1, "rot": 0.0})
 
 	var args := OS.get_cmdline_user_args()
 	_migrate_old_save()
@@ -1496,6 +1508,7 @@ func _build_grass_chunk(pc: Vector2i) -> void:
 				var shade := rng.randf_range(0.85, 1.1)
 				if not skip:
 					pts.append([Vector3(x + ox, 0.0, z + oz), sc, yaw, shade])
+	pts.shuffle()   # yoğunluk düşürülünce çim eşit seyrelsin
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.use_colors = true
@@ -1510,6 +1523,8 @@ func _build_grass_chunk(pc: Vector2i) -> void:
 	mi.multimesh = mm
 	mi.material_override = grass_mat
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	if grass_frac < 1.0:
+		mm.visible_instance_count = int(mm.instance_count * grass_frac)
 	add_child(mi)
 	grass_chunks[pc] = mi
 
@@ -1688,6 +1703,8 @@ func _recompute_boosts() -> void:
 	for e in entities:
 		if e.kind == "plot":
 			e.boost = _scarecrow_near(e.x, e.z)
+		if e.kind == "plot" or e.kind == "flower":
+			e.wn = _well_near(e.x, e.z)
 
 static func crop_stage(e: Dictionary) -> int:
 	return 3 if e.progress >= 1.0 else mini(2, int(e.progress * 3.0))
@@ -1816,7 +1833,7 @@ func _simulate(dt: float) -> void:
 				if weather == "rain":
 					e.water = minf(1.0, e.water + dt / 8.0)
 				elif e.water > 0.0:
-					e.water = maxf(0.0, e.water - drain)
+					e.water = maxf(0.0, e.water - drain * (0.5 if e.get("wn", false) else 1.0))
 				var refreshed := false
 				if e.crop != null and e.progress < 1.0:
 					var c = Data.CROPS[e.crop]
@@ -1843,7 +1860,7 @@ func _simulate(dt: float) -> void:
 				if weather == "rain":
 					e.water = minf(1.0, e.water + dt / 8.0)
 				elif e.water > 0.0:
-					e.water = maxf(0.0, e.water - drain)
+					e.water = maxf(0.0, e.water - drain * (0.5 if e.get("wn", false) else 1.0))
 				if not e.ready:
 					var ft: float = Data.FLOWERS[e.type].time / (1.3 if _reg_at(e.x, e.z) == "flower" else 1.0)
 					var step := minf(dt, (1.0 - e.t) * ft)
@@ -1888,7 +1905,8 @@ func _gain(c: int, x: int, pos: Vector3, icon: String) -> void:
 	coins += c
 	xp += x
 	hud_dirty = true
-	_float_text(pos, "+%d 🪙" % c, Color("#ffe066"))
+	if c > 0:
+		_float_text(pos, "+%d 🪙" % c, Color("#ffe066"))
 	if x > 0:
 		_float_text(pos + Vector3(0, -0.3, 0), "+%d XP" % x, Color("#b9ff7a"))
 	_float_text(pos + Vector3(0, 0.4, 0), icon, Color.WHITE)
@@ -1979,9 +1997,38 @@ func _resolve(t: String, arg, x: int, z: int):
 				return "pond" if _unlocked(Data.POND) and coins >= Data.POND.cost and _free_area(x, z, 2, 2) else null
 			var c = Data.FLOWERS.get(arg)
 			return "flower" if e == null and _unlocked(c) and coins >= c.cost else null
+		"build":
+			var b = Data.BUILDINGS.get(arg)
+			return "build" if b != null and _unlocked(b) and coins >= b.cost and _free_area(x, z, b.w, b.d) else null
 		"remove":
-			return "remove" if e != null and e.kind != "building" else null
+			if e != null and e.kind == "building" and e.type == "barn" and _count_buildings("barn") <= 1 and _res_total() > 0:
+				return null   # son ambar doluyken yıkılmaz
+			return "remove" if e != null else null
 	return null
+
+func _count_buildings(type: String) -> int:
+	var n := 0
+	for e in entities:
+		if e.kind == "building" and e.type == type:
+			n += 1
+	return n
+
+## Ambar kapasitesi: her ambar 150, her silo +100. Ambar yoksa 0.
+func _barn_cap() -> int:
+	var cap := 0
+	for e in entities:
+		if e.kind == "building":
+			if e.type == "barn":
+				cap += Data.BARN_CAP
+			elif e.type == "silo":
+				cap += Data.SILO_CAP
+	return cap if _count_buildings("barn") > 0 else 0
+
+func _well_near(x: int, z: int) -> bool:
+	for e in entities:
+		if e.kind == "building" and e.type == "well" and maxi(absi(e.x - x), absi(e.z - z)) <= Data.WELL_RANGE:
+			return true
+	return false
 
 func _free_area(x: int, z: int, w: int, d: int) -> bool:
 	for i in w:
@@ -2101,6 +2148,18 @@ func _perform_local(item: Dictionary) -> bool:
 			_float_text(pos, "-%d 🪙" % f.cost, Color("#ffb4a8"))
 			_burst(pos + Vector3(0, 0.2, 0), f.color, 8, 2.0)
 			_sfx("plant")
+		"build":
+			var b = Data.BUILDINGS[arg]
+			_spend(b.cost)
+			_add_entity({"kind": "building", "type": arg, "x": x, "z": z, "w": b.w, "d": b.d, "rot": 0.0})
+			var bc := Vector3(x + b.w / 2.0, 0, z + b.d / 2.0)
+			_float_text(bc + Vector3(0, 0.6, 0), "-%d 🪙" % b.cost, Color("#ffb4a8"))
+			_gain(0, b.xp, bc, b.icon)
+			_burst(bc + Vector3(0, 0.8, 0), "#d7b98e", 22, 4.0)
+			_burst(bc + Vector3(0, 0.4, 0), "#9e9e9e", 14, 3.0)
+			_recompute_boosts()
+			_quest_event("build", arg, 1)
+			_sfx("place")
 		"coop":
 			_spend(Data.COOP.cost)
 			_add_entity({"kind": "coop", "type": "coop", "x": x, "z": z})
@@ -2152,6 +2211,8 @@ func _perform_local(item: Dictionary) -> bool:
 				def = Data.POND
 			elif e.kind == "coop":
 				def = Data.COOP
+			elif e.kind == "building":
+				def = Data.BUILDINGS.get(e.type)
 			if e.kind == "debris":
 				var dd: Array = DEBRIS.get(e.type, DEBRIS.weed)
 				_remove_entity(e)
@@ -2164,6 +2225,8 @@ func _perform_local(item: Dictionary) -> bool:
 			_remove_entity(e)
 			_act_anim("remove", pos)
 			_burst(pos + Vector3(0, 0.3, 0), "#9e9e9e", 10, 2.5)
+			if e.kind == "building":
+				_recompute_boosts()
 			if def != null and def.cost >= 8:
 				var back := int(def.cost * 0.25)
 				coins += back
@@ -2179,6 +2242,7 @@ func _current_arg():
 		"animal": return sel.animal
 		"garden": return sel.garden
 		"decor": return sel.decor
+		"build": return sel.build
 	return null
 
 func _enqueue(t: Vector2i) -> void:
@@ -2211,7 +2275,7 @@ func _enqueue(t: Vector2i) -> void:
 
 func _explain_fail(arg, x: int, z: int) -> void:
 	var e = tiles.get(key(x, z))
-	var list = {"seed": Data.CROPS, "hand": Data.CROPS, "tree": Data.TREES, "animal": Data.animal_shop(), "decor": Data.DECOR, "garden": Data.garden()}.get(tool)
+	var list = {"seed": Data.CROPS, "hand": Data.CROPS, "tree": Data.TREES, "animal": Data.animal_shop(), "decor": Data.DECOR, "garden": Data.garden(), "build": Data.BUILDINGS}.get(tool)
 	var def = list.get(arg) if list != null and arg != null else null
 	if def != null and not _unlocked(def):
 		_toast("🔒 %s için seviye %d gerekli" % [def.name, def.level], "warn")
@@ -2235,6 +2299,12 @@ func _explain_fail(arg, x: int, z: int) -> void:
 		return
 	if tool == "animal" and arg == "coop" and not _free_area(x, z, 2, 2):
 		_toast("🛖 Kümes için 2×2 boş alan gerekli", "hint")
+		return
+	if tool == "build" and def != null and not _free_area(x, z, def.w, def.d):
+		_toast("%s %s için %d×%d boş alan gerekli" % [def.icon, def.name, def.w, def.d], "hint")
+		return
+	if tool == "remove" and e != null and e.kind == "building" and e.type == "barn" and _resolve("remove", null, x, z) == null:
+		_toast("📦 İçi dolu son ambar yıkılamaz", "hint")
 		return
 	if tool == "garden" and arg == "pond" and not _free_area(x, z, 2, 2):
 		_toast("🐟 Gölet için 2×2 boş alan gerekli", "hint")
@@ -2433,7 +2503,7 @@ func _drop(pos: Vector3, vel: Vector3, color: String, size: float) -> void:
 
 ## Oyun tuşu basılı mı? Menüdeyken, yardım açıkken ya da bir yazı kutusuna yazılırken hayır.
 func _key(k: Key) -> bool:
-	if not playing or help.visible:
+	if not playing or help.visible or (set_layer != null and set_layer.visible):
 		return false
 	var f := get_viewport().gui_get_focus_owner()
 	if f is LineEdit or f is TextEdit:
@@ -2550,6 +2620,8 @@ func _target_rect(q) -> Rect2:
 		return Rect2(e.x, e.z, e.w, e.d)
 	if (q.tool == "garden" and q.arg == "pond") or (q.tool == "animal" and q.arg == "coop"):
 		return Rect2(q.x, q.z, 2, 2)
+	if q.tool == "build" and Data.BUILDINGS.has(q.arg):
+		return Rect2(q.x, q.z, Data.BUILDINGS[q.arg].w, Data.BUILDINGS[q.arg].d)
 	return Rect2(q.x, q.z, 1, 1)
 
 ## Hedefe yanından mı ulaşılır (engel ya da engel olacak bir şey yerleştiriliyor)?
@@ -2563,6 +2635,8 @@ func _target_adjacent(q) -> bool:
 			return q.arg == "coop"
 		"garden":
 			return q.arg == "pond"
+		"build":
+			return true
 		"decor":
 			return BLOCK_DECOR.has(q.arg)
 	return false
@@ -2713,6 +2787,21 @@ func _pan_camera(v: Vector2) -> void:
 	cam_follow = false
 
 func _input(ev: InputEvent) -> void:
+	if ev is InputEventKey and ev.pressed and not ev.echo:
+		if ev.physical_keycode == KEY_F11:
+			gfx.fs = not gfx.fs
+			_apply_gfx(true)
+			_save_gfx()
+			if set_layer.visible:
+				_render_settings()
+			get_viewport().set_input_as_handled()
+			return
+		if ev.physical_keycode == KEY_ESCAPE and set_layer != null and set_layer.visible:
+			set_layer.visible = false
+			get_viewport().set_input_as_handled()
+			return
+	if fps_lbl != null and fps_lbl.visible:
+		fps_lbl.text = "%d FPS" % Engine.get_frames_per_second()
 	if not playing:
 		return
 	if ev is InputEventMouseMotion:
@@ -2772,6 +2861,8 @@ func _unhandled_input(ev: InputEvent) -> void:
 		var k: int = ev.physical_keycode
 		if k >= KEY_1 and k <= KEY_9 and k - KEY_1 < TOOLS.size():
 			_set_tool(TOOLS[k - KEY_1].id, TOOLS[k - KEY_1].id != "hand")
+		elif k == KEY_0 and TOOLS.size() >= 10:
+			_set_tool(TOOLS[9].id, false)
 		elif k == KEY_TAB:
 			if wheel.visible:
 				_close_wheel()
@@ -2832,6 +2923,10 @@ func _update_cursor() -> void:
 	elif e == null and tool == "garden" and arg == "pond":
 		c = Vector3(x + 1.0, 0, z + 1.0)
 		s = Vector3(2, 1, 2)
+	elif e == null and tool == "build" and Data.BUILDINGS.has(arg):
+		var bd = Data.BUILDINGS[arg]
+		c = Vector3(x + bd.w / 2.0, 0, z + bd.d / 2.0)
+		s = Vector3(bd.w, 1, bd.d)
 	cursor.position = c + Vector3(0, 0.13, 0)
 	cursor.scale = s
 	cursor_edge.position = cursor.position
@@ -2925,7 +3020,10 @@ func _describe(e, act, arg, x: int, z: int) -> String:
 			"decor":
 				s = "%s %s" % [Data.DECOR[e.type].icon, Data.DECOR[e.type].name]
 			"building":
-				s = "🏠 " + Data.BUILDINGS[e.type]
+				var bd: Dictionary = Data.BUILDINGS.get(e.type, {"icon": "🏠", "name": e.type, "info": ""})
+				s = "%s %s\n%s" % [bd.icon, bd.name, bd.info]
+				if e.type == "barn" or e.type == "silo":
+					s += "\n📦 %d / %d" % [_res_total(), _barn_cap()]
 	if act != null:
 		var extra := ""
 		match act:
@@ -2934,6 +3032,7 @@ func _describe(e, act, arg, x: int, z: int) -> String:
 			"flower": extra = " %s %s  -%d🪙" % [Data.FLOWERS[arg].icon, Data.FLOWERS[arg].name, Data.FLOWERS[arg].cost]
 			"pond": extra = "  -%d🪙" % Data.POND.cost
 			"coop": extra = "  -%d🪙" % Data.COOP.cost
+			"build": extra = " %s %s  -%d🪙" % [Data.BUILDINGS[arg].icon, Data.BUILDINGS[arg].name, Data.BUILDINGS[arg].cost]
 			"tree": extra = " %s  -%d🪙" % [Data.TREES[arg].icon, Data.TREES[arg].cost]
 			"animal": extra = " %s  -%d🪙" % [Data.ANIMALS[arg].icon, Data.ANIMALS[arg].cost]
 			"decor": extra = " %s  -%d🪙" % [Data.DECOR[arg].icon, Data.DECOR[arg].cost]
@@ -3092,6 +3191,10 @@ func _update_day(dt: float) -> void:
 		day_time -= 1.0
 		day += 1
 		hud_dirty = true
+		if _count_buildings("house") > 0 and not loading and net_role != "guest":
+			var gift := 20 + level * 5
+			_gain(gift, 2, farmer.position, "🏠")
+			_toast("🏠 Günaydın! Evinin kapısında %d 🪙 hediye var." % gift, "level")
 	var ang := (day_time - 0.25) * TAU
 	var elev := sin(ang)
 	var day_f := smoothstep(-0.12, 0.3, elev)
@@ -3120,16 +3223,21 @@ func _update_day(dt: float) -> void:
 	sky_mat.set_shader_parameter("moon_dir", Vector3(-cos(ang) * 30.0, -sin(ang) * 35.0, 16.0).normalized())
 	sky_mat.set_shader_parameter("night", night_f)
 	sky_mat.set_shader_parameter("cloud", wx_f)
-	env.ambient_light_color = Color("#6d82c9").lerp(Color("#dff1ff"), day_f)
-	env.ambient_light_energy = 0.3 + 0.2 * day_f
+	var nb: float = gfx.night / 100.0
+	env.ambient_light_color = Color("#5d76c4").lerp(Color("#dff1ff"), day_f)
+	env.ambient_light_energy = 0.3 + 0.2 * day_f + (0.02 + 0.16 * nb) * night_f
+	env.tonemap_exposure = 0.8 + 0.12 * nb * night_f
+	var wm: ShaderMaterial = Models.water()
+	wm.set_shader_parameter("moon_dir", Vector3(-cos(ang) * 30.0, absf(sin(ang)) * 35.0, 16.0).normalized())
+	wm.set_shader_parameter("night", night_f * (1.0 - wx_f))
 	# gündüz güneş, gece ay ışık verir; ufukta geçişte gölge yumuşakça kaybolur
 	var qang := ang if elev >= 0.0 else ang + PI
 	var s_elev := maxf(sin(qang), 0.15)
 	var off := Vector3(cos(qang) * 30.0, s_elev * 35.0, 12.0 if elev >= 0.0 else 16.0)
 	sun.look_at_from_position(off, Vector3.ZERO, Vector3.UP)
 	sun.shadow_opacity = smoothstep(0.02, 0.14, absf(elev)) * (1.0 - 0.6 * wx_f)
-	sun.light_energy = (1.15 * day_f + 0.26 * night_f + 0.05) * (1.0 - 0.5 * wx_f)
-	sun.light_color = Color("#9fb4ff") if night_f > 0.5 else Color("#ffb37a").lerp(Color("#fff3d6"), smoothstep(0.0, 0.5, elev)).lerp(Color("#ffcf86"), dr_f * 0.5)
+	sun.light_energy = (1.15 * day_f + (0.24 + 0.26 * nb) * night_f + 0.05) * (1.0 - 0.5 * wx_f)
+	sun.light_color = Color("#9db2ff") if night_f > 0.5 else Color("#ffb37a").lerp(Color("#fff3d6"), smoothstep(0.0, 0.5, elev)).lerp(Color("#ffcf86"), dr_f * 0.5)
 	Models.glow().emission_energy_multiplier = night_f * 3.0
 	Models.emissive("#ffffff", "#ffffff", 0.35).emission_energy_multiplier = 0.35 * day_f + 0.02
 	var hh := int(day_time * 24.0)
@@ -3380,6 +3488,9 @@ func _build_ui() -> void:
 		muted = not muted
 		btn_sound.text = "🔇" if muted else "🔊")
 	ah.add_child(btn_sound)
+	var bset := _icon_btn("⚙️", "Ayarlar: grafik, ses, tam ekran  (F11 tam ekran)")
+	bset.pressed.connect(_open_settings)
+	ah.add_child(bset)
 	var bb := _icon_btn("📦", "Ambar  [B]")
 	bb.pressed.connect(_open_barn)
 	ah.add_child(bb)
@@ -3642,9 +3753,9 @@ func _build_wheel() -> void:
 		b.custom_minimum_size = Vector2(84, 84)
 		b.size = Vector2(84, 84)
 		b.add_theme_font_size_override("font_size", 15)
-		b.tooltip_text = "%s  [%d]" % [t.tip, i + 1]
+		b.tooltip_text = "%s  [%d]" % [t.tip, (i + 1) % 10]
 		var id: String = t.id
-		var tip: String = "%s\n%s\n[%d]" % [t.icon, t.tip, i + 1]
+		var tip: String = "%s\n%s\n[%d]" % [t.icon, t.tip, (i + 1) % 10]
 		b.mouse_entered.connect(func(): wheel_info.text = tip)
 		b.mouse_exited.connect(func(): _wheel_info_default())
 		b.pressed.connect(func():
@@ -4084,8 +4195,7 @@ func net_do(t: String, a: String, x: int, z: int, actor: int) -> void:
 func _net_sync_dict() -> Dictionary:
 	var ents := []
 	for e in entities:
-		if e.kind != "building":
-			ents.append(_ent_dict(e))
+		ents.append(_ent_dict(e))
 	return {"coins": coins, "xp": xp, "level": level, "day_time": day_time, "day": day, "season": season, "season_t": season_t,
 		"year": year, "weather": weather, "weather_t": weather_t, "parcels": parcels, "res": res, "ents": ents}
 
@@ -4136,8 +4246,6 @@ func _net_apply_ents(list: Array) -> void:
 		var e = tiles.get(k)
 		var base := _ent_base(s)
 		if e != null and (e.kind != base.kind or e.get("type", "") != base.get("type", "") or e.x != base.x or e.z != base.z):
-			if e.kind == "building":
-				continue
 			_remove_entity(e)
 			e = null
 		if e == null:
@@ -4150,7 +4258,7 @@ func _net_apply_ents(list: Array) -> void:
 		if _vis_sig(e) != before:
 			_refresh(e)
 	for e in entities.duplicate():
-		if e.kind != "building" and not seen.has(key(e.x, e.z)):
+		if not seen.has(key(e.x, e.z)):
 			_remove_entity(e)
 
 func _net_tick(dt: float) -> void:
@@ -4293,6 +4401,8 @@ func _start_play(show_help := false) -> void:
 			cam_target = farmer.position
 		elif a.begins_with("--land="):   # geliştirici: bölge penceresini aç
 			_open_land(_region(a.substr(7)))
+		elif a == "--settings":
+			_open_settings()
 	if (show_help and shot_path == "") or OS.get_cmdline_user_args().has("--showhelp"):
 		help.visible = true
 
@@ -4328,18 +4438,221 @@ func _check_update() -> void:
 		return
 	var req := HTTPRequest.new()
 	req.timeout = 8.0
+	req.max_redirects = 4
 	add_child(req)
 	req.request_completed.connect(func(result: int, code: int, _h: PackedStringArray, body: PackedByteArray):
 		req.queue_free()
 		if result != HTTPRequest.RESULT_SUCCESS or code != 200:
 			return
 		var d = JSON.parse_string(body.get_string_from_utf8())
-		if d is Dictionary and _ver_newer(str(d.get("version", "")), _version()):
-			update_info = d
+		if not d is Dictionary:
+			return
+		# kendi JSON'umuz ya da GitHub "releases/latest" yanıtı
+		var ver := str(d.get("version", d.get("tag_name", ""))).trim_prefix("v")
+		var notes := str(d.get("notes", d.get("name", "")))
+		if _ver_newer(ver, _version()):
+			update_info = {"version": ver, "url": str(d.get("url", d.get("html_url", ""))), "notes": notes.left(160)}
 			if menu_layer.visible:
 				_render_menu("main"))
-	if req.request(url) != OK:
+	if req.request(url, ["User-Agent: Ciftligim3D", "Accept: application/vnd.github+json"]) != OK:
 		req.queue_free()
+
+# ============================================================ ayarlar
+func _is_dev_run() -> bool:
+	var a := OS.get_cmdline_user_args()
+	return shot_path != "" or a.has("--selftest") or a.has("--fps") or a.has("--fresh") or DisplayServer.get_name() == "headless"
+
+func _load_gfx() -> void:
+	gfx = GFX_DEFAULT.duplicate()
+	if not _is_dev_run():
+		var d = JSON.parse_string(_profile_get("gfx", "{}"))
+		if d is Dictionary:
+			for k in d:
+				if gfx.has(k):
+					gfx[k] = d[k]
+	_apply_gfx(not _is_dev_run())
+
+func _save_gfx() -> void:
+	_profile_set("gfx", JSON.stringify(gfx))
+
+## Ayarları uygular. window: pencere kipine de dokunsun mu (geliştirici çalıştırmalarında hayır).
+func _apply_gfx(window := false) -> void:
+	var q: int = clampi(int(gfx.q), 0, 3)
+	var vp := get_viewport()
+	vp.msaa_3d = [Viewport.MSAA_DISABLED, Viewport.MSAA_2X, Viewport.MSAA_2X, Viewport.MSAA_4X][q]
+	RenderingServer.directional_shadow_atlas_set_size([2048, 4096, 8192, 8192][q], true)
+	RenderingServer.directional_soft_shadow_filter_set_quality([RenderingServer.SHADOW_QUALITY_HARD, RenderingServer.SHADOW_QUALITY_SOFT_LOW, RenderingServer.SHADOW_QUALITY_SOFT_HIGH, RenderingServer.SHADOW_QUALITY_SOFT_ULTRA][q])
+	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS if q == 0 else DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
+	sun.directional_shadow_max_distance = [28.0, 34.0, 40.0, 55.0][q]
+	env.ssao_enabled = q >= 2
+	env.glow_enabled = q >= 1
+	env.ssr_enabled = q >= 2      # su ve parlak yüzeylerde gerçek yansıma
+	env.ssr_max_steps = 48 if q == 2 else 80
+	env.ssr_fade_in = 0.1
+	env.ssr_fade_out = 1.5
+	cam.far = [220.0, 320.0, 480.0, 480.0][q]
+	grass_frac = [0.35, 0.65, 1.0, 1.0][q]
+	for pc in grass_chunks:
+		var gm: MultiMesh = grass_chunks[pc].multimesh
+		gm.visible_instance_count = -1 if grass_frac >= 1.0 else int(gm.instance_count * grass_frac)
+	var sc: float = clampf(float(gfx.scale) / 100.0, 0.5, 1.0)
+	vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR if sc < 1.0 else Viewport.SCALING_3D_MODE_BILINEAR
+	vp.scaling_3d_scale = sc
+	Engine.max_fps = int(gfx.fps)
+	if window:
+		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED if gfx.vs else DisplayServer.VSYNC_DISABLED)
+		var want := DisplayServer.WINDOW_MODE_FULLSCREEN if gfx.fs else DisplayServer.WINDOW_MODE_WINDOWED
+		if DisplayServer.window_get_mode() != want:
+			DisplayServer.window_set_mode(want)
+	AudioServer.set_bus_volume_db(0, linear_to_db(maxf(float(gfx.vol) / 100.0, 0.0001)))
+	for p in players:
+		p.volume_db = linear_to_db(maxf(float(gfx.sfx) / 100.0, 0.0001))
+	fps_lbl.visible = bool(gfx.showfps)
+
+func _build_settings() -> void:
+	set_layer = CanvasLayer.new()
+	set_layer.layer = 12
+	add_child(set_layer)
+	var root := Control.new()
+	root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.theme = ui.theme
+	set_layer.add_child(root)
+	var shade := ColorRect.new()
+	shade.color = Color(0.08, 0.12, 0.05, 0.55)
+	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
+	shade.mouse_filter = Control.MOUSE_FILTER_STOP
+	root.add_child(shade)
+	var cc := CenterContainer.new()
+	cc.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.add_child(cc)
+	var p := _panel(24)
+	p.custom_minimum_size = Vector2(620, 0)
+	cc.add_child(p)
+	set_box = VBoxContainer.new()
+	set_box.add_theme_constant_override("separation", 8)
+	p.add_child(set_box)
+	set_layer.visible = false
+	fps_lbl = Label.new()
+	fps_lbl.position = Vector2(12, 0)
+	fps_lbl.anchor_top = 1.0
+	fps_lbl.anchor_bottom = 1.0
+	fps_lbl.offset_top = -30
+	fps_lbl.add_theme_font_size_override("font_size", 14)
+	fps_lbl.add_theme_color_override("font_color", Color.WHITE)
+	fps_lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.7))
+	fps_lbl.add_theme_constant_override("outline_size", 5)
+	fps_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	fps_lbl.visible = false
+	ui.add_child(fps_lbl)
+
+func _open_settings() -> void:
+	_render_settings()
+	set_layer.visible = true
+	_sfx("click")
+
+func _set_gfx(k: String, v) -> void:
+	gfx[k] = v
+	_apply_gfx(k == "fs" or k == "vs")
+	_save_gfx()
+	_render_settings()
+
+func _set_row(title: String, ctl: Control) -> void:
+	var r := HBoxContainer.new()
+	r.add_theme_constant_override("separation", 10)
+	var l := Label.new()
+	l.text = title
+	l.custom_minimum_size = Vector2(190, 0)
+	r.add_child(l)
+	ctl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	r.add_child(ctl)
+	set_box.add_child(r)
+
+## Yan yana seçenek düğmeleri; seçili olan yeşil.
+func _seg(k: String, opts: Array) -> HBoxContainer:
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 6)
+	for o in opts:
+		var v = o[1]
+		var b := _small_btn(" %s " % o[0], func(): _set_gfx(k, v), true, gfx[k] == v)
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		h.add_child(b)
+	return h
+
+func _slider(k: String, lo: float, hi: float, unit := "%") -> HBoxContainer:
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 10)
+	var s := HSlider.new()
+	s.min_value = lo
+	s.max_value = hi
+	s.step = 5
+	s.value = float(gfx[k])
+	s.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	s.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	s.focus_mode = Control.FOCUS_NONE
+	var l := Label.new()
+	l.text = "%d%s" % [int(s.value), unit]
+	l.custom_minimum_size = Vector2(54, 0)
+	s.value_changed.connect(func(v: float):
+		gfx[k] = int(v)
+		l.text = "%d%s" % [int(v), unit]
+		_apply_gfx())
+	s.drag_ended.connect(func(_c: bool): _save_gfx())
+	h.add_child(s)
+	h.add_child(l)
+	return h
+
+func _set_head(t: String) -> void:
+	var l := Label.new()
+	l.text = t
+	l.add_theme_font_size_override("font_size", 19)
+	l.add_theme_color_override("font_color", Color("#6a8a2a"))
+	set_box.add_child(l)
+
+func _render_settings() -> void:
+	for c in set_box.get_children():
+		set_box.remove_child(c)
+		c.queue_free()
+	var top := HBoxContainer.new()
+	var t := Label.new()
+	t.text = "⚙️ Ayarlar"
+	t.add_theme_font_size_override("font_size", 28)
+	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top.add_child(t)
+	top.add_child(_small_btn("  ✕  ", func(): set_layer.visible = false))
+	set_box.add_child(top)
+	_set_head("🖥️ Görüntü")
+	_set_row("Tam ekran  (F11)", _seg("fs", [["Açık", true], ["Kapalı", false]]))
+	_set_row("Dikey eşitleme", _seg("vs", [["Açık", true], ["Kapalı", false]]))
+	_set_row("FPS sınırı", _seg("fps", [["30", 30], ["60", 60], ["120", 120], ["Sınırsız", 0]]))
+	_set_row("FPS göster", _seg("showfps", [["Açık", true], ["Kapalı", false]]))
+	_set_head("🎨 Grafik")
+	_set_row("Kalite", _seg("q", [["Düşük", 0], ["Orta", 1], ["Yüksek", 2], ["Ultra", 3]]))
+	var qi := Label.new()
+	qi.text = ["Gölgeler sert, çim seyrek, görüş kısa: zayıf bilgisayarlar için.", "Yumuşak gölge, orta çim; yansıma ve ortam gölgesi kapalı.",
+		"Yumuşak gölge, tam çim, ortam gölgesi ve suda yansıma.", "En yumuşak gölge, 4× kenar yumuşatma, uzak gölgeler."][clampi(int(gfx.q), 0, 3)]
+	qi.add_theme_font_size_override("font_size", 13)
+	qi.add_theme_color_override("font_color", Color("#8a7260"))
+	set_box.add_child(qi)
+	_set_row("Çözünürlük", _slider("scale", 50, 100))
+	_set_row("Gece parlaklığı", _slider("night", 0, 100))
+	_set_head("🔊 Ses")
+	_set_row("Ana ses", _slider("vol", 0, 100))
+	_set_row("Efektler", _slider("sfx", 0, 100))
+	var foot := HBoxContainer.new()
+	var v := Label.new()
+	v.text = "v%s · %s" % [_version(), CHANNEL]
+	v.add_theme_font_size_override("font_size", 13)
+	v.add_theme_color_override("font_color", Color("#a08a70"))
+	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	foot.add_child(v)
+	foot.add_child(_small_btn("  Varsayılanlar  ", func():
+		var keep_fs: bool = gfx.fs
+		gfx = GFX_DEFAULT.duplicate()
+		gfx.fs = keep_fs
+		_apply_gfx(true)
+		_save_gfx()
+		_render_settings()))
+	set_box.add_child(foot)
 
 func _build_menu() -> void:
 	menu_layer = CanvasLayer.new()
@@ -4409,6 +4722,7 @@ func _render_menu(page: String, arg := 0) -> void:
 			menu_box.add_child(_menu_btn("❔  Nasıl Oynanır", func():
 				_start_play()
 				help.visible = true, false, not cur.is_empty()))
+			menu_box.add_child(_menu_btn("⚙️  Ayarlar", _open_settings))
 			menu_box.add_child(_menu_btn("🚪  Çıkış", func():
 				_save()
 				get_tree().quit()))
@@ -4540,7 +4854,7 @@ func _shelf_key_of(id: String) -> String:
 	return ""
 
 func _shelf_list(cat: String) -> Dictionary:
-	return {"seed": Data.CROPS, "tree": Data.TREES, "animal": Data.animal_shop(), "decor": Data.DECOR, "garden": Data.garden()}[cat]
+	return {"seed": Data.CROPS, "tree": Data.TREES, "animal": Data.animal_shop(), "decor": Data.DECOR, "garden": Data.garden(), "build": Data.BUILDINGS}[cat]
 
 ## Alet düğmeleri seçili eşyanın simgesini de gösterir (ör. 🌱🥗 Tohum).
 func _update_tool_labels() -> void:
@@ -4607,6 +4921,7 @@ func _render_shelf() -> void:
 			"tree": meta = "🍃%s → %d🪙" % [fmt_time(it.regrow), it.sell]
 			"animal": meta = "🥚 yuva 2×2" if k == "coop" else "%s%s → %d🪙" % [it.picon, fmt_time(it.time), it.sell]
 			"decor": meta = "✨ bonus" if it.has("info") else " "
+			"build": meta = "%d×%d · +%d XP" % [it.w, it.d, it.xp]
 			"garden":
 				if k == "pond":
 					meta = "🐟%s → %d🪙" % [fmt_time(it.time), it.sell]
@@ -4677,10 +4992,8 @@ func _save() -> void:
 func _state_dict() -> Dictionary:
 	var ents := []
 	for e in entities:
-		if e.kind == "building":
-			continue
 		ents.append(_ent_dict(e))
-	return {"v": 1, "story": story_step, "sh": story_have, "parcels": parcels, "name": farm_name, "gems": gems, "quests": quests, "qskip": quest_skip_at, "flv": flv, "season": season, "season_t": season_t, "year": year, "weather": weather, "weather_t": weather_t, "medals": medals, "res": res, "order": order, "coins": coins, "xp": xp, "level": level, "day_time": day_time, "day": day, "sel": sel, "muted": muted,
+	return {"v": 1, "bv": 1, "sv": 2, "story": story_step, "sh": story_have, "parcels": parcels, "name": farm_name, "gems": gems, "quests": quests, "qskip": quest_skip_at, "flv": flv, "season": season, "season_t": season_t, "year": year, "weather": weather, "weather_t": weather_t, "medals": medals, "res": res, "order": order, "coins": coins, "xp": xp, "level": level, "day_time": day_time, "day": day, "sel": sel, "muted": muted,
 		"saved_at": Time.get_unix_time_from_system(), "ents": ents, "fx": farmer.position.x, "fz": farmer.position.z}
 
 func _ent_dict(e: Dictionary) -> Dictionary:
@@ -4806,6 +5119,10 @@ func _ent_base(s: Dictionary) -> Dictionary:
 				base.value = int(s.get("ev", 0))
 				base.xp = int(s.get("ex", 0))
 				base.yield = int(s.get("ey", 0))
+			"building":
+				var bd: Dictionary = Data.BUILDINGS.get(s.get("t", ""), {"w": 4, "d": 4})
+				base.w = bd.w
+				base.d = bd.d
 			"flower", "pond":
 				base.t = float(s.get("at", 0.0))
 				base.ready = bool(s.get("rd", false))
@@ -4814,6 +5131,10 @@ func _ent_base(s: Dictionary) -> Dictionary:
 		return base
 
 func _load_finish(data: Dictionary, offline: bool) -> void:
+	if not data.has("bv"):
+		_add_default_buildings()   # binaların kayda girmediği eski sürüm
+	if int(data.get("sv", 1)) < 2 and story_step > 0:
+		story_step = STORY.size() if story_step >= 9 else story_step + 1   # ambar adımı araya girdi
 	_recompute_boosts()
 	var has_gate := false
 	for e in entities:
@@ -4840,13 +5161,15 @@ func _load_finish(data: Dictionary, offline: bool) -> void:
 		loading = false
 		_toast("🌙 Sen yokken çiftliğin %s boyunca büyüdü!" % fmt_time(away), "level")
 
-## Hikâyeli yeni kariyer: ot ve taş bürümüş arazi, az para, hayvan yok.
+## Eski kayıtlarda ve tanıtım çiftliğinde hazır gelen binalar (yeni kariyerde hiçbiri yok).
+func _add_default_buildings() -> void:
+	for d in [["house", -11, -12], ["barn", 5, -12], ["silo", 10, -12], ["well", -5, -10]]:
+		var b = Data.BUILDINGS[d[0]]
+		if _free_area(d[1], d[2], b.w, b.d):
+			_add_entity({"kind": "building", "type": d[0], "x": d[1], "z": d[2], "w": b.w, "d": b.d, "rot": 0.0})
+
+## Hikâyeli yeni kariyer: ot ve taş bürümüş boş arazi; ev, ambar, yol, çit — her şeyi oyuncu kurar.
 func _new_story_game() -> void:
-	for z in range(-6, 12):
-		for x in [-1, 0]:
-			_add_entity({"kind": "decor", "type": "path", "x": x, "z": z})
-	for d in [["lantern", -2, 10], ["lantern", 1, 10]]:
-		_add_entity({"kind": "decor", "type": d[0], "x": d[1], "z": d[2]})
 	var r := RandomNumberGenerator.new()
 	r.seed = 2026
 	var kinds := ["weed", "weed", "weed", "stone", "weed", "stump", "stone", "weed", "log", "stone"]
@@ -4873,6 +5196,7 @@ func _new_story_game() -> void:
 
 func _new_game() -> void:
 	story_step = STORY.size()
+	_add_default_buildings()
 	for z in range(-6, 12):
 		for x in [-1, 0]:
 			_add_entity({"kind": "decor", "type": "path", "x": x, "z": z})
@@ -5035,9 +5359,9 @@ func _selftest() -> void:
 	_deliver()
 	if medals != 2 or res.fruit != 0: fails.append("sipariş teslimi")
 	if order.is_empty(): fails.append("yeni sipariş oluşmadı")
-	res = {"veg": Data.BARN_CAP - 1}
+	res = {"veg": _barn_cap() - 1}
 	_store("pumpkin", Vector3.ZERO)
-	if _res_total() != Data.BARN_CAP: fails.append("ambar kapasitesi %d" % _res_total())
+	if _res_total() != _barn_cap(): fails.append("ambar kapasitesi %d" % _res_total())
 	res = {}
 	_selftest_seasons(fails)
 	_selftest_animals(fails)
@@ -5048,6 +5372,16 @@ func _selftest() -> void:
 	_selftest_net(fails)
 	_selftest_story(fails)
 	_selftest_parcels(fails)
+	_selftest_build(fails)
+	for qq in 4:
+		gfx.q = qq
+		_apply_gfx()
+	if env.ssr_enabled != true or grass_frac != 1.0: fails.append("ultra ayarı")
+	gfx.q = 0
+	_apply_gfx()
+	if env.ssao_enabled or grass_frac >= 1.0: fails.append("düşük ayarı")
+	gfx = GFX_DEFAULT.duplicate()
+	_apply_gfx()
 	if not _ver_newer("0.10.0", "0.9.3") or _ver_newer("0.1.0", "0.1.0") or not _ver_newer("1.0", "0.9.9") or _ver_newer("0.1.0", "0.2"):
 		fails.append("sürüm karşılaştırma")
 	if _version() == "0.0.0": fails.append("sürüm numarası yok")
@@ -5059,7 +5393,7 @@ func _selftest() -> void:
 		if se.k == "animal" and se.has("lv"):
 			lv_ok = true
 	if not lv_ok: fails.append("hayvan seviyesi kaydedilmedi")
-	if data.ents.size() != n_before - 4: fails.append("kayıt varlık sayısı %d / %d" % [data.ents.size(), n_before - 4])
+	if data.ents.size() != n_before: fails.append("kayıt varlık sayısı %d / %d" % [data.ents.size(), n_before])
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(save_path))
 	print("SELFTEST ", "OK" if fails.is_empty() else "FAIL: " + ", ".join(fails))
 	get_tree().quit()
@@ -5225,6 +5559,42 @@ func _selftest_gates(fails: Array) -> void:
 	if not shelf_panel.visible: fails.append("tohum penceresi açılmadı")
 	_set_tool("hand")
 	if shelf_panel.visible: fails.append("el seçilince pencere açık kaldı")
+
+func _free_spot(w: int, d: int) -> Vector2i:
+	for z in range(FARM_MIN, FARM_MAX - d + 2):
+		for x in range(FARM_MIN, FARM_MAX - w + 2):
+			if _free_area(x, z, w, d):
+				return Vector2i(x, z)
+	return Vector2i(999, 999)
+
+func _selftest_build(fails: Array) -> void:
+	coins = 10000
+	level = 10
+	var b0 := _count_buildings("barn")
+	var cap0 := _barn_cap()
+	var sp := _free_spot(4, 4)
+	if sp.x == 999:
+		fails.append("ambar için yer yok")
+		return
+	if not _perform({"x": sp.x, "z": sp.y, "tool": "build", "arg": "barn"}): fails.append("ambar kurma")
+	var be = tiles.get(key(sp.x + 3, sp.y + 3))
+	if be == null or be.kind != "building" or be.type != "barn": fails.append("ambar 4×4 değil")
+	if _count_buildings("barn") != b0 + 1 or _barn_cap() != cap0 + Data.BARN_CAP: fails.append("ambar kapasitesi artmadı")
+	if _perform({"x": sp.x + 1, "z": sp.y + 1, "tool": "build", "arg": "silo"}): fails.append("dolu yere bina")
+	var ws := _free_spot(1, 1)
+	_perform({"x": ws.x, "z": ws.y, "tool": "build", "arg": "well"})
+	var ps := Vector2i(ws.x + 1, ws.y)
+	if not tiles.has(key(ps.x, ps.y)) and in_farm(ps.x, ps.y):
+		_perform({"x": ps.x, "z": ps.y, "tool": "plow", "arg": null})
+		var pe = tiles.get(key(ps.x, ps.y))
+		if pe == null or not pe.get("wn", false): fails.append("kuyu bonusu")
+	if not _perform({"x": sp.x, "z": sp.y, "tool": "remove", "arg": null}) or _count_buildings("barn") != b0: fails.append("bina kaldırma")
+	var we = tiles.get(key(ws.x, ws.y))
+	if we != null:
+		_remove_entity(we)
+	var pe2 = tiles.get(key(ps.x, ps.y))
+	if pe2 != null and pe2.kind == "plot":
+		_remove_entity(pe2)
 
 func _selftest_parcels(fails: Array) -> void:
 	parcels = []
@@ -5906,11 +6276,11 @@ func _apply_season_visual(instant: bool) -> void:
 			m.set_shader_parameter("tint", col)
 			m.set_shader_parameter("amt", t[1])
 		for lm in Assets.leaf_mats:
-			lm.albedo_color = leaf
+			lm.albedo_color = leaf * lm.get_meta("base", Color.WHITE)
 		return
 	var tw := create_tween().set_parallel()
 	for lm in Assets.leaf_mats:
-		tw.tween_property(lm, "albedo_color", leaf, 6.0)
+		tw.tween_property(lm, "albedo_color", leaf * lm.get_meta("base", Color.WHITE), 6.0)
 	for m in [ground_mat, grass_mat]:
 		tw.tween_property(m, "shader_parameter/tint", col, 6.0)
 		tw.tween_property(m, "shader_parameter/amt", t[1], 6.0)
@@ -5973,7 +6343,11 @@ func _store(src: String, pos: Vector3, extra := 0) -> void:
 		return
 	var r: String = Data.YIELD[src][0]
 	var amt: int = Data.YIELD[src][1] + extra
-	var add := mini(amt, Data.BARN_CAP - _res_total())
+	if _barn_cap() == 0:
+		if not loading:
+			_toast("📦 Ambarın yok: ürünler saklanamadı. 🏗️ Yapı ile ambar kur.", "warn")
+		return
+	var add := mini(amt, _barn_cap() - _res_total())
 	if add > 0:
 		res[r] = res.get(r, 0) + add
 		_float_text(pos + Vector3(0.35, -0.15, 0), "+%d %s" % [add, Data.RESOURCES[r].icon], Color("#e6f7ff"))
@@ -6040,6 +6414,9 @@ func _open_barn() -> void:
 	if net_role == "guest":
 		_toast("📦 Ambar çiftlik sahibinde.", "hint")
 		return
+	if _count_buildings("barn") == 0:
+		_toast("📦 Henüz ambarın yok. 🏗️ Yapı aletiyle bir ambar kur.", "hint")
+		return
 	help.visible = false
 	barn.visible = true
 	_render_barn()
@@ -6092,7 +6469,7 @@ func _render_barn() -> void:
 		c.queue_free()
 	var head := HBoxContainer.new()
 	var t := Label.new()
-	t.text = "📦 Ambar   %d / %d" % [_res_total(), Data.BARN_CAP]
+	t.text = "📦 Ambar   %d / %d" % [_res_total(), _barn_cap()]
 	t.add_theme_font_size_override("font_size", 24)
 	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(t)
@@ -6101,10 +6478,10 @@ func _render_barn() -> void:
 	var fill := ProgressBar.new()
 	fill.show_percentage = false
 	fill.custom_minimum_size = Vector2(0, 8)
-	fill.max_value = Data.BARN_CAP
+	fill.max_value = maxi(1, _barn_cap())
 	fill.value = _res_total()
 	fill.add_theme_stylebox_override("background", _sb(Color("#eadcc6"), 4, Color(0, 0, 0, 0), 0, 0))
-	fill.add_theme_stylebox_override("fill", _sb(Color("#e0a030") if _res_total() > Data.BARN_CAP * 0.85 else Color("#5cbf2f"), 4, Color(0, 0, 0, 0), 0, 0))
+	fill.add_theme_stylebox_override("fill", _sb(Color("#e0a030") if _res_total() > _barn_cap() * 0.85 else Color("#5cbf2f"), 4, Color(0, 0, 0, 0), 0, 0))
 	barn_box.add_child(fill)
 
 	var grid := GridContainer.new()

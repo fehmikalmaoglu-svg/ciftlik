@@ -1,5 +1,14 @@
 # Çiftliğim 3D — Sürüm Notları
 
+## v0.2.0 · Erken Erişim
+- Her şeyi sen kur: yeni çiftlikte ev, ambar, silo, kuyu, yol ve fener yok. 🏗️ Yapı aletiyle (0 tuşu) kurulur.
+  - Ambar: hasat saklama (150). Silo: +100 yer. Kuyu: çevresindeki tarlalar yarı hızda kurur. Ev: her sabah hediye altın.
+  - Hikâyeye "ambar kur" ve "ev kur" adımları eklendi. Eski kayıtlar binalarıyla açılır.
+- ⚙️ Ayarlar: tam ekran (F11), dikey eşitleme, FPS sınırı ve göstergesi, grafik kalitesi (Düşük/Orta/Yüksek/Ultra), çözünürlük, gece parlaklığı, ana ses ve efekt sesi.
+- Gece: daha aydınlık mavi ay ışığı, suda ağaç ve çevre yansıması (Yüksek ve Ultra), suda ay parıltısı.
+- Ağaç yaprakları daha canlı ve dolgun; kuru ağaçlar yol kenarlarından kalktı.
+- Güncelleme duyurusu: oyun açılışta GitHub'daki son sürüme bakar, yenisi varsa ana menüde 🔔 gösterir.
+
 ## v0.1.0 · Erken Erişim (ilk sürüm)
 - Hikâyeyle başlayan kariyer: Nermin Teyze'nin çiftliğini temizle, sür, ek, büyüt.
 - Ekinler, meyve ağaçları, hayvanlar, kümes, çiçek tarhları, balık göletleri, ambar ve pazar siparişleri.

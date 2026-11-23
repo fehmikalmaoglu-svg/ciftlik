@@ -71,9 +71,15 @@ static func garden() -> Dictionary:
 static func flower_mult(lv: int) -> float:
 	return 1.0 + 0.2 * (lv - 1)
 
+## Oyuncunun kurduğu yapılar (🏗️ Yapı aleti). w×d kare kaplar.
 const BUILDINGS := {
-	"house": "Çiftlik Evi", "barn": "Ahır", "silo": "Silo", "well": "Kuyu", "windmill": "Yel Değirmeni",
+	"barn":  {"name": "Ambar",       "icon": "📦", "cost": 50,  "level": 1, "w": 4, "d": 4, "xp": 15, "info": "4×4. Hasat burada saklanır (150 yer). Satış ve siparişler için gerekli."},
+	"well":  {"name": "Su Kuyusu",   "icon": "🪣", "cost": 40,  "level": 1, "w": 1, "d": 1, "xp": 5,  "info": "Çevresindeki (5 kare) tarla ve çiçekler yarı hızda kurur."},
+	"silo":  {"name": "Silo",        "icon": "🛢️", "cost": 150, "level": 2, "w": 2, "d": 2, "xp": 15, "info": "2×2. Ambara +100 yer açar."},
+	"house": {"name": "Çiftlik Evi", "icon": "🏠", "cost": 300, "level": 2, "w": 4, "d": 4, "xp": 40, "info": "4×4. Çiftliğin yuvası: her sabah kapıda küçük bir hediye bırakılır."},
 }
+const SILO_CAP := 100
+const WELL_RANGE := 5
 
 ## Kaynaklar: hasatla ambara girer, satılır ya da siparişe verilir.
 const RESOURCES := {

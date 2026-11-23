@@ -9,9 +9,11 @@ static var _glow: StandardMaterial3D
 static var _water: ShaderMaterial
 const WATER_SHADER := """
 shader_type spatial;
-render_mode blend_mix, cull_back, depth_draw_opaque;
+render_mode cull_back, depth_draw_opaque;
 uniform vec4 shallow : source_color = vec4(0.36, 0.74, 0.88, 1.0);
 uniform vec4 deep : source_color = vec4(0.10, 0.36, 0.55, 1.0);
+uniform vec3 moon_dir = vec3(0.0, 1.0, 0.0);   // dünya uzayında aya yön
+uniform float night = 0.0;
 void fragment() {
 	vec3 wp = (INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	vec2 p = wp.xz;
@@ -20,8 +22,11 @@ void fragment() {
 		sin(p.y * 1.9 - t * 1.1) + 0.7 * sin(p.y * 0.7 - p.x * 1.1 + t * 0.8) + 0.4 * sin(p.x * 2.9 - t * 1.7)) * 0.05;
 	NORMAL = normalize((VIEW_MATRIX * vec4(normalize(vec3(g.x, 1.0, g.y)), 0.0)).xyz);
 	float fr = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 4.0);
-	ALBEDO = mix(deep.rgb, shallow.rgb, 0.45) * (1.0 - fr * 0.6);
-	ALPHA = mix(0.8, 0.97, fr);
+	ALBEDO = mix(deep.rgb, shallow.rgb, 0.3) * (1.0 - fr * 0.75);
+	// ayın suda parıltısı ve ay yolu
+	vec3 md = normalize((VIEW_MATRIX * vec4(moon_dir, 0.0)).xyz);
+	float gl = max(dot(reflect(-VIEW, NORMAL), md), 0.0);
+	EMISSION = vec3(1.0, 0.95, 0.82) * (pow(gl, 700.0) * 8.0 + pow(gl, 40.0) * 0.35) * night;
 	METALLIC = 0.0;
 	ROUGHNESS = 0.03;
 	SPECULAR = 0.5 + 0.5 * fr;

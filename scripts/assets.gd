@@ -8,6 +8,8 @@ static var _scenes := {}
 static var _fixed := {}
 ## Mevsimle renklenen yaprak/ot malzemeleri (MegaKit "Leaves*", "Leaf*", "Grass", "Flowers" hariç).
 static var leaf_mats: Array[BaseMaterial3D] = []
+## Yaprak taban rengi (1'in üstü = dokuyu aydınlatır); mevsim rengi bununla çarpılır.
+const LEAF_BASE := Color(1.15, 1.2, 1.0)
 ## Kenney paletini (nane yeşili/şeftali) oyunun sıcak paletine çevir.
 const PALETTE := {
 	"leafsGreen": "#4caf50", "leafsDark": "#2e7d32", "grass": "#66bb6a",
@@ -50,7 +52,19 @@ static func _fix(n: Node) -> void:
 					if PALETTE.has(m.resource_name):
 						c.albedo_color = Color(PALETTE[m.resource_name])
 					if m.resource_name.begins_with("Lea"):
+						# MegaKit yaprakları kendi shader'ı olmadan koyu kalıyor: aydınlat, arkadan ışık geçir
+						var base := LEAF_BASE * (Color(1.35, 1.25, 1.2) if "Pine" in m.resource_name else Color.WHITE)
+						c.set_meta("base", base)
+						c.albedo_color = base
+						c.backlight_enabled = true
+						c.backlight = Color(0.16, 0.22, 0.05)
+						c.metallic_specular = 0.0
+						c.roughness = 1.0
+						c.cull_mode = BaseMaterial3D.CULL_DISABLED
+						c.diffuse_mode = BaseMaterial3D.DIFFUSE_LAMBERT_WRAP
 						leaf_mats.append(c)
+					elif m.resource_name.begins_with("Bark"):
+						c.albedo_color = Color(1.25, 1.15, 1.1)
 					_fixed[m] = c
 				mi.set_surface_override_material(i, _fixed[m])
 	for c in n.get_children():
