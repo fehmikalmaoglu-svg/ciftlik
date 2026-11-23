@@ -143,9 +143,11 @@ const HELP_PAGES := [
 		["Tekerlek", "Yakınlaştır / uzaklaştır."],
 		["Tab · 🎒", "Çark menüyü açar: aletler imlecin çevresinde dizilir, birine tıkla. Sağ alttaki 🎒 düğmesi de açar."],
 		["1 – 9 · 0 · -", "Aleti doğrudan seç: El, Çapa, Tohum, Sula, Ağaç, Hayvan, Dekor, Bahçe, Kaldır; 0 Yapı, - Taşı."],
-		["🚚 · 🗑️", "Taşı: nesneye tıkla, sonra yeni yerine tıkla; seçiliyken kendisine tıkla ya da T ile döndür (Esc vazgeçer). Binanın üstünde basılı tut: Döndür / Taşı / Kaldır menüsü; ambar, ev, ağaç, hayvan, çit… hepsi taşınır, bedava. Kaldır: nesneyi siler, yarı fiyatı geri gelir."],
+		["🚚 · 🗑️", "Taşı: nesneye tıkla, sonra yeni yerine tıkla; seçiliyken kendisine tıkla ya da T ile döndür (Esc vazgeçer). Her nesnenin (bina, fener, çit, ağaç, hayvan…) üstünde basılı tut: Döndür / Taşı / Kaldır menüsü; ambar, ev, ağaç, hayvan, çit… hepsi taşınır, bedava. Kaldır: nesneyi siler, yarı fiyatı geri gelir."],
 		["B · J · Esc", "B ambarı, J görev panelini açar; Esc iş kuyruğunu ve pencereleri kapatır."],
 		["🎣", "Balık tutma: gölün batı kıyısındaki 🎣 Balıkçı tezgâhından olta ve yem al. Göle tıkla; ❗ çıkınca tıkla (ya da Boşluk), mini oyunda basılı tutarak yeşil alanı balığın üstünde tut. 6 tür var, yayın balığı geceleri çıkar; tezgâhta balık defterin durur."],
+		["🌬️", "Değirmen (çiftliğin kuzeydoğusu, seviye 2): 6 tahılı una çevirir. İbre yeşil bölgedeyken tıkla; 5 turun her isabeti 1 🥖 un, altın ortası fazladan XP."],
+		["🏠", "Çiftlik evi her sabah kapına hediye altın bırakır (seviyenle artar)."],
 		["G · 😄", "Emote çubuğu: el salla, gül, kalp, alkış… Yakında arkadaşın varsa karakterin ona döner; online iki tarafta da görünür."],
 	]],
 	["🌱  Tarım", [
@@ -402,6 +404,18 @@ const FISH_SHOP := [
 	["bait2", "✨ Parlak Yem ×5", 80, 3, "Nadir balıkları (alabalık, turna, yayın, altın sazan) 3 kat çeker."],
 ]
 const STALL := Vector3(23.4, 0, 0.6)   # gölün batı kıyısı
+## Değirmen: bir öğütme 6 tahıl alır, 5 vuruşun her isabeti 1 un verir.
+const MILL_POS := Vector3(25, 0, -12)
+const MILL_IN := 6
+const MILL_ROUNDS := 5
+const MILL_LEVEL := 2
+var mill_state := ""    # "" | game
+var mill_g := {}
+var mill_spin := 0.0    # isabetlerde kanatlar hızlanır
+var mill_ui: PanelContainer
+var mill_dial: Control
+var mill_msg: Label
+var mill_row: Label
 var fishgear := {"rod": 0, "bait": 0, "bait2": 0, "use2": false, "log": {}}
 var fish_state := ""      # "" | walk | wait | bite | game
 var fish_t := 0.0
@@ -1973,7 +1987,22 @@ func _turn_entity(e) -> void:
 	if e != null and e.kind != "debris" and e.kind != "plot":
 		_perform({"tool": "move", "arg": "%d,%d" % [e.x, e.z], "x": e.x, "z": e.z})
 
-## Bina üstünde basılı tutunca: Döndür / Taşı / Kaldır.
+## Nesnenin simgesi ve adı (menü başlığı).
+func _ent_label(e: Dictionary) -> String:
+	var def = null
+	match e.kind:
+		"building": def = Data.BUILDINGS.get(e.type)
+		"decor": def = Data.DECOR.get(e.type)
+		"tree": def = Data.TREES.get(e.type)
+		"animal": def = Data.ANIMALS.get(e.type)
+		"flower": def = Data.FLOWERS.get(e.type)
+		"pond": def = Data.POND
+		"coop": def = Data.COOP
+	if def == null:
+		return str(e.get("type", e.kind))
+	return "%s %s" % [def.get("icon", "📦"), def.get("name", str(e.get("type", "")))]
+
+## Nesnenin üstünde basılı tutunca: Döndür / Taşı / Kaldır.
 func _open_ctx(e) -> void:
 	if ctx_menu == null:
 		ctx_menu = _panel(10)
@@ -1985,9 +2014,8 @@ func _open_ctx(e) -> void:
 	for c in ctx_box.get_children():
 		ctx_box.remove_child(c)
 		c.queue_free()
-	var bd: Dictionary = Data.BUILDINGS.get(e.type, {"icon": "🏠", "name": str(e.type)})
 	var t := Label.new()
-	t.text = "%s %s" % [bd.icon, bd.name]
+	t.text = _ent_label(e)
 	t.add_theme_font_size_override("font_size", 17)
 	ctx_box.add_child(t)
 	var ee = e
@@ -2020,7 +2048,12 @@ func _update_hold(dt: float) -> void:
 	if Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
 		hold_t += dt
 		if mouse_pos.distance_to(hold_at) > 16.0:
-			hold_ent = null   # sürükledi: vazgeç
+			# sürükledi: normal tıklama gibi işle ve sürükleyerek boyamaya devam et
+			var hv0 := hold_tile
+			hold_ent = null
+			_click_tile(hv0, hold_at)
+			painting = true
+			drag_moved = true
 		elif hold_t >= 0.45:
 			var he = hold_ent
 			hold_ent = null
@@ -2944,7 +2977,13 @@ func _unhandled_input(ev: InputEvent) -> void:
 					return
 				if fish_state != "" and _fish_click():
 					return
+				if mill_state != "":
+					_mill_hit()
+					return
 				var gp = _pick_point(ev.position)
+				if gp != null and _near_mill(gp):
+					_open_mill()
+					return
 				if gp != null and _near_stall(gp):
 					_open_fish_shop()
 					return
@@ -2977,7 +3016,7 @@ func _unhandled_input(ev: InputEvent) -> void:
 					return
 				if hover != null:
 					var he = tiles.get(key(hover.x, hover.y))
-					if he != null and he.kind == "building":
+					if he != null and he.kind != "plot" and he.kind != "debris":
 						# kısa tıklama bırakınca işlenir; basılı tutulursa menü açılır
 						painting = false
 						hold_ent = he
@@ -3011,6 +3050,8 @@ func _unhandled_input(ev: InputEvent) -> void:
 				_open_wheel(mouse_pos)
 		elif k == KEY_SPACE and (fish_state == "bite" or fish_state == "wait"):
 			_fish_click()
+		elif k == KEY_SPACE and mill_state != "":
+			_mill_hit()
 		elif k == KEY_G:
 			_toggle_emote_bar()
 		elif k == KEY_T:
@@ -3024,6 +3065,11 @@ func _unhandled_input(ev: InputEvent) -> void:
 				return
 			if fish_state != "":
 				_fish_end()
+				return
+			if mill_state != "":
+				mill_state = ""
+				mill_ui.visible = false
+				_toast("🌬️ Öğütme yarıda kaldı, tahıl harcanmadı.", "hint")
 				return
 			if emote_bar != null and emote_bar.visible:
 				emote_bar.visible = false
@@ -3197,7 +3243,9 @@ func _describe(e, act, arg, x: int, z: int) -> String:
 				s = "%s %s\n%s" % [bd.icon, bd.name, bd.info]
 				if e.type == "barn" or e.type == "silo":
 					s += "\n📦 %d / %d" % [_res_total(), _barn_cap()]
-				s += "\n🖱️ Basılı tut: döndür · taşı · kaldır"
+
+	if e != null and e.kind != "plot" and e.kind != "debris":
+		s += ("\n" if s != "" else "") + "🖱️ Basılı tut: döndür · taşı · kaldır"
 	if act != null:
 		var extra := ""
 		match act:
@@ -3484,7 +3532,8 @@ func _update_gates(dt: float) -> void:
 func _animate_world(dt: float) -> void:
 	clock_t += dt
 	var blades: Node3D = windmill.get_meta("blades")
-	blades.rotation.z += dt * 0.8
+	mill_spin = move_toward(mill_spin, 0.0, dt * 1.5)
+	blades.rotation.z += dt * (0.8 + mill_spin)
 	for c in clouds:
 		c.position.x += dt * 0.6
 		if c.position.x > 65.0:
@@ -4376,6 +4425,9 @@ func net_req(t: String, a: String, x: int, z: int) -> void:
 	if t == "@deliver":
 		_deliver()
 		net_quest_dirty = true
+		return
+	if t == "@mill":   # misafir öğüttü: x isabet, z mükemmel
+		_mill_finish(x, z)
 		return
 	if t == "@fishbuy":
 		_fish_buy(a)
@@ -5584,6 +5636,7 @@ func _process(delta: float) -> void:
 	_update_hold(dt)
 	_update_emotes(dt)
 	_update_fishing(dt)
+	_update_mill(dt)
 	sim_acc += dt
 	if sim_acc > 0.1:
 		_simulate(sim_acc)
@@ -5621,6 +5674,17 @@ func _process(delta: float) -> void:
 					_set_tool(a.substr(7), true)
 				elif a == "--wheel":
 					_open_wheel(Vector2(640, 380))
+				elif a == "--mill":   # geliştirici: değirmen penceresi
+					level = maxi(level, 2)
+					res["cereal"] = 14
+					_open_mill()
+				elif a == "--millgame":   # geliştirici: değirmen mini oyunu
+					level = maxi(level, 2)
+					res["cereal"] = 14
+					_mill_start()
+					mill_g.hits = [2, 1, 0]
+					mill_g.round = 3
+					mill_g.a = float(mill_g.zone) - 0.8
 				elif a == "--fishshop":   # geliştirici: balıkçı tezgâhı
 					fishgear.rod = 1
 					fishgear.bait = 7
@@ -6211,6 +6275,229 @@ func _open_fish_shop() -> void:
 		land_dlg.visible = false, true, true))
 	land_dlg.visible = true
 
+# ============================================================ değirmen
+func _near_mill(p: Vector3) -> bool:
+	return Vector2(p.x - MILL_POS.x, p.z - MILL_POS.z).length() < 2.8
+
+func _open_mill() -> void:
+	for c in land_box.get_children():
+		land_box.remove_child(c)
+		c.queue_free()
+	shop_open = false
+	var t := Label.new()
+	t.text = "🌬️ Değirmen"
+	t.add_theme_font_size_override("font_size", 26)
+	land_box.add_child(t)
+	var d := Label.new()
+	d.text = "Tahılı una çevir: %d 🌾 Tahıl → en çok %d 🥖 Un. Un ambarda tahıldan çok daha değerli (🌾 %d 🪙, 🥖 %d 🪙)." % [MILL_IN, MILL_ROUNDS, Data.RESOURCES.cereal.price, Data.RESOURCES.flour.price]
+	d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	d.add_theme_color_override("font_color", Color("#7a5a3a"))
+	land_box.add_child(d)
+	var st := Label.new()
+	st.text = "Ambarda: 🌾 %d   ·   🥖 %d" % [int(res.get("cereal", 0)), int(res.get("flour", 0))]
+	st.add_theme_font_size_override("font_size", 18)
+	land_box.add_child(st)
+	var how := Label.new()
+	how.text = "Nasıl: taşın etrafında ibre döner. İbre yeşil bölgedeyken tıkla (ya da Boşluk). Altın ortası ✨ mükemmel: fazladan XP. %d tur, her tur biraz daha hızlı." % MILL_ROUNDS
+	how.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	how.add_theme_font_size_override("font_size", 13)
+	how.add_theme_color_override("font_color", Color("#8a7260"))
+	land_box.add_child(how)
+	var why := ""
+	if level < MILL_LEVEL:
+		why = "⭐ Değirmen seviye %d'de açılır" % MILL_LEVEL
+	elif int(res.get("cereal", 0)) < MILL_IN:
+		why = "🌾 En az %d tahıl gerekli (buğday ve mısır hasadı ambara tahıl olarak gelir)" % MILL_IN
+	if why != "":
+		var w := Label.new()
+		w.text = why
+		w.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		w.add_theme_color_override("font_color", Color("#c62828"))
+		land_box.add_child(w)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	row.add_child(_small_btn("  ⚙️ Öğüt  ", func():
+		land_dlg.visible = false
+		_mill_start(), why == "", true))
+	row.add_child(_small_btn("  Kapat  ", func(): land_dlg.visible = false))
+	land_box.add_child(row)
+	land_dlg.visible = true
+
+func _mill_start() -> bool:
+	if mill_state != "" or level < MILL_LEVEL or int(res.get("cereal", 0)) < MILL_IN:
+		return false
+	_fish_end()
+	mill_state = "game"
+	mill_g = {"round": 0, "a": 0.0, "lap": 0.0, "hits": [], "wait": 0.0}
+	_mill_new_round()
+	_build_mill_ui()
+	mill_ui.visible = true
+	mill_msg.text = "İbre yeşile gelince tıkla!"
+	_mill_layout()
+	return true
+
+func _mill_new_round() -> void:
+	var rd := int(mill_g.round)
+	mill_g.zone = randf() * TAU
+	mill_g.zw = maxf(0.22, 0.46 - rd * 0.05)    # yeşil yarı genişlik (radyan)
+	mill_g.pw = 0.11                            # altın orta
+	mill_g.speed = 2.3 + rd * 0.45
+	mill_g.lap = 0.0
+	mill_g.a = fmod(float(mill_g.zone) + PI, TAU)   # ibre bölgenin karşısından başlar
+
+## İbre açısına göre sonuç: 2 mükemmel, 1 iyi, 0 ıska.
+static func _mill_judge(a: float, zone: float, zw: float, pw: float) -> int:
+	var dd := absf(wrapf(a - zone, -PI, PI))
+	if dd <= pw:
+		return 2
+	if dd <= zw:
+		return 1
+	return 0
+
+func _mill_hit() -> void:
+	if mill_state != "game" or float(mill_g.wait) > 0.0:
+		return
+	var r := _mill_judge(float(mill_g.a), float(mill_g.zone), float(mill_g.zw), float(mill_g.pw))
+	_mill_record(r)
+
+func _mill_record(r: int) -> void:
+	mill_g.hits.append(r)
+	mill_msg.text = ["❌ Iska!", "👍 İyi!", "✨ Mükemmel!"][r]
+	if r > 0:
+		mill_spin = 2.5 + r
+		_sfx("harvest" if r == 2 else "place")
+	else:
+		_sfx("error")
+	mill_g.round = int(mill_g.round) + 1
+	mill_g.wait = 0.55
+	if int(mill_g.round) >= MILL_ROUNDS:
+		mill_g.wait = 0.9
+
+func _update_mill(dt: float) -> void:
+	if mill_state != "game":
+		return
+	if float(mill_g.wait) > 0.0:
+		mill_g.wait = float(mill_g.wait) - dt
+		if float(mill_g.wait) <= 0.0:
+			if int(mill_g.round) >= MILL_ROUNDS:
+				var good := 0
+				var perfect := 0
+				for h in mill_g.hits:
+					if int(h) > 0:
+						good += 1
+					if int(h) == 2:
+						perfect += 1
+				_mill_done(good, perfect)
+				return
+			_mill_new_round()
+			mill_msg.text = "Tur %d / %d" % [int(mill_g.round) + 1, MILL_ROUNDS]
+	else:
+		var step := float(mill_g.speed) * dt
+		mill_g.a = fmod(float(mill_g.a) + step, TAU)
+		mill_g.lap = float(mill_g.lap) + step
+		if float(mill_g.lap) > TAU * 2.2:   # iki tur bekledi: ıska say
+			_mill_record(0)
+	_mill_layout()
+
+func _mill_done(good: int, perfect: int) -> void:
+	mill_state = ""
+	if mill_ui != null:
+		mill_ui.visible = false
+	if net_role == "guest":
+		rpc_id(1, "net_req", "@mill", "", good, perfect)
+		res["cereal"] = maxi(0, int(res.get("cereal", 0)) - MILL_IN)
+		res["flour"] = int(res.get("flour", 0)) + good
+		_toast("🌬️ Öğütme bitti: +%d 🥖 Un" % good, "level")
+		return
+	_mill_finish(good, perfect)
+
+## Ev sahibinde: tahılı düş, unu ekle, XP ver.
+func _mill_finish(good: int, perfect: int) -> bool:
+	good = clampi(good, 0, MILL_ROUNDS)
+	perfect = clampi(perfect, 0, good)
+	if int(res.get("cereal", 0)) < MILL_IN:
+		return false
+	res["cereal"] = int(res.get("cereal", 0)) - MILL_IN
+	res["flour"] = int(res.get("flour", 0)) + good
+	var p := Vector3(MILL_POS.x, 1.5, MILL_POS.z)
+	_gain(0, good * 2 + perfect * 2, farmer.position, "🥖")
+	if good == MILL_ROUNDS and perfect == MILL_ROUNDS:
+		_toast("🌬️ Kusursuz öğütme! +%d 🥖 Un" % good, "level")
+	else:
+		_toast("🌬️ Öğütme bitti: +%d 🥖 Un  (%d mükemmel)" % [good, perfect], "level")
+	_burst(p + Vector3(0, 2.0, 0), "#fff8e1", 18, 3.0)
+	net_quest_dirty = true
+	hud_dirty = true
+	if barn.visible:
+		_render_barn()
+	return true
+
+func _build_mill_ui() -> void:
+	if mill_ui != null:
+		return
+	mill_ui = _panel(14)
+	mill_ui.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ui.add_child(mill_ui)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 6)
+	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	mill_ui.add_child(v)
+	var t := Label.new()
+	t.text = "🌬️ Değirmen taşı"
+	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	t.add_theme_font_size_override("font_size", 20)
+	v.add_child(t)
+	mill_dial = Control.new()
+	mill_dial.custom_minimum_size = Vector2(230, 230)
+	mill_dial.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	mill_dial.draw.connect(_draw_mill_dial)
+	v.add_child(mill_dial)
+	mill_msg = Label.new()
+	mill_msg.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	mill_msg.add_theme_font_size_override("font_size", 18)
+	v.add_child(mill_msg)
+	mill_row = Label.new()
+	mill_row.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	mill_row.add_theme_font_size_override("font_size", 22)
+	v.add_child(mill_row)
+	var h := Label.new()
+	h.text = "Tıkla / Boşluk · Esc: vazgeç"
+	h.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	h.add_theme_font_size_override("font_size", 12)
+	h.add_theme_color_override("font_color", Color("#8a7260"))
+	v.add_child(h)
+
+func _draw_mill_dial() -> void:
+	if mill_g.is_empty():
+		return
+	var c := mill_dial.size / 2.0
+	var r := 88.0
+	mill_dial.draw_circle(c, r + 14.0, Color("#bfae98"))
+	mill_dial.draw_circle(c, r - 14.0, Color("#9e8e7a"))
+	mill_dial.draw_arc(c, r, 0.0, TAU, 72, Color("#e8dcc8"), 20.0)
+	var z := float(mill_g.zone)
+	mill_dial.draw_arc(c, r, z - float(mill_g.zw), z + float(mill_g.zw), 24, Color("#7cc44e"), 20.0)
+	mill_dial.draw_arc(c, r, z - float(mill_g.pw), z + float(mill_g.pw), 12, Color("#f4c430"), 20.0)
+	for i in 8:   # taşın oyukları
+		var aa := TAU * i / 8.0 + float(mill_g.a) * 0.3
+		mill_dial.draw_line(c + Vector2(cos(aa), sin(aa)) * 18.0, c + Vector2(cos(aa), sin(aa)) * (r - 18.0), Color("#8a7a66"), 3.0)
+	var a := float(mill_g.a)
+	mill_dial.draw_line(c, c + Vector2(cos(a), sin(a)) * (r + 16.0), Color("#4e342e"), 6.0)
+	mill_dial.draw_circle(c, 12.0, Color("#5d4037"))
+
+func _mill_layout() -> void:
+	var icons := ""
+	for i in MILL_ROUNDS:
+		if i < mill_g.hits.size():
+			icons += ["❌", "🥖", "✨"][int(mill_g.hits[i])] + " "
+		else:
+			icons += "⚪ "
+	mill_row.text = icons
+	mill_dial.queue_redraw()
+	mill_ui.reset_size()
+	var vs := get_viewport().get_visible_rect().size
+	mill_ui.position = Vector2((vs.x - mill_ui.size.x) / 2.0, (vs.y - mill_ui.size.y) / 2.0 + 40.0)
+
 # ============================================================ arazi (parseller)
 func _build_land_ui() -> void:
 	land_dlg = ColorRect.new()
@@ -6411,6 +6698,16 @@ func _selftest_build(fails: Array) -> void:
 	_open_ctx(tb)
 	if ctx_menu == null or not ctx_menu.visible or ctx_box.get_child_count() < 4: fails.append("basılı tut menüsü")
 	ctx_menu.visible = false
+	var lamp := _free_spot(1, 1)
+	if lamp.x != 999:
+		var le := _add_entity({"kind": "decor", "type": "lantern", "x": lamp.x, "z": lamp.y})
+		_open_ctx(le)
+		if not ctx_menu.visible or not str(ctx_box.get_child(0).text).contains(Data.DECOR.lantern.name): fails.append("fener menüsü")
+		ctx_menu.visible = false
+		var lr: float = le.rot
+		_turn_entity(le)
+		if absf(fmod(le.rot - lr + TAU, TAU) - PI / 2.0) > 0.01: fails.append("fener döndürme")
+		_remove_entity(le)
 	# hikâye: kümes önceden kurulduysa adım kendiliğinden geçer
 	var ks := story_step
 	var kh := story_have
@@ -6439,6 +6736,7 @@ func _selftest_build(fails: Array) -> void:
 	_update_emotes(3.5)
 	if not emote_fx.is_empty(): fails.append("emote kaybolmadı")
 	_selftest_fish(fails)
+	_selftest_mill(fails)
 	var rb := _refund_of(tiles.get(key(sp.x, sp.y)))
 	var c2 := coins
 	if not _perform({"x": sp.x, "z": sp.y, "tool": "remove", "arg": null}) or _count_buildings("barn") != b0: fails.append("bina kaldırma")
@@ -6449,6 +6747,27 @@ func _selftest_build(fails: Array) -> void:
 	var pe2 = tiles.get(key(ps.x, ps.y))
 	if pe2 != null and pe2.kind == "plot":
 		_remove_entity(pe2)
+
+func _selftest_mill(fails: Array) -> void:
+	var keep_res := res.duplicate()
+	if _mill_judge(1.0, 1.0, 0.4, 0.1) != 2 or _mill_judge(1.3, 1.0, 0.4, 0.1) != 1 or _mill_judge(2.0, 1.0, 0.4, 0.1) != 0: fails.append("değirmen hakemi")
+	if _mill_judge(0.05, TAU - 0.05, 0.4, 0.15) != 2: fails.append("değirmen açı sarması")
+	if not _near_mill(MILL_POS) or _near_mill(Vector3.ZERO): fails.append("değirmen algılama")
+	res = {"cereal": 4}
+	if _mill_start(): fails.append("tahılsız öğütme")
+	res = {"cereal": 10}
+	if not _mill_finish(4, 1) or int(res.cereal) != 4 or int(res.flour) != 4: fails.append("öğütme sonucu %s" % res)
+	if _mill_finish(5, 0): fails.append("eksik tahılla öğütme")
+	res = {"cereal": 10}
+	level = maxi(level, MILL_LEVEL)
+	if not _mill_start(): fails.append("öğütme başlamadı")
+	for i in MILL_ROUNDS:
+		mill_g.a = mill_g.zone
+		mill_g.wait = 0.0
+		_mill_hit()
+	_update_mill(1.0)
+	if mill_state != "" or int(res.get("flour", 0)) != MILL_ROUNDS: fails.append("tam öğütme %s" % res)
+	res = keep_res
 
 func _selftest_fish(fails: Array) -> void:
 	var keep_g := fishgear.duplicate(true)

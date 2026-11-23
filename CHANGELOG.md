@@ -1,5 +1,13 @@
 # Çiftliğim 3D — Sürüm Notları
 
+## v0.7.0 · Erken Erişim
+- 🌬️ Değirmen çalışıyor (çiftliğin kuzeydoğusundaki yel değirmeni, seviye 2): tıkla, 6 🌾 tahılı una öğüt.
+  - Mini oyun: değirmen taşının çevresinde ibre döner; yeşil bölgedeyken tıkla (ya da Boşluk). 5 tur, her tur daha hızlı ve dar. Her isabet 1 🥖 Un, altın ortası ✨ fazladan XP. Kanatlar isabetlerde hızlanır.
+  - Un ambarda 8 🪙 (tahıl 3 🪙): 6 tahıl 18 🪙 eder, iyi öğütmeyle 40 🪙'ye kadar.
+  - Online: arkadaşın da öğütebilir.
+- Basılı tut menüsü (🔄 Döndür · 🚚 Taşı · 🗑️ Kaldır) artık her nesnede: fener, çit, yol, ağaç, hayvan, kümes, gölet, çiçek… Basılı tutup sürüklersen eskisi gibi çoklu iş yapar.
+- Yardım: çiftlik evinin her sabah hediye altın bıraktığı yazıldı.
+
 ## v0.6.0 · Erken Erişim
 - 🎣 Balık tutma! Gölün batı kıyısında Balıkçı tezgâhı var: Bambu Olta (120 🪙), Usta Oltası (900 🪙, Sv 5), Solucan ×10 (30 🪙), Parlak Yem ×5 (80 🪙, Sv 3).
   - Göle tıkla: çiftçi kıyıya yürür ve oltayı atar. Şamandıra batıp ❗ çıkınca tıkla (ya da Boşluk).

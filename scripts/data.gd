@@ -93,6 +93,7 @@ const RESOURCES := {
 	"milk":     {"name": "Süt",       "icon": "🥛", "price": 14},
 	"flower":   {"name": "Çiçek",     "icon": "🌷", "price": 7},
 	"fish":     {"name": "Balık",     "icon": "🐟", "price": 10},
+	"flour":    {"name": "Un",        "icon": "🥖", "price": 8},
 }
 
 ## Hangi hasat hangi kaynaktan kaç tane verir.
