@@ -1,5 +1,14 @@
 # Çiftliğim 3D — Sürüm Notları
 
+## v0.8.0 · Erken Erişim
+- 🔥 Fırın (🏗️ Yapı, seviye 3, 2×2, 250 🪙). Tıkla, tarif seç:
+  - 🥐 Poğaça: 2 🥖 un + 1 🥚 yumurta → 30 🪙
+  - 🥪 Balık Ekmek: 1 🥖 un + 2 🐟 balık → 45 🪙 (Sv 3)
+  - 🥧 Meyveli Turta: 2 🥖 un + 1 🥛 süt + 2 🍎 meyve → 72 🪙 (Sv 4)
+- Pişirme mini oyunu: tıkla ya da Boşluk ile körükle, fırın kendiliğinden soğur; ısıyı yukarı aşağı kayan yeşil bantta tut. 9,5 saniyede pişirirsen ✨ altın kıvamı: +1 ürün. Fazla ısınırsa yanar, süre biterken yarıdan azı pişmişse hamur çiğ kalır.
+- Fırın kurunca pazar siparişleri fırın ürünleri de ister; "Fırında pişir" görevleri gelir.
+- Online: arkadaşın da pişirebilir.
+
 ## v0.7.0 · Erken Erişim
 - 🌬️ Değirmen çalışıyor (çiftliğin kuzeydoğusundaki yel değirmeni, seviye 2): tıkla, 6 🌾 tahılı una öğüt.
   - Mini oyun: değirmen taşının çevresinde ibre döner; yeşil bölgedeyken tıkla (ya da Boşluk). 5 tur, her tur daha hızlı ve dar. Her isabet 1 🥖 Un, altın ortası ✨ fazladan XP. Kanatlar isabetlerde hızlanır.

@@ -76,6 +76,7 @@ const BUILDINGS := {
 	"barn":  {"name": "Ambar",       "icon": "📦", "cost": 50,  "level": 1, "w": 4, "d": 4, "xp": 15, "info": "4×4. Hasat burada saklanır (150 yer). Satış ve siparişler için gerekli."},
 	"well":  {"name": "Su Kuyusu",   "icon": "🪣", "cost": 40,  "level": 1, "w": 1, "d": 1, "xp": 5,  "info": "Çevresindeki (5 kare) tarla ve çiçekler yarı hızda kurur."},
 	"silo":  {"name": "Silo",        "icon": "🛢️", "cost": 150, "level": 2, "w": 2, "d": 2, "xp": 15, "info": "2×2. Ambara +100 yer açar."},
+	"oven": {"name": "Fırın", "icon": "🔥", "cost": 250, "level": 3, "w": 2, "d": 2, "xp": 25, "info": "2×2. Undan poğaça, balık ekmek ve meyveli turta pişirir. Tıkla: fırın penceresi."},
 	"house": {"name": "Çiftlik Evi", "icon": "🏠", "cost": 300, "level": 2, "w": 4, "d": 4, "xp": 40, "info": "4×4. Çiftliğin yuvası: her sabah kapıda küçük bir hediye bırakılır."},
 }
 const SILO_CAP := 100
@@ -94,6 +95,9 @@ const RESOURCES := {
 	"flower":   {"name": "Çiçek",     "icon": "🌷", "price": 7},
 	"fish":     {"name": "Balık",     "icon": "🐟", "price": 10},
 	"flour":    {"name": "Un",        "icon": "🥖", "price": 8},
+	"pogaca":   {"name": "Poğaça",    "icon": "🥐", "price": 30},
+	"fishbread": {"name": "Balık Ekmek", "icon": "🥪", "price": 45},
+	"pie":      {"name": "Meyveli Turta", "icon": "🥧", "price": 72},
 }
 
 ## Hangi hasat hangi kaynaktan kaç tane verir.

@@ -146,6 +146,7 @@ const HELP_PAGES := [
 		["🚚 · 🗑️", "Taşı: nesneye tıkla, sonra yeni yerine tıkla; seçiliyken kendisine tıkla ya da T ile döndür (Esc vazgeçer). Her nesnenin (bina, fener, çit, ağaç, hayvan…) üstünde basılı tut: Döndür / Taşı / Kaldır menüsü; ambar, ev, ağaç, hayvan, çit… hepsi taşınır, bedava. Kaldır: nesneyi siler, yarı fiyatı geri gelir."],
 		["B · J · Esc", "B ambarı, J görev panelini açar; Esc iş kuyruğunu ve pencereleri kapatır."],
 		["🎣", "Balık tutma: gölün batı kıyısındaki 🎣 Balıkçı tezgâhından olta ve yem al. Göle tıkla; ❗ çıkınca tıkla (ya da Boşluk), mini oyunda basılı tutarak yeşil alanı balığın üstünde tut. 6 tür var, yayın balığı geceleri çıkar; tezgâhta balık defterin durur."],
+		["🔥", "Fırın (Yapı, seviye 3, 2×2): un ile poğaça (+yumurta), balık ekmek (+balık) ve meyveli turta (+süt, meyve) pişir. Tıkla ya da Boşluk ile körükle, ısıyı yeşil bantta tut; çabuk pişirirsen +1 ürün."],
 		["🌬️", "Değirmen (çiftliğin kuzeydoğusu, seviye 2): 6 tahılı una çevirir. İbre yeşil bölgedeyken tıkla; 5 turun her isabeti 1 🥖 un, altın ortası fazladan XP."],
 		["🏠", "Çiftlik evi her sabah kapına hediye altın bırakır (seviyenle artar)."],
 		["G · 😄", "Emote çubuğu: el salla, gül, kalp, alkış… Yakında arkadaşın varsa karakterin ona döner; online iki tarafta da görünür."],
@@ -404,6 +405,19 @@ const FISH_SHOP := [
 	["bait2", "✨ Parlak Yem ×5", 80, 3, "Nadir balıkları (alabalık, turna, yayın, altın sazan) 3 kat çeker."],
 ]
 const STALL := Vector3(23.4, 0, 0.6)   # gölün batı kıyısı
+## Fırın tarifleri: girdi kaynakları → ürün (Data.RESOURCES'da).
+const RECIPES := [
+	{"id": "pogaca", "name": "Poğaça", "icon": "🥐", "need": {"flour": 2, "egg": 1}, "level": 3, "xp": 6},
+	{"id": "fishbread", "name": "Balık Ekmek", "icon": "🥪", "need": {"flour": 1, "fish": 2}, "level": 3, "xp": 8},
+	{"id": "pie", "name": "Meyveli Turta", "icon": "🥧", "need": {"flour": 2, "milk": 1, "fruit": 2}, "level": 4, "xp": 12},
+]
+var bake_state := ""
+var bake_g := {}
+var bake_stoke := 0
+var bake_ui: PanelContainer
+var bake_therm: Control
+var bake_bar: ProgressBar
+var bake_msg: Label
 ## Değirmen: bir öğütme 6 tahıl alır, 5 vuruşun her isabeti 1 un verir.
 const MILL_POS := Vector3(25, 0, -12)
 const MILL_IN := 6
@@ -2070,6 +2084,9 @@ func _click_tile(hv: Vector2i, at: Vector2) -> void:
 	if he != null and he.kind == "building" and (he.type == "barn" or he.type == "silo") and tool != "remove" and tool != "build" and tool != "move":
 		_open_barn()
 		return
+	if he != null and he.kind == "building" and he.type == "oven" and tool != "remove" and tool != "build" and tool != "move":
+		_open_oven()
+		return
 	if _resolve(tool, _current_arg(), hv.x, hv.y) != null:
 		_enqueue(hv)
 	else:
@@ -2980,6 +2997,9 @@ func _unhandled_input(ev: InputEvent) -> void:
 				if mill_state != "":
 					_mill_hit()
 					return
+				if bake_state != "":
+					bake_stoke += 1
+					return
 				var gp = _pick_point(ev.position)
 				if gp != null and _near_mill(gp):
 					_open_mill()
@@ -3052,6 +3072,8 @@ func _unhandled_input(ev: InputEvent) -> void:
 			_fish_click()
 		elif k == KEY_SPACE and mill_state != "":
 			_mill_hit()
+		elif k == KEY_SPACE and bake_state != "":
+			bake_stoke += 1
 		elif k == KEY_G:
 			_toggle_emote_bar()
 		elif k == KEY_T:
@@ -3065,6 +3087,11 @@ func _unhandled_input(ev: InputEvent) -> void:
 				return
 			if fish_state != "":
 				_fish_end()
+				return
+			if bake_state != "":
+				bake_state = ""
+				bake_ui.visible = false
+				_toast("🔥 Pişirme yarıda kaldı, malzeme harcanmadı.", "hint")
 				return
 			if mill_state != "":
 				mill_state = ""
@@ -4426,6 +4453,9 @@ func net_req(t: String, a: String, x: int, z: int) -> void:
 		_deliver()
 		net_quest_dirty = true
 		return
+	if t == "@bake":
+		_bake_finish(a, x)
+		return
 	if t == "@mill":   # misafir öğüttü: x isabet, z mükemmel
 		_mill_finish(x, z)
 		return
@@ -5637,6 +5667,7 @@ func _process(delta: float) -> void:
 	_update_emotes(dt)
 	_update_fishing(dt)
 	_update_mill(dt)
+	_update_bake(dt)
 	sim_acc += dt
 	if sim_acc > 0.1:
 		_simulate(sim_acc)
@@ -5674,6 +5705,16 @@ func _process(delta: float) -> void:
 					_set_tool(a.substr(7), true)
 				elif a == "--wheel":
 					_open_wheel(Vector2(640, 380))
+				elif a == "--oven" or a == "--bakegame":   # geliştirici: fırın
+					level = maxi(level, 4)
+					res = {"flour": 6, "egg": 3, "fish": 2, "milk": 1, "fruit": 4}
+					if a == "--oven":
+						_open_oven()
+					else:
+						_bake_start("pogaca")
+						bake_g.t = 4.0
+						bake_g.p = 0.55
+						bake_g.h = 0.6
 				elif a == "--mill":   # geliştirici: değirmen penceresi
 					level = maxi(level, 2)
 					res["cereal"] = 14
@@ -6275,6 +6316,223 @@ func _open_fish_shop() -> void:
 		land_dlg.visible = false, true, true))
 	land_dlg.visible = true
 
+# ============================================================ fırın
+func _recipe(id: String) -> Dictionary:
+	for rc in RECIPES:
+		if rc.id == id:
+			return rc
+	return {}
+
+func _recipe_ok(rc: Dictionary) -> bool:
+	if rc.is_empty() or level < int(rc.level):
+		return false
+	for r in rc.need:
+		if int(res.get(r, 0)) < int(rc.need[r]):
+			return false
+	return true
+
+static func _recipe_text(rc: Dictionary) -> String:
+	var parts := []
+	for r in rc.need:
+		parts.append("%d %s" % [rc.need[r], Data.RESOURCES[r].icon])
+	return " + ".join(parts)
+
+func _open_oven() -> void:
+	for c in land_box.get_children():
+		land_box.remove_child(c)
+		c.queue_free()
+	shop_open = false
+	var t := Label.new()
+	t.text = "🔥 Fırın"
+	t.add_theme_font_size_override("font_size", 26)
+	land_box.add_child(t)
+	var d := Label.new()
+	d.text = "Bir tarif seç, sonra körükle fırını ısıt: ısıyı yeşil bantta tutarak hamuru pişir. Çabuk ve iyi pişirirsen +1 ürün."
+	d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	d.add_theme_color_override("font_color", Color("#7a5a3a"))
+	land_box.add_child(d)
+	for rc in RECIPES:
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 10)
+		var l := Label.new()
+		var have := []
+		for r in rc.need:
+			have.append("%s %d/%d" % [Data.RESOURCES[r].icon, int(res.get(r, 0)), int(rc.need[r])])
+		l.text = "%s %s  (%d 🪙)\n%s" % [rc.icon, rc.name, int(Data.RESOURCES[rc.id].price), "   ".join(have)]
+		l.custom_minimum_size = Vector2(300, 0)
+		row.add_child(l)
+		var id: String = rc.id
+		var lbl := ("🔒 Sv %d" % rc.level) if level < int(rc.level) else "Pişir"
+		row.add_child(_small_btn("  %s  " % lbl, func():
+			land_dlg.visible = false
+			_bake_start(id), _recipe_ok(rc), true))
+		land_box.add_child(row)
+	var tip := Label.new()
+	tip.text = "Un değirmenden, yumurta kümesten, balık gölden, süt inekten, meyve ağaçlardan gelir. Fırın ürünleri pazar siparişlerinde de istenir."
+	tip.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	tip.add_theme_font_size_override("font_size", 12)
+	tip.add_theme_color_override("font_color", Color("#8a7260"))
+	land_box.add_child(tip)
+	land_box.add_child(_small_btn("  Kapat  ", func(): land_dlg.visible = false, true, true))
+	land_dlg.visible = true
+
+func _bake_start(id: String) -> bool:
+	var rc := _recipe(id)
+	if bake_state != "" or mill_state != "" or not _recipe_ok(rc):
+		return false
+	_fish_end()
+	bake_state = "game"
+	bake_stoke = 0
+	bake_g = {"id": id, "h": 0.25, "c": 0.55, "t": 0.0, "p": 0.0, "in": false, "end": 0.0, "res": ""}
+	_build_bake_ui()
+	bake_ui.visible = true
+	bake_msg.text = "🔥 Körükle: tıkla / Boşluk"
+	return true
+
+## Pişirme adımı: stokes körük sayısı. "" sürüyor, "done" pişti, "time" süre bitti.
+func _bake_step(dt: float, stokes: int) -> String:
+	var g := bake_g
+	g.t = float(g.t) + dt
+	g.h = clampf(float(g.h) + 0.085 * stokes - 0.15 * dt, 0.0, 1.0)
+	g.c = 0.55 + 0.17 * sin(float(g.t) * 0.8)
+	g["in"] = absf(float(g.h) - float(g.c)) < 0.1
+	if g["in"]:
+		g.p = float(g.p) + dt / 5.5
+	elif float(g.h) >= 0.98:
+		g.p = maxf(0.0, float(g.p) - dt * 0.25)   # yanıyor
+	if float(g.p) >= 1.0:
+		return "done"
+	if float(g.t) >= 16.0:
+		return "time"
+	return ""
+
+func _update_bake(dt: float) -> void:
+	if bake_state != "game":
+		return
+	if float(bake_g.end) > 0.0:
+		bake_g.end = float(bake_g.end) - dt
+		if float(bake_g.end) <= 0.0:
+			bake_state = ""
+			bake_ui.visible = false
+			var qty := 0
+			if bake_g.res == "done":
+				qty = 2 if float(bake_g.t) <= 9.5 else 1
+			elif float(bake_g.p) >= 0.5:
+				qty = 1
+			if net_role == "guest":
+				rpc_id(1, "net_req", "@bake", bake_g.id, qty, 0)
+				var rc := _recipe(bake_g.id)
+				for r in rc.need:
+					res[r] = maxi(0, int(res.get(r, 0)) - int(rc.need[r]))
+				res[bake_g.id] = int(res.get(bake_g.id, 0)) + qty
+			else:
+				_bake_finish(bake_g.id, qty)
+		return
+	var r := _bake_step(dt, bake_stoke)
+	bake_stoke = 0
+	if r != "":
+		bake_g.res = r
+		bake_g.end = 0.8
+		if r == "done":
+			bake_msg.text = "✨ Altın kıvamında!" if float(bake_g.t) <= 9.5 else "👍 Pişti!"
+			_sfx("level")
+		else:
+			bake_msg.text = "⏳ Süre bitti" + (" · biraz çiğ ama yenir" if float(bake_g.p) >= 0.5 else " · hamur çiğ kaldı")
+			_sfx("error")
+	elif float(bake_g.h) >= 0.98:
+		bake_msg.text = "🔥🔥 Çok sıcak! Yanıyor!"
+	elif bake_g["in"]:
+		bake_msg.text = "👌 Tam kıvamında"
+	else:
+		bake_msg.text = "🔥 Körükle: tıkla / Boşluk" if float(bake_g.h) < float(bake_g.c) else "Biraz soğusun…"
+	bake_bar.value = float(bake_g.p)
+	bake_therm.queue_redraw()
+	bake_ui.reset_size()
+	var vs := get_viewport().get_visible_rect().size
+	bake_ui.position = Vector2((vs.x - bake_ui.size.x) / 2.0, (vs.y - bake_ui.size.y) / 2.0 + 30.0)
+
+## Ev sahibinde: malzemeyi düş, ürünü ambara koy.
+func _bake_finish(id: String, qty: int) -> bool:
+	var rc := _recipe(id)
+	if not _recipe_ok(rc):
+		return false
+	qty = clampi(qty, 0, 2)
+	for r in rc.need:
+		res[r] = int(res.get(r, 0)) - int(rc.need[r])
+	if qty > 0:
+		res[id] = int(res.get(id, 0)) + qty
+		_gain(0, int(rc.xp) * qty, farmer.position, rc.icon)
+		_quest_event("bake", id, 1)
+		_toast("%s %s pişti! +%d %s" % [rc.icon, rc.name, qty, rc.icon], "level")
+	else:
+		_toast("🥲 %s çiğ kaldı, malzeme gitti." % rc.name, "warn")
+	net_quest_dirty = true
+	hud_dirty = true
+	if barn.visible:
+		_render_barn()
+	return true
+
+func _build_bake_ui() -> void:
+	if bake_ui != null:
+		return
+	bake_ui = _panel(14)
+	bake_ui.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ui.add_child(bake_ui)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 8)
+	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bake_ui.add_child(v)
+	var t := Label.new()
+	t.text = "🔥 Fırın ısısı"
+	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	t.add_theme_font_size_override("font_size", 20)
+	v.add_child(t)
+	var cc := CenterContainer.new()
+	cc.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	v.add_child(cc)
+	bake_therm = Control.new()
+	bake_therm.custom_minimum_size = Vector2(90, 230)
+	bake_therm.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bake_therm.draw.connect(_draw_bake)
+	cc.add_child(bake_therm)
+	bake_msg = Label.new()
+	bake_msg.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	bake_msg.custom_minimum_size = Vector2(280, 0)
+	bake_msg.add_theme_font_size_override("font_size", 16)
+	v.add_child(bake_msg)
+	bake_bar = ProgressBar.new()
+	bake_bar.show_percentage = false
+	bake_bar.max_value = 1.0
+	bake_bar.step = 0.001
+	bake_bar.custom_minimum_size = Vector2(280, 12)
+	bake_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bake_bar.add_theme_stylebox_override("background", _sb(Color("#eadcc6"), 4, Color(0, 0, 0, 0), 0, 0))
+	bake_bar.add_theme_stylebox_override("fill", _sb(Color("#d98b5f"), 4, Color(0, 0, 0, 0), 0, 0))
+	v.add_child(bake_bar)
+	var h := Label.new()
+	h.text = "Her tık ısıyı artırır, fırın kendiliğinden soğur · Esc: vazgeç"
+	h.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	h.add_theme_font_size_override("font_size", 12)
+	h.add_theme_color_override("font_color", Color("#8a7260"))
+	v.add_child(h)
+
+func _draw_bake() -> void:
+	if bake_g.is_empty():
+		return
+	var w := 46.0
+	var hh := 210.0
+	var x0 := (bake_therm.size.x - w) / 2.0
+	var y0 := 8.0
+	bake_therm.draw_rect(Rect2(x0 - 4, y0 - 4, w + 8, hh + 8), Color("#6d4c41"))
+	bake_therm.draw_rect(Rect2(x0, y0, w, hh), Color("#3e2723"))
+	var c := float(bake_g.c)
+	bake_therm.draw_rect(Rect2(x0, y0 + hh * (1.0 - c - 0.1), w, hh * 0.2), Color(0.49, 0.77, 0.31, 0.9))
+	var hv := float(bake_g.h)
+	var col := Color("#ffb74d").lerp(Color("#e53935"), hv)
+	bake_therm.draw_rect(Rect2(x0 + 12, y0 + hh * (1.0 - hv), w - 24, hh * hv), col)
+	bake_therm.draw_rect(Rect2(x0 - 8, y0 + hh * (1.0 - hv) - 2, w + 16, 4), Color.WHITE)
+	bake_therm.draw_circle(Vector2(x0 + w / 2.0, y0 + hh + 10), 14.0, col)
+
 # ============================================================ değirmen
 func _near_mill(p: Vector3) -> bool:
 	return Vector2(p.x - MILL_POS.x, p.z - MILL_POS.z).length() < 2.8
@@ -6737,6 +6995,7 @@ func _selftest_build(fails: Array) -> void:
 	if not emote_fx.is_empty(): fails.append("emote kaybolmadı")
 	_selftest_fish(fails)
 	_selftest_mill(fails)
+	_selftest_bake(fails)
 	var rb := _refund_of(tiles.get(key(sp.x, sp.y)))
 	var c2 := coins
 	if not _perform({"x": sp.x, "z": sp.y, "tool": "remove", "arg": null}) or _count_buildings("barn") != b0: fails.append("bina kaldırma")
@@ -6747,6 +7006,43 @@ func _selftest_build(fails: Array) -> void:
 	var pe2 = tiles.get(key(ps.x, ps.y))
 	if pe2 != null and pe2.kind == "plot":
 		_remove_entity(pe2)
+
+func _selftest_bake(fails: Array) -> void:
+	var keep_res := res.duplicate()
+	var keep_lv := level
+	level = 10
+	coins = 10000
+	var sp := _free_spot(2, 2)
+	if sp.x == 999 or not _perform({"x": sp.x, "z": sp.y, "tool": "build", "arg": "oven"}):
+		fails.append("fırın kurma")
+	res = {"flour": 1, "egg": 1}
+	if _bake_start("pogaca"): fails.append("malzemesiz pişirme")
+	res = {"flour": 4, "egg": 2}
+	if not _bake_start("pogaca"): fails.append("pişirme başlamadı")
+	var r := ""
+	for i in 400:   # ısıyı bantta tut
+		r = _bake_step(0.05, 1 if float(bake_g.h) < float(bake_g.c) - 0.03 else 0)
+		if r != "":
+			break
+	if r != "done": fails.append("pişirme bitmedi (%s)" % r)
+	bake_state = ""
+	bake_ui.visible = false
+	if not _bake_finish("pogaca", 2) or int(res.flour) != 2 or int(res.egg) != 1 or int(res.pogaca) != 2: fails.append("pişirme sonucu %s" % res)
+	res = {"flour": 0}
+	if _bake_finish("pogaca", 1): fails.append("eksik malzemeyle pişti")
+	var found := false
+	for i in 20:
+		_new_order()
+		for k in order.need:
+			if k == "pogaca" or k == "fishbread" or k == "pie":
+				found = true
+	if not found: fails.append("siparişte fırın ürünü yok")
+	var oe = tiles.get(key(sp.x, sp.y))
+	if oe != null:
+		_remove_entity(oe)
+	res = keep_res
+	level = keep_lv
+	_new_order()
 
 func _selftest_mill(fails: Array) -> void:
 	var keep_res := res.duplicate()
@@ -6949,6 +7245,10 @@ func _make_quest(kind: String, arg: String) -> Dictionary:
 			need = 1 + lv / 5
 			val = 100.0
 			text = "🌳 %d ağaç dik" % need
+		"bake":
+			need = 2 + lv / 4
+			val = 60.0
+			text = "🔥 Fırında %d kez pişir" % need
 		"earn":
 			need = 300 + lv * 100
 			val = 0.3
@@ -6971,6 +7271,8 @@ func _quest_candidates() -> Array:
 	out.append(["flower", ""])
 	if _owned_kind("pond"):
 		out.append(["fish", ""])
+	if _count_buildings("oven") > 0:
+		out.append(["bake", ""])
 	for k in ["plant", "water", "sell", "order", "earn"]:
 		out.append([k, ""])
 	if _owned_kind("animal"):
@@ -7625,11 +7927,17 @@ func _new_order() -> void:
 				var r: String = Data.YIELD[k][0]
 				if not avail.has(r):
 					avail.append(r)
+	if _count_buildings("oven") > 0:
+		for rc in RECIPES:
+			if level >= int(rc.level):
+				avail.append(rc.id)
 	avail.shuffle()
 	var need := {}
 	var value := 0
 	for i in mini(2, avail.size()):
 		var n := randi_range(4, 8) + level * 2
+		if int(Data.RESOURCES[avail[i]].price) >= 25:   # fırın ürünü: az sayıda
+			n = randi_range(1, 3) + level / 5
 		need[avail[i]] = n
 		value += n * int(Data.RESOURCES[avail[i]].price)
 	order = {"need": need, "medals": maxi(1, value / 40), "xp": maxi(5, value / 4), "coins": int(value * 1.5)}

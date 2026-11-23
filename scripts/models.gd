@@ -766,6 +766,7 @@ static func building(type: String) -> Node3D:
 		"barn": return _barn()
 		"silo": return _silo()
 		"well": return _well()
+		"oven": return _oven()
 		_: return _windmill()
 
 static func _house() -> Node3D:
@@ -798,6 +799,22 @@ static func _house() -> Node3D:
 	add(g, box(1.4, 0.08, 0.8, "#c0392b", 0, 1.55, 1.6))
 	for x in [-0.62, 0.62]:
 		add(g, box(0.07, 1.4, 0.07, "#ffffff", x, 0.85, 1.95))
+	return g
+
+## Taş tabanlı kubbe fırın (2×2).
+static func _oven() -> Node3D:
+	var g := node()
+	add(g, box(1.8, 0.55, 1.8, "#a89f94", 0, 0.275, 0))
+	add(g, box(1.9, 0.08, 1.9, "#8d8379", 0, 0.58, 0))
+	var dome := ball(0.82, "#c8714a", 0, 0.6, 0, 1)
+	dome.scale = Vector3(1.0, 0.82, 1.0)
+	add(g, dome)
+	add(g, box(0.62, 0.5, 0.2, "#d98b5f", 0, 0.85, 0.72))
+	add(g, box(0.44, 0.36, 0.06, "#2b1a12", 0, 0.82, 0.83))
+	add(g, box(0.3, 0.06, 0.05, "#ff9a3c", 0, 0.68, 0.86))
+	add(g, cyl(0.12, 0.14, 0.7, 8, "#8d8379", -0.35, 1.45, -0.35))
+	for i in 3:
+		add(g, cyl(0.07, 0.07, 0.6, 6, "#7a5030", 0.75, 0.66 + i * 0.13, -0.5 + i * 0.05))
 	return g
 
 static func _barn() -> Node3D:
