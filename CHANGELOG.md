@@ -1,5 +1,12 @@
 # Çiftliğim 3D — Sürüm Notları
 
+## v0.3.0 · Erken Erişim
+- Yeni arazi düzeni: yeni kariyer 16×16 küçük bir kareyle başlar. 🗺️ Arazi menüsünden (üst çubuk ya da L tuşu) altın ve seviyeyle adım adım 40×40'a kadar büyür; çit kendiliğinden dışarı taşınır.
+  - Temalı bölgeler, sis ve tabelalar kalktı; çitin dışı doğal, yabani bir arazi.
+  - Eski kayıtlar açtığın alanı kapsayan kareyle açılır, hiçbir şey kaybolmaz.
+- Oyun artık tam ekran açılır (Ayarlar'dan ya da F11 ile pencereye alınabilir). Pencere başlığındaki "(DEBUG)" yazısı kalktı.
+- Düzeltme: Kaldır aleti ambara ya da siloya tıklayınca ambar penceresini açıyordu; artık binayı kaldırıyor.
+
 ## v0.2.0 · Erken Erişim
 - Her şeyi sen kur: yeni çiftlikte ev, ambar, silo, kuyu, yol ve fener yok. 🏗️ Yapı aletiyle (0 tuşu) kurulur.
   - Ambar: hasat saklama (150). Silo: +100 yer. Kuyu: çevresindeki tarlalar yarı hızda kurur. Ev: her sabah hediye altın.
