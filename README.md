@@ -29,6 +29,10 @@ Web sürümüyle aynı: ⛏️ Çapa ile sür, 🌱 ek, 💧 sula (2× hız), �
 
 **Yeni kariyer:** bir mektup ve hikâyeyle başlar; ot, taş ve kütük bürümüş araziyi 🗑️ Kaldır ile temizleyip ⭐ Hikâye görevlerini izlersin.
 
+**Arkadaşla oynama:** oyunda 📡 ile çiftliğini paylaşırsın (ENet, UDP port 24565). Arkadaşın ana menüde 🤝 Arkadaşa Katıl'a adresini yazar. Aynı ağda doğrudan çalışır; internetten oynamak için port yönlendirme ya da Tailscale/ZeroTier gerekir. Çiftlik sahibinde çalışır ve kaydedilir; misafirin işleri sahibine gider, sahip herkese yayar, 3 sn'de bir tam senkron yapılır. Ambar ve arazi alımı sahibindedir.
+
+**Kontroller:** Tab ya da sağ alttaki 🎒 çark menüyü açar; 1–9 aleti doğrudan seçer.
+
 **Arazi:** başlangıçta ortadaki 24×24 alan açık. Çevresindeki 8×8 parsellere tıklayıp seviye ve altınla satın alırsın; her parsel bir öncekinden pahalı. Kilitli parseller çalı, kaya, kütük, çiçek ve mantarla dolu yabani arazidir; satın alınca temizlenir. Çiftlik dışında orman, çiçek tarlaları, kamp alanı ve gölette kano var.
 
 **Hayvanlar ve çitler:** çiftçi çitlerden, kayalardan, ağaçlardan ve binalardan geçmez, etrafından dolaşır; ağıla 🚪 çit kapısından girer. 🛖 Kümes (Hayvan rafı): çevresindeki 6 karedeki tavuklar yumurtayı kümese bırakır, kümese tıklayınca hepsi toplanır.
@@ -64,4 +68,4 @@ Editörde *Proje → Dışa Aktar*. İlk seferde Godot "dışa aktarma şablonla
 - [Quaternius LowPoly Crops](https://opengameart.org/node/126983) — ekinler ve meyve ağaçları (`assets/crops`)
 - [Quaternius Farm Animals](https://opengameart.org/content/lowpoly-animated-farm-animal-pack) — inek, domuz, koyun (`assets/animals`)
 
-Geliştirici araçları: `tools/career_test.gd` (kariyer akışı testi: `--headless --script res://tools/career_test.gd`), `tools/probe.gd` (model boyut/animasyon listesi), `tools/preview.gd` (modelleri tek karede önizle). Ek bayraklar: `--demo` (her türden örnek), `--barn` (ambarı açık başlat), `--season=0..3` (mevsim seç), `--weather=rain|drought|snow` (hava olayı başlat), `--story` (hikâyeli başlangıç), `--night`, `--tool=seed` (eşya penceresi açık), `--pitch=`/`--yaw=`/`--lookup=` (kamera açısı).
+Geliştirici araçları: `tools/career_test.gd` (kariyer akışı testi: `--headless --script res://tools/career_test.gd`), `tools/probe.gd` (model boyut/animasyon listesi), `tools/preview.gd` (modelleri tek karede önizle). Ek bayraklar: `--demo` (her türden örnek), `--barn` (ambarı açık başlat), `--season=0..3` (mevsim seç), `--weather=rain|drought|snow` (hava olayı başlat), `--story` (hikâyeli başlangıç), `--nethost` / `--netjoin=IP --nettest` (iki süreçli ağ denemesi), `--act=water|feed|plant|plow` (iş animasyonu), `--wheel` (çark menü açık), `--night`, `--tool=seed` (eşya penceresi açık), `--pitch=`/`--yaw=`/`--lookup=` (kamera açısı).

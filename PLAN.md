@@ -97,3 +97,9 @@ Her aşama kendi içinde oynanabilir biter; sonunda `--selftest` genişletilir v
 - Uzaklar: ufukta karlı dağlar, büyüyen tepeler, MultiMesh uzak orman, ufuk bulutları.
 - Hikâyeli yeni kariyer: Nermin Teyze'nin mektubu (5 sayfa), ot/taş/kütük bürümüş arazi, 9 adımlık ⭐ Hikâye görevi (temizle → sür → ek → sula → hasat → sat → tavuk → kümes → yumurta). Hikâye bitene kadar rastgele görev yok.
 
+### Geri bildirim turu 3 (23.11.2026) ✅
+- Çiftlik sınır çiti ve gölet artık yürünmez; çiftçi dışarı kapıdan çıkar. Tıklama tepelere göre hesaplanır; gezilebilir alan ±56.
+- Alt alet çubuğu kaldırıldı: Tab / 🎒 ile imlecin etrafında açılan çark menü.
+- İş animasyonları: sulama kovası ve damlalar, tohum serpme, yem saçma (hayvanlar zıplar), çapa vuruşu, hasat sepeti.
+- Online (Aşama 7'nin ilk parçası): ev sahibi yetkili ENet; avatarlar, iş istek/yayın, 3 sn'de tam senkron. Sonra: sohbet, misafirin ambar kullanması, internet için aracı sunucu.
+

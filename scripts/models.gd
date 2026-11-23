@@ -249,10 +249,10 @@ static func _eyes(g: Node3D, x: float, y: float, z: float, c := "#212121") -> vo
 	add(g, box(0.035, 0.035, 0.02, c, x, y, z))
 
 # ------------------------------------------------------------ çiftçi
-static func farmer() -> Node3D:
+static func farmer(shirt := "#e8574a") -> Node3D:
 	const SKIN := "#f3c69b"
-	const SHIRT := "#e8574a"
-	const SHIRT2 := "#c43d32"
+	var SHIRT := shirt
+	var SHIRT2 := Color(shirt).darkened(0.18).to_html(false)
 	const OVER := "#3d7cc9"
 	const OVER2 := "#2f63a3"
 	const BOOT := "#5a3a26"

@@ -22,6 +22,8 @@ const QUEST_SLOTS := 4
 ## İş animasyonu süreleri (sn); çiftçi bu sürede yerinde kalır.
 const ACT_DUR := {"plow": 0.55, "remove": 0.55, "water": 0.85, "plant": 0.55, "flower": 0.55, "tree": 0.6,
 	"harvest": 0.5, "feed": 0.8, "coop": 0.4, "pond": 0.4, "animal": 0.4, "decor": 0.35}
+const NET_PORT := 24565
+const NET_COLORS := ["#4a90d9", "#9c5bd6", "#e0912f", "#2fae8f", "#d94a8c"]
 const WALK_LIM := 56     # çiftçinin gezebileceği alan (±), görünen arazinin içi
 const BLOCK_DECOR := ["fence", "rock", "lantern", "hay", "scarecrow", "bush", "flowers"]
 const QUEST_SKIP_COOLDOWN := 24.0 * 3600.0
@@ -162,6 +164,7 @@ const HELP_PAGES := [
 		["🌧️", "Yağmur her şeyi sular. 🔥 Kuraklıkta su çabuk biter. 🌨️ Karda sulamaya gerek yok."],
 		["🌙", "Gün 15 dakika sürer, gece kısadır; fenerler geceleri yanar."],
 		["⭐", "Yeni kariyer bir hikâyeyle başlar: ot ve taş bürümüş araziyi temizle, ⭐ Hikâye görevlerini izle. Hikâye bitince günlük görevler gelir."],
+		["📡", "Arkadaşınla oyna: sağ üstteki 📡 ile çiftliğini paylaş, arkadaşın ana menüde 🤝 Arkadaşa Katıl'a senin adresini yazsın. Aynı ağda doğrudan çalışır."],
 		["💾", "Oyun otomatik kaydedilir; sen yokken de çiftlik büyür."],
 	]],
 ]
@@ -351,6 +354,16 @@ var shelf_open := false
 var shelf_page := {}
 var entrance_doors := []
 var frame_block := {}
+var net_role := ""          # "" | "host" | "guest" | "joining"
+var net_players := {}       # peer -> {"name", "node", "parts", "tp", "ry", "mv", "act_t"}
+var net_applying := false   # uzaktan gelen işi uygularken
+var net_actor := 1
+var net_sync_t := 0.0
+var net_pos_t := 0.0
+var player_name := "Çiftçi"
+var net_dlg: PanelContainer
+var net_box: VBoxContainer
+var net_status: Label
 var wheel: ColorRect         # çark menü katmanı
 var wheel_btn: Button        # sağ alttaki 🎒 düğmesi
 var wheel_info: Label      # çiftlik sınır çitinin kareleri (yürünmez)   # giriş kapısı kanatları
@@ -500,7 +513,15 @@ func _ready() -> void:
 	var dev := args.has("--selftest") or args.has("--fps") or args.has("--fresh") or args.has("--demo") or args.has("--barn") or shot_path != ""
 	var start_play := dev
 	var is_new := false
-	if boot.has("slot"):
+	var net_data = null
+	if boot.has("net_state"):
+		net_data = JSON.parse_string(str(boot.net_state))
+		player_name = str(boot.get("player", "Misafir"))
+		net_role = "guest"
+		boot = {}
+		slot = 0
+		start_play = true
+	elif boot.has("slot"):
 		slot = int(boot.slot)
 		is_new = bool(boot.get("new", false))
 		if is_new:
@@ -518,7 +539,13 @@ func _ready() -> void:
 	if args.has("--selftest"):
 		save_path = "user://selftest.json"
 	var loaded := false
-	if save_path != "" and not is_new and not args.has("--fresh"):
+	if net_data != null:
+		save_path = ""
+		loaded = _load_dict(net_data, false)
+		story_step = STORY.size()
+		quests = []
+		farmer.position = Vector3(0.5, 0, FARM_MAX - 1.5)
+	elif save_path != "" and not is_new and not args.has("--fresh"):
 		loaded = _load()
 	var story_new := false
 	if not loaded:
@@ -563,6 +590,21 @@ func _ready() -> void:
 			_show_story(0)
 	else:
 		_show_menu()
+	if net_role == "guest":
+		_net_signals()
+		rpc_id(1, "net_ready", player_name)
+		if args.has("--nettest"):
+			_net_selftest()
+		_toast("🤝 %s çiftliğine katıldın! Ambar ve arazi alımı çiftlik sahibinde." % farm_name, "level")
+	if boot.has("net_msg"):
+		_toast(str(boot.net_msg), "warn")
+		boot = {}
+	for a in args:
+		if a == "--nethost":
+			_net_host()
+			_net_host_probe()
+		elif a.begins_with("--netjoin=") and net_role == "":
+			_net_join(a.substr(10), "Deneme")
 	if args.has("--selftest"):
 		_selftest()
 
@@ -1727,6 +1769,19 @@ func _free_area(x: int, z: int, w: int, d: int) -> bool:
 	return true
 
 func _perform(item: Dictionary) -> bool:
+	if net_role == "guest" and not net_applying:
+		var act = _resolve(item.tool, item.arg, item.x, item.z)
+		if act == null:
+			return false
+		_act_anim(act, tile_center(item.x, item.z))
+		rpc_id(1, "net_req", item.tool, "" if item.arg == null else str(item.arg), item.x, item.z)
+		return true
+	var ok := _perform_local(item)
+	if ok and net_role == "host" and multiplayer.get_peers().size() > 0:
+		rpc("net_do", item.tool, "" if item.arg == null else str(item.arg), item.x, item.z, net_actor)
+	return ok
+
+func _perform_local(item: Dictionary) -> bool:
 	var x: int = item.x
 	var z: int = item.z
 	var arg = item.arg
@@ -2058,6 +2113,8 @@ func _update_farmer(dt: float) -> void:
 
 ## İş başlarken çağrılır: tür, süre ve hedef konum.
 func _act_anim(kind: String, pos: Vector3) -> void:
+	if net_applying:
+		return
 	act_kind = kind
 	act_dur = ACT_DUR.get(kind, 0.3)
 	act_t = act_dur
@@ -3107,9 +3164,20 @@ func _build_ui() -> void:
 	var bh := _icon_btn("❔", "Yardım")
 	bh.pressed.connect(func(): help.visible = not help.visible)
 	ah.add_child(bh)
+	var bn := _icon_btn("📡", "Çiftliğini paylaş / oyuncular")
+	bn.pressed.connect(func():
+		if net_role == "":
+			_net_host()
+		else:
+			_show_net_dlg())
+	ah.add_child(bn)
 	var br := _icon_btn("🏠", "Ana menü (kaydeder)")
 	br.pressed.connect(func():
 		_save()
+		if net_role == "guest":
+			_net_leave("")
+			return
+		_net_close()
 		_show_menu())
 	ah.add_child(br)
 
@@ -3493,10 +3561,7 @@ func _last_slot() -> int:
 	return 0
 
 func _set_last(n: int) -> void:
-	var f := FileAccess.open(PROFILE, FileAccess.WRITE)
-	if f:
-		f.store_string(JSON.stringify({"last": n}))
-		f.close()
+	_profile_set("last", str(n))
 
 ## Eski tek kayıt dosyası (save.json) ilk kariyer yuvasına taşınır.
 func _migrate_old_save() -> void:
@@ -3570,6 +3635,408 @@ func _show_story(i: int) -> void:
 	_btn_styles(go, Color("#6fbf3b"), Color("#7fcf4b"))
 	go.pressed.connect(func(): _show_story(i + 1))
 	row.add_child(go)
+
+# ============================================================ online (ENet, ev sahibi yetkili)
+func _profile_get(k: String, def: String) -> String:
+	if not FileAccess.file_exists(PROFILE):
+		return def
+	var d = JSON.parse_string(FileAccess.get_file_as_string(PROFILE))
+	return str(d.get(k, def)) if typeof(d) == TYPE_DICTIONARY else def
+
+func _profile_set(k: String, v: String) -> void:
+	var dev_args := OS.get_cmdline_user_args()
+	if dev_args.has("--selftest") or (dev_args.has("--fresh") and k != "last"):
+		return
+	var d := {}
+	if FileAccess.file_exists(PROFILE):
+		var r = JSON.parse_string(FileAccess.get_file_as_string(PROFILE))
+		if typeof(r) == TYPE_DICTIONARY:
+			d = r
+	d[k] = v
+	var f := FileAccess.open(PROFILE, FileAccess.WRITE)
+	if f:
+		f.store_string(JSON.stringify(d))
+
+func _net_signals() -> void:
+	var mp := multiplayer
+	for pair in [[mp.peer_connected, _on_peer_connected], [mp.peer_disconnected, _on_peer_disconnected],
+			[mp.server_disconnected, _on_server_lost], [mp.connected_to_server, _on_net_connected], [mp.connection_failed, _on_net_failed]]:
+		if not pair[0].is_connected(pair[1]):
+			pair[0].connect(pair[1])
+
+func _local_ips() -> Array:
+	var out := []
+	for a in IP.get_local_addresses():
+		if a.contains(".") and not a.begins_with("127.") and not a.begins_with("169.254."):
+			out.append(a)
+	return out
+
+func _net_host() -> void:
+	var peer := ENetMultiplayerPeer.new()
+	var err := peer.create_server(NET_PORT, 4)
+	if err != OK:
+		_toast("📡 Paylaşım açılamadı (port %d kullanımda olabilir)." % NET_PORT, "warn")
+		return
+	multiplayer.multiplayer_peer = peer
+	net_role = "host"
+	player_name = _profile_get("player", "Çiftçi")
+	_net_signals()
+	_toast("📡 Çiftliğin paylaşıma açıldı!", "level")
+	_show_net_dlg()
+
+func _net_join(ip: String, nm: String) -> void:
+	ip = ip.strip_edges()
+	nm = nm.strip_edges()
+	if nm == "":
+		nm = "Çiftçi"
+	if ip == "":
+		if net_status != null:
+			net_status.text = "Adres yaz."
+		return
+	_profile_set("last_ip", ip)
+	_profile_set("player", nm)
+	_net_close()
+	var peer := ENetMultiplayerPeer.new()
+	var err := peer.create_client(ip, NET_PORT)
+	if err != OK:
+		if net_status != null:
+			net_status.text = "Bağlanılamadı."
+		return
+	multiplayer.multiplayer_peer = peer
+	net_role = "joining"
+	player_name = nm
+	_net_signals()
+	if net_status != null:
+		net_status.text = "Bağlanıyor…"
+
+func _net_close() -> void:
+	for id in net_players.keys():
+		_net_drop(id)
+	if multiplayer.multiplayer_peer != null and not (multiplayer.multiplayer_peer is OfflineMultiplayerPeer):
+		multiplayer.multiplayer_peer.close()
+	multiplayer.multiplayer_peer = null
+	net_role = ""
+	if net_dlg != null:
+		net_dlg.visible = false
+
+## Misafir ayrılır ya da bağlantı kopar: kendi oyununa döner.
+func _net_leave(msg: String) -> void:
+	_net_close()
+	boot = {"net_msg": msg} if msg != "" else {}
+	get_tree().reload_current_scene()
+
+func _on_net_connected() -> void:
+	if net_role == "joining":
+		rpc_id(1, "net_hello", player_name)
+
+func _on_net_failed() -> void:
+	_net_close()
+	if net_status != null:
+		net_status.text = "❌ Bağlanılamadı. Adresi ve arkadaşının 📡 paylaşımını kontrol et."
+
+func _on_server_lost() -> void:
+	if net_role == "guest":
+		_net_leave("📡 Çiftlik sahibiyle bağlantı koptu.")
+	else:
+		_net_close()
+
+func _on_peer_connected(_id: int) -> void:
+	pass
+
+func _on_peer_disconnected(id: int) -> void:
+	if net_players.has(id):
+		_toast("👋 %s ayrıldı." % net_players[id].name)
+		_net_drop(id)
+		_render_net_dlg()
+
+@rpc("any_peer", "reliable")
+func net_hello(nm: String) -> void:
+	if net_role != "host":
+		return
+	var id := multiplayer.get_remote_sender_id()
+	rpc_id(id, "net_welcome", JSON.stringify(_state_dict()))
+
+@rpc("authority", "reliable")
+func net_welcome(state: String) -> void:
+	if net_role != "joining":
+		return
+	boot = {"net_state": state, "player": player_name}
+	get_tree().reload_current_scene()
+
+@rpc("any_peer", "reliable")
+func net_ready(nm: String) -> void:
+	if net_role != "host":
+		return
+	var id := multiplayer.get_remote_sender_id()
+	_net_spawn(id, nm.left(14))
+	_toast("👋 %s çiftliğine geldi!" % nm.left(14), "level")
+	_net_roster()
+	_render_net_dlg()
+	net_sync_t = 99.0
+
+func _net_roster() -> void:
+	var r := {1: player_name}
+	for id in net_players:
+		r[id] = net_players[id].name
+	rpc("net_roster", r)
+
+@rpc("authority", "reliable")
+func net_roster(r: Dictionary) -> void:
+	var me := multiplayer.get_unique_id()
+	for id in r:
+		if int(id) != me and not net_players.has(int(id)):
+			_net_spawn(int(id), str(r[id]))
+	for id in net_players.keys():
+		if not r.has(id):
+			_net_drop(id)
+
+func _net_spawn(id: int, nm: String) -> void:
+	if net_players.has(id):
+		return
+	var m := Models.farmer(NET_COLORS[absi(id) % NET_COLORS.size()])
+	add_child(m)
+	m.position = Vector3(0.5, 0, FARM_MAX + 0.5)
+	var l := Label3D.new()
+	l.text = nm
+	l.font = font
+	l.font_size = 48
+	l.pixel_size = 0.006
+	l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	l.outline_size = 10
+	l.position.y = 2.0
+	m.add_child(l)
+	var pp: Dictionary = m.get_meta("parts")
+	for pr in ["hoe", "can", "bag", "basket"]:
+		pp[pr].visible = false
+	net_players[id] = {"name": nm, "node": m, "parts": pp, "tp": m.position, "ry": 0.0, "mv": false, "act_t": 0.0, "ph": 0.0}
+
+func _net_drop(id) -> void:
+	if net_players.has(id):
+		if is_instance_valid(net_players[id].node):
+			net_players[id].node.queue_free()
+		net_players.erase(id)
+
+@rpc("any_peer", "unreliable_ordered")
+func net_pos(x: float, z: float, ry: float, mv: bool) -> void:
+	var id := multiplayer.get_remote_sender_id()
+	if net_players.has(id):
+		var p: Dictionary = net_players[id]
+		p.tp = Vector3(x, 0, z)
+		p.ry = ry
+		p.mv = mv
+
+@rpc("any_peer", "reliable")
+func net_req(t: String, a: String, x: int, z: int) -> void:
+	if net_role != "host":
+		return
+	var id := multiplayer.get_remote_sender_id()
+	net_actor = id
+	net_applying = true
+	_perform({"tool": t, "arg": null if a == "" else a, "x": x, "z": z})
+	net_applying = false
+	net_actor = 1
+	if net_players.has(id):
+		net_players[id].act_t = 0.5
+
+@rpc("authority", "reliable")
+func net_do(t: String, a: String, x: int, z: int, actor: int) -> void:
+	if net_role != "guest":
+		return
+	var keep := coins
+	coins = 1 << 30
+	net_applying = true
+	_perform_local({"tool": t, "arg": null if a == "" else a, "x": x, "z": z})
+	net_applying = false
+	coins = keep
+	if net_players.has(actor):
+		net_players[actor].act_t = 0.5
+	hud_dirty = true
+
+## Ev sahibinden misafirlere: para, zaman, hava ve tüm varlıkların durumu.
+func _net_sync_dict() -> Dictionary:
+	var ents := []
+	for e in entities:
+		if e.kind != "building":
+			ents.append(_ent_dict(e))
+	return {"coins": coins, "xp": xp, "level": level, "day_time": day_time, "day": day, "season": season, "season_t": season_t,
+		"year": year, "weather": weather, "weather_t": weather_t, "parcels": parcels, "res": res, "ents": ents}
+
+@rpc("authority", "reliable")
+func net_sync(d: Dictionary) -> void:
+	if net_role != "guest":
+		return
+	coins = int(d.coins)
+	xp = int(d.xp)
+	level = int(d.level)
+	day_time = float(d.day_time)
+	day = int(d.day)
+	year = int(d.year)
+	season_t = float(d.season_t)
+	if int(d.season) != season:
+		season = int(d.season)
+		_apply_season_visual(false)
+	weather_t = float(d.weather_t)
+	if str(d.weather) != weather:
+		if str(d.weather) == "":
+			_end_weather()
+		else:
+			_start_weather(str(d.weather))
+	res = d.res
+	var pl := []
+	for pc in d.parcels:
+		pl.append(str(pc))
+	if pl != parcels:
+		parcels = pl
+		_refresh_parcels()
+	_net_apply_ents(d.ents)
+	hud_dirty = true
+
+func _vis_sig(e: Dictionary) -> String:
+	match e.kind:
+		"plot": return "%s|%d|%s" % [e.crop, crop_stage(e) if e.crop != null else -1, _wet(e)]
+		"tree": return "%s|%s" % [e.age >= 1.0, e.has_fruit]
+		"animal": return "%s|%s" % [e.ready, e.food > 0.0]
+		"flower", "pond": return "%s|%d" % [e.ready, int(e.get("t", 0.0) * 3.0)]
+		"coop": return str(e.eggs)
+	return ""
+
+func _net_apply_ents(list: Array) -> void:
+	var seen := {}
+	for s in list:
+		var k := key(int(s.x), int(s.z))
+		seen[k] = true
+		var e = tiles.get(k)
+		var base := _ent_base(s)
+		if e != null and (e.kind != base.kind or e.get("type", "") != base.get("type", "") or e.x != base.x or e.z != base.z):
+			if e.kind == "building":
+				continue
+			_remove_entity(e)
+			e = null
+		if e == null:
+			_add_entity(base)
+			continue
+		var before := _vis_sig(e)
+		for f in base:
+			if f != "rot":
+				e[f] = base[f]
+		if _vis_sig(e) != before:
+			_refresh(e)
+	for e in entities.duplicate():
+		if e.kind != "building" and not seen.has(key(e.x, e.z)):
+			_remove_entity(e)
+
+func _net_tick(dt: float) -> void:
+	net_pos_t -= dt
+	if net_pos_t <= 0.0 and multiplayer.get_peers().size() > 0:
+		net_pos_t = 0.1
+		rpc("net_pos", farmer.position.x, farmer.position.z, farmer.rotation.y, move_target != null or walk_phase != 0.0)
+	if net_role == "host":
+		net_sync_t += dt
+		if net_sync_t > 3.0 and multiplayer.get_peers().size() > 0:
+			net_sync_t = 0.0
+			rpc("net_sync", _net_sync_dict())
+	for id in net_players:
+		var p: Dictionary = net_players[id]
+		var m: Node3D = p.node
+		var to: Vector3 = p.tp
+		var moving := Vector2(to.x - m.position.x, to.z - m.position.z).length() > 0.05
+		m.position = m.position.lerp(Vector3(to.x, height_at(to.x, to.z), to.z), minf(1.0, dt * 10.0))
+		m.rotation.y = lerp_angle(m.rotation.y, p.ry, minf(1.0, dt * 12.0))
+		if moving:
+			p.ph += dt * 11.0
+		var sw := sin(p.ph) * 0.7 if moving else 0.0
+		var pp: Dictionary = p.parts
+		pp.leg_l.rotation.x = lerpf(pp.leg_l.rotation.x, sw, 0.3)
+		pp.leg_r.rotation.x = lerpf(pp.leg_r.rotation.x, -sw, 0.3)
+		pp.arm_l.rotation.x = lerpf(pp.arm_l.rotation.x, -sw * 0.8, 0.3)
+		if p.act_t > 0.0:
+			p.act_t -= dt
+			pp.arm_r.rotation.x = -1.6 * sin((1.0 - p.act_t / 0.5) * PI)
+		else:
+			pp.arm_r.rotation.x = lerpf(pp.arm_r.rotation.x, sw * 0.8, 0.3)
+
+func _show_net_dlg() -> void:
+	if net_dlg == null:
+		net_dlg = _panel(18)
+		net_dlg.anchor_left = 0.5
+		net_dlg.anchor_right = 0.5
+		net_dlg.anchor_top = 0.5
+		net_dlg.anchor_bottom = 0.5
+		net_dlg.grow_horizontal = Control.GROW_DIRECTION_BOTH
+		net_dlg.grow_vertical = Control.GROW_DIRECTION_BOTH
+		net_dlg.custom_minimum_size = Vector2(440, 0)
+		ui.add_child(net_dlg)
+		net_box = VBoxContainer.new()
+		net_box.add_theme_constant_override("separation", 10)
+		net_dlg.add_child(net_box)
+	net_dlg.visible = true
+	_render_net_dlg()
+
+func _render_net_dlg() -> void:
+	if net_dlg == null or not net_dlg.visible:
+		return
+	for c in net_box.get_children():
+		c.queue_free()
+	var t := Label.new()
+	t.text = "📡 Çiftlik paylaşımı" if net_role == "host" else "🤝 Misafirsin"
+	t.add_theme_font_size_override("font_size", 22)
+	net_box.add_child(t)
+	var b := Label.new()
+	b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	if net_role == "host":
+		var ips := _local_ips()
+		b.text = "Arkadaşın ana menüde 🤝 Arkadaşa Katıl'a basıp şu adresi yazsın:\n\n   %s\n\nAynı ağda (ev Wi-Fi'ı) doğrudan çalışır. İnternetten oynamak için modemde %d (UDP) portunu aç ya da ikiniz de Tailscale/ZeroTier gibi bir sanal ağ kullanın." % [("\n   ".join(ips)) if ips.size() > 0 else "(ağ bulunamadı)", NET_PORT]
+	else:
+		b.text = "Çiftlik sahibinin dünyasındasın. Ekip biçebilir, sulayabilir, yemleyebilirsin; ambar ve arazi alımı sahibinde."
+	net_box.add_child(b)
+	var pl := Label.new()
+	var names := ["🧑‍🌾 %s (sen)" % player_name]
+	for id in net_players:
+		names.append("🧑‍🌾 " + net_players[id].name)
+	pl.text = "Oyuncular (%d):\n%s" % [names.size(), "\n".join(names)]
+	net_box.add_child(pl)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	net_box.add_child(row)
+	row.add_child(_small_btn("  Kapat  ", func(): net_dlg.visible = false))
+	if net_role == "host":
+		row.add_child(_small_btn("  Paylaşımı durdur  ", func():
+			_net_close()
+			_toast("📡 Paylaşım kapandı.")))
+
+## İki süreçli ağ denemesi (misafir tarafı): çapala, ev sahibinden onay bekle.
+func _net_host_probe() -> void:
+	var plots0 := entities.filter(func(e): return e.kind == "plot").size()
+	var seen := 0
+	for i in 140:
+		await get_tree().create_timer(0.1).timeout
+		seen = maxi(seen, net_players.size())
+	var plots1 := entities.filter(func(e): return e.kind == "plot").size()
+	print("NET HOST ", "OK" if plots1 == plots0 + 1 and seen == 1 else "FAIL", " tarla %d→%d oyuncu=%d" % [plots0, plots1, seen])
+	get_tree().quit()
+
+func _net_selftest() -> void:
+	var fails := []
+	var tx := 0
+	var tz := 0
+	for x in range(-10, 10):
+		for z in range(-10, 10):
+			if tx == 0 and tz == 0 and _resolve("plow", null, x, z) != null:
+				tx = x
+				tz = z
+	await get_tree().create_timer(1.5).timeout
+	if not net_players.has(1): fails.append("ev sahibi avatarı yok")
+	if entities.size() < 10: fails.append("çiftlik yüklenmedi")
+	if tiles.has(key(tx, tz)): fails.append("deneme karesi dolu")
+	_perform({"tool": "plow", "arg": null, "x": tx, "z": tz})
+	await get_tree().create_timer(2.0).timeout
+	var e = tiles.get(key(tx, tz))
+	if e == null or e.kind != "plot": fails.append("çapa ev sahibinden dönmedi")
+	await get_tree().create_timer(3.5).timeout
+	if coins <= 0: fails.append("senkron para yok")
+	print("NET GUEST ", "OK" if fails.is_empty() else "FAIL: " + ", ".join(fails))
+	_net_close()
+	get_tree().quit()
 
 func _start_play(show_help := false) -> void:
 	playing = true
@@ -3651,12 +4118,37 @@ func _render_menu(page: String, arg := 0) -> void:
 				menu_box.add_child(_menu_btn("▶  Devam Et", func(): _start_play(), true))
 			menu_box.add_child(_menu_btn("🌱  Yeni Kariyer", func(): _render_menu("new", _free_slot()), cur.is_empty()))
 			menu_box.add_child(_menu_btn("📂  Kariyerler", func(): _render_menu("list")))
+			menu_box.add_child(_menu_btn("🤝  Arkadaşa Katıl", func(): _render_menu("join")))
 			menu_box.add_child(_menu_btn("❔  Nasıl Oynanır", func():
 				_start_play()
 				help.visible = true, false, not cur.is_empty()))
 			menu_box.add_child(_menu_btn("🚪  Çıkış", func():
 				_save()
 				get_tree().quit()))
+		"join":
+			var h := Label.new()
+			h.text = "🤝 Arkadaşının çiftliğine katıl\nArkadaşın oyunda 📡 düğmesine basıp\nsana adresini söylesin."
+			menu_box.add_child(h)
+			var ip := LineEdit.new()
+			ip.placeholder_text = "Adres (ör. 192.168.1.20)"
+			ip.text = _profile_get("last_ip", "")
+			ip.custom_minimum_size = Vector2(0, 40)
+			ip.add_theme_font_size_override("font_size", 18)
+			menu_box.add_child(ip)
+			var nm := LineEdit.new()
+			nm.placeholder_text = "Adın"
+			nm.text = _profile_get("player", "Çiftçi")
+			nm.max_length = 14
+			nm.custom_minimum_size = Vector2(0, 40)
+			nm.add_theme_font_size_override("font_size", 18)
+			menu_box.add_child(nm)
+			net_status = Label.new()
+			net_status.add_theme_color_override("font_color", Color("#8a7260"))
+			menu_box.add_child(net_status)
+			menu_box.add_child(_menu_btn("Bağlan", func(): _net_join(ip.text, nm.text), true))
+			menu_box.add_child(_menu_btn("←  Geri", func():
+				_net_close()
+				_render_menu("main")))
 		"list":
 			var h := Label.new()
 			h.text = "📂 Kariyerler"
@@ -3889,10 +4381,22 @@ func _update_hud(dt: float) -> void:
 func _save() -> void:
 	if save_path == "" or not playing:
 		return
+	var f := FileAccess.open(save_path, FileAccess.WRITE)
+	if f:
+		f.store_string(JSON.stringify(_state_dict()))
+		f.close()
+
+## Kayıt ve ağ için çiftliğin tüm durumu.
+func _state_dict() -> Dictionary:
 	var ents := []
 	for e in entities:
 		if e.kind == "building":
 			continue
+		ents.append(_ent_dict(e))
+	return {"v": 1, "story": story_step, "sh": story_have, "parcels": parcels, "name": farm_name, "gems": gems, "quests": quests, "qskip": quest_skip_at, "flv": flv, "season": season, "season_t": season_t, "year": year, "weather": weather, "weather_t": weather_t, "medals": medals, "res": res, "order": order, "coins": coins, "xp": xp, "level": level, "day_time": day_time, "day": day, "sel": sel, "muted": muted,
+		"saved_at": Time.get_unix_time_from_system(), "ents": ents, "fx": farmer.position.x, "fz": farmer.position.z}
+
+func _ent_dict(e: Dictionary) -> Dictionary:
 		var s := {"k": e.kind, "x": e.x, "z": e.z, "r": e.rot}
 		if e.has("type"): s.t = e.type
 		match e.kind:
@@ -3923,18 +4427,15 @@ func _save() -> void:
 				s.ev = e.value
 				s.ex = e.xp
 				s.ey = e.yield
-		ents.append(s)
-	var data := {"v": 1, "story": story_step, "sh": story_have, "parcels": parcels, "name": farm_name, "gems": gems, "quests": quests, "qskip": quest_skip_at, "flv": flv, "season": season, "season_t": season_t, "year": year, "weather": weather, "weather_t": weather_t, "medals": medals, "res": res, "order": order, "coins": coins, "xp": xp, "level": level, "day_time": day_time, "day": day, "sel": sel, "muted": muted,
-		"saved_at": Time.get_unix_time_from_system(), "ents": ents, "fx": farmer.position.x, "fz": farmer.position.z}
-	var f := FileAccess.open(save_path, FileAccess.WRITE)
-	if f:
-		f.store_string(JSON.stringify(data))
-		f.close()
+		return s
 
 func _load() -> bool:
 	if not FileAccess.file_exists(save_path):
 		return false
 	var data = JSON.parse_string(FileAccess.get_file_as_string(save_path))
+	return _load_dict(data, true)
+
+func _load_dict(data, offline: bool) -> bool:
 	if typeof(data) != TYPE_DICTIONARY or int(data.get("v", 0)) != 1:
 		return false
 	coins = int(data.coins)
@@ -3984,10 +4485,16 @@ func _load() -> bool:
 	for k in data.get("sel", {}):
 		sel[k] = data.sel[k]
 	for s in data.ents:
+		if tiles.has(key(int(s.x), int(s.z))):
+			continue
+		_add_entity(_ent_base(s))
+	_load_finish(data, offline)
+	return true
+
+## Kayıttaki varlık sözlüğünden _add_entity girdisi.
+func _ent_base(s: Dictionary) -> Dictionary:
 		var x := int(s.x)
 		var z := int(s.z)
-		if tiles.has(key(x, z)):
-			continue
 		var base := {"kind": s.k, "x": x, "z": z, "rot": float(s.get("r", 0.0))}
 		if s.has("t"):
 			base.type = s.t
@@ -4017,7 +4524,9 @@ func _load() -> bool:
 				base.ready = bool(s.get("rd", false))
 				base.water = float(s.get("wa", 0.0))
 				base.wet_t = float(s.get("wt", 0.0))
-		_add_entity(base)
+		return base
+
+func _load_finish(data: Dictionary, offline: bool) -> void:
 	_recompute_boosts()
 	var has_gate := false
 	for e in entities:
@@ -4035,7 +4544,7 @@ func _load() -> bool:
 	cam_target = farmer.position
 	btn_sound.text = "🔇" if muted else "🔊"
 	var away := minf(OFFLINE_CAP, Time.get_unix_time_from_system() - float(data.get("saved_at", 0)))
-	if away > 20.0:
+	if offline and away > 20.0:
 		var left := away
 		loading = true
 		while left > 0.0:
@@ -4043,7 +4552,6 @@ func _load() -> bool:
 			left -= 5.0
 		loading = false
 		_toast("🌙 Sen yokken çiftliğin %s boyunca büyüdü!" % fmt_time(away), "level")
-	return true
 
 ## Hikâyeli yeni kariyer: ot ve taş bürümüş arazi, az para, hayvan yok.
 func _new_story_game() -> void:
@@ -4145,6 +4653,8 @@ func _process(delta: float) -> void:
 		_simulate(sim_acc)
 		sim_acc = 0.0
 	_update_farmer(dt)
+	if net_role == "host" or net_role == "guest":
+		_net_tick(dt)
 	_update_gates(dt)
 	_update_camera(dt)
 	_update_day(dt)
@@ -4248,6 +4758,7 @@ func _selftest() -> void:
 	_selftest_quests(fails)
 	_selftest_paths(fails)
 	_selftest_gates(fails)
+	_selftest_net(fails)
 	_selftest_story(fails)
 	_selftest_parcels(fails)
 	var n_before := entities.size()
@@ -4311,6 +4822,9 @@ func _build_land_ui() -> void:
 	land_dlg.visible = false
 
 func _open_land(pc: Vector2i) -> void:
+	if net_role == "guest":
+		_toast("🗺️ Arazi alımı çiftlik sahibinde.", "hint")
+		return
 	for c in land_box.get_children():
 		land_box.remove_child(c)
 		c.queue_free()
@@ -4359,6 +4873,21 @@ func _selftest_story(fails: Array) -> void:
 	if _walkable(11, -11): fails.append("taş yolu kapatmıyor")
 	if not _perform({"tool": "remove", "arg": null, "x": 11, "z": -11}): fails.append("taş kaldırılamadı")
 	if tiles.has(key(11, -11)): fails.append("taş kaldı")
+
+func _selftest_net(fails: Array) -> void:
+	var d := _state_dict()
+	var js = JSON.parse_string(JSON.stringify(d))
+	if typeof(js) != TYPE_DICTIONARY or js.ents.size() != d.ents.size(): fails.append("durum JSON gidiş-dönüş")
+	var plot = null
+	for e in entities:
+		if e.kind == "plot" and e.crop != null:
+			plot = e
+			break
+	if plot != null:
+		var s := _ent_dict(plot)
+		s.p = 1.0
+		_net_apply_ents([s] + js.ents.filter(func(q): return not (int(q.x) == plot.x and int(q.z) == plot.z)))
+		if tiles.get(key(plot.x, plot.z)).progress < 1.0: fails.append("senkron ilerleme uygulanmadı")
 
 func _selftest_gates(fails: Array) -> void:
 	if _walkable(FARM_MAX + 1, 0): fails.append("sınır çiti yürünebilir")
@@ -4558,6 +5087,10 @@ func _story_on() -> bool:
 	return story_step < STORY.size()
 
 func _fill_quests() -> void:
+	if net_role == "guest":
+		quests = []
+		_render_quests()
+		return
 	if _story_on():
 		quests = []
 		_render_quests()
@@ -4976,7 +5509,7 @@ func _on_season_start() -> void:
 			_toast("🌳 Ağaçlar mevsim meyvesi verdi (%d)" % n)
 	if weather != "":
 		_end_weather()
-	var r := randf()
+	var r := randf() if net_role != "guest" else 2.0
 	for wc in Data.WEATHER_CHANCE[season]:
 		if r < wc[1]:
 			_start_weather(wc[0])
@@ -5177,6 +5710,9 @@ func _deliver() -> void:
 	_render_barn()
 
 func _open_barn() -> void:
+	if net_role == "guest":
+		_toast("📦 Ambar çiftlik sahibinde.", "hint")
+		return
 	help.visible = false
 	barn.visible = true
 	_render_barn()
