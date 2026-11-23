@@ -128,7 +128,8 @@ const HELP_PAGES := [
 		["Sağ sürükle", "Kamerayı döndürür ve eğer. Q / E döndürür, R / F eğer."],
 		["Orta sürükle", "Haritada gezersin. Ok tuşları da kamerayı kaydırır; Boşluk çiftçiye geri döner."],
 		["Tekerlek", "Yakınlaştır / uzaklaştır."],
-		["1 – 9", "Alet seç: El, Çapa, Tohum, Sula, Ağaç, Hayvan, Dekor, Bahçe, Kaldır."],
+		["Tab · 🎒", "Çark menüyü açar: aletler imlecin çevresinde dizilir, birine tıkla. Sağ alttaki 🎒 düğmesi de açar."],
+		["1 – 9", "Aleti doğrudan seç: El, Çapa, Tohum, Sula, Ağaç, Hayvan, Dekor, Bahçe, Kaldır."],
 		["B · J · Esc", "B ambarı, J görev panelini açar; Esc iş kuyruğunu ve pencereleri kapatır."],
 	]],
 	["🌱  Tarım", [
@@ -342,7 +343,10 @@ var shelf_nav: HBoxContainer
 var shelf_open := false
 var shelf_page := {}
 var entrance_doors := []
-var frame_block := {}      # çiftlik sınır çitinin kareleri (yürünmez)   # giriş kapısı kanatları
+var frame_block := {}
+var wheel: ColorRect         # çark menü katmanı
+var wheel_btn: Button        # sağ alttaki 🎒 düğmesi
+var wheel_info: Label      # çiftlik sınır çitinin kareleri (yürünmez)   # giriş kapısı kanatları
 var sky_mat: ShaderMaterial
 var story_step := 0        # STORY içindeki adım; STORY.size() = bitti
 var story_have := 0
@@ -2388,7 +2392,15 @@ func _unhandled_input(ev: InputEvent) -> void:
 		var k: int = ev.physical_keycode
 		if k >= KEY_1 and k <= KEY_9 and k - KEY_1 < TOOLS.size():
 			_set_tool(TOOLS[k - KEY_1].id, TOOLS[k - KEY_1].id != "hand")
+		elif k == KEY_TAB:
+			if wheel.visible:
+				_close_wheel()
+			else:
+				_open_wheel(mouse_pos)
 		elif k == KEY_ESCAPE:
+			if wheel.visible:
+				_close_wheel()
+				return
 			if shelf_open:
 				shelf_open = false
 				_render_shelf()
@@ -3044,29 +3056,7 @@ func _build_ui() -> void:
 	shelf_nav.add_theme_constant_override("separation", 14)
 	sv.add_child(shelf_nav)
 
-	var tb := _panel(6)
-	tb.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	bottom.add_child(tb)
-	var th_box := HBoxContainer.new()
-	th_box.add_theme_constant_override("separation", 4)
-	tb.add_child(th_box)
-	for i in TOOLS.size():
-		var t = TOOLS[i]
-		var b := Button.new()
-		b.text = "%s\n%s" % [t.icon, t.name]
-		b.tooltip_text = "%s  [%d]" % [t.tip, i + 1]
-		b.custom_minimum_size = Vector2(66, 64)
-		b.focus_mode = Control.FOCUS_NONE
-		b.add_theme_font_size_override("font_size", 14)
-		var id: String = t.id
-		b.pressed.connect(func():
-			if tool == id and shelf_open:
-				shelf_open = false
-				_render_shelf()
-			else:
-				_set_tool(id, id != "hand"))
-		th_box.add_child(b)
-		tool_buttons[id] = b
+	_build_wheel()
 
 	# --- ipucu
 	tip_panel = PanelContainer.new()
@@ -3185,6 +3175,124 @@ func _build_ui() -> void:
 	_build_barn_ui()
 	_build_quest_ui()
 	_build_land_ui()
+
+func _round_style(b: Button, bg: Color, hover: Color, r: int, border := Color.WHITE, bw := 3) -> void:
+	for st in [["normal", bg], ["hover", hover], ["pressed", hover.darkened(0.08)], ["disabled", bg]]:
+		var sb := _sb(st[1], r, border, bw, 2)
+		sb.shadow_color = Color(0.2, 0.14, 0.08, 0.3)
+		sb.shadow_size = 5
+		sb.shadow_offset = Vector2(0, 3)
+		b.add_theme_stylebox_override(st[0], sb)
+	b.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+
+## Çark menü: sağ altta 🎒 düğmesi; açılınca aletler imlecin çevresinde daire olur.
+func _build_wheel() -> void:
+	wheel_btn = Button.new()
+	wheel_btn.focus_mode = Control.FOCUS_NONE
+	wheel_btn.custom_minimum_size = Vector2(92, 92)
+	wheel_btn.size = Vector2(92, 92)
+	wheel_btn.anchor_left = 1.0
+	wheel_btn.anchor_right = 1.0
+	wheel_btn.anchor_top = 1.0
+	wheel_btn.anchor_bottom = 1.0
+	wheel_btn.offset_left = -112
+	wheel_btn.offset_right = -20
+	wheel_btn.offset_top = -112
+	wheel_btn.offset_bottom = -20
+	wheel_btn.add_theme_font_size_override("font_size", 15)
+	wheel_btn.tooltip_text = "Aletler  [Tab]"
+	_round_style(wheel_btn, Color("#6fbf3b"), Color("#7fcf4b"), 46, Color.WHITE, 4)
+	for st in ["font_color", "font_hover_color", "font_pressed_color"]:
+		wheel_btn.add_theme_color_override(st, Color.WHITE)
+	wheel_btn.pressed.connect(func(): _open_wheel(wheel_btn.global_position + wheel_btn.size / 2.0))
+	ui.add_child(wheel_btn)
+	var bag := Label.new()
+	bag.text = "🎒"
+	bag.add_theme_font_size_override("font_size", 22)
+	bag.position = Vector2(-6, -8)
+	bag.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	wheel_btn.add_child(bag)
+
+	wheel = ColorRect.new()
+	wheel.color = Color(0.05, 0.08, 0.03, 0.28)
+	wheel.set_anchors_preset(Control.PRESET_FULL_RECT)
+	wheel.mouse_filter = Control.MOUSE_FILTER_STOP
+	wheel.visible = false
+	wheel.gui_input.connect(func(ev):
+		if ev is InputEventMouseButton and ev.pressed:
+			_close_wheel())
+	ui.add_child(wheel)
+	var hub := PanelContainer.new()
+	hub.name = "hub"
+	hub.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var hs := _sb(Color("#fffaee"), 64, Color("#e7d7bf"), 3, 10)
+	hs.shadow_color = Color(0.2, 0.14, 0.08, 0.3)
+	hs.shadow_size = 8
+	hub.add_theme_stylebox_override("panel", hs)
+	hub.custom_minimum_size = Vector2(128, 128)
+	hub.size = Vector2(128, 128)
+	wheel.add_child(hub)
+	wheel_info = Label.new()
+	wheel_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	wheel_info.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	wheel_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	wheel_info.custom_minimum_size = Vector2(108, 0)
+	wheel_info.add_theme_font_size_override("font_size", 13)
+	hub.add_child(wheel_info)
+	for i in TOOLS.size():
+		var t = TOOLS[i]
+		var b := Button.new()
+		b.focus_mode = Control.FOCUS_NONE
+		b.custom_minimum_size = Vector2(84, 84)
+		b.size = Vector2(84, 84)
+		b.add_theme_font_size_override("font_size", 15)
+		b.tooltip_text = "%s  [%d]" % [t.tip, i + 1]
+		var id: String = t.id
+		var tip: String = "%s\n%s\n[%d]" % [t.icon, t.tip, i + 1]
+		b.mouse_entered.connect(func(): wheel_info.text = tip)
+		b.mouse_exited.connect(func(): _wheel_info_default())
+		b.pressed.connect(func():
+			_close_wheel()
+			_set_tool(id, id != "hand"))
+		wheel.add_child(b)
+		tool_buttons[id] = b
+
+func _wheel_info_default() -> void:
+	if wheel_info == null:
+		return
+	var t := ""
+	for tt in TOOLS:
+		if tt.id == tool:
+			t = "%s %s" % [tt.icon, tt.name]
+	wheel_info.text = "%s\n\nSeç ya da\nboşluğa tıkla" % t
+
+func _open_wheel(at: Vector2) -> void:
+	if shelf_open:
+		shelf_open = false
+		_render_shelf()
+	var vs := ui.get_viewport_rect().size
+	var rad := 150.0
+	at.x = clampf(at.x, rad + 60.0, vs.x - rad - 60.0)
+	at.y = clampf(at.y, rad + 60.0, vs.y - rad - 60.0)
+	var hub: Control = wheel.get_node("hub")
+	hub.position = at - hub.size / 2.0
+	var n := TOOLS.size()
+	for i in n:
+		var b: Button = tool_buttons[TOOLS[i].id]
+		var a := -PI / 2.0 + TAU * i / n
+		var target := at + Vector2(cos(a), sin(a)) * rad - b.size / 2.0
+		b.position = at - b.size / 2.0
+		b.scale = Vector2(0.4, 0.4)
+		b.pivot_offset = b.size / 2.0
+		var tw := create_tween().set_parallel().set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		tw.tween_property(b, "position", target, 0.18 + i * 0.012)
+		tw.tween_property(b, "scale", Vector2.ONE, 0.18 + i * 0.012)
+	_wheel_info_default()
+	wheel.visible = true
+	_sfx("click")
+
+func _close_wheel() -> void:
+	wheel.visible = false
 
 func _icon_btn(icon: String, tip: String) -> Button:
 	var b := Button.new()
@@ -3532,9 +3640,9 @@ func _set_tool(id: String, open := false) -> void:
 		var b: Button = tool_buttons[k]
 		var on: bool = k == id
 		if on:
-			_btn_styles(b, Color("#6fbf3b"), Color("#7fcf4b"))
+			_round_style(b, Color("#6fbf3b"), Color("#7fcf4b"), 42)
 		else:
-			_btn_styles(b, Color(0, 0, 0, 0), Color("#f3e6cf"))
+			_round_style(b, Color("#fffaee"), Color("#f3e6cf"), 42, Color("#e7d7bf"), 3)
 		b.add_theme_color_override("font_color", Color.WHITE if on else Color("#4a3424"))
 		b.add_theme_color_override("font_hover_color", Color.WHITE if on else Color("#4a3424"))
 	grid.visible = id != "hand"
@@ -3562,6 +3670,8 @@ func _update_tool_labels() -> void:
 			if list.has(k):
 				extra = list[k].icon
 		b.text = "%s%s\n%s" % [t.icon, extra, t.name]
+		if t.id == tool and wheel_btn != null:
+			wheel_btn.text = "%s%s\n%s" % [t.icon, extra, t.name]
 
 func _shelf_key() -> String:
 	for t in TOOLS:
@@ -3957,6 +4067,8 @@ func _process(delta: float) -> void:
 			for a in OS.get_cmdline_user_args():
 				if a.begins_with("--tool="):
 					_set_tool(a.substr(7), true)
+				elif a == "--wheel":
+					_open_wheel(Vector2(640, 380))
 		if shot_t > 4.0:
 			get_viewport().get_texture().get_image().save_png(shot_path)
 			get_tree().quit()
