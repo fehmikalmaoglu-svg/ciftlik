@@ -10,6 +10,8 @@ const POND_Z := 6.0
 const POND_R := 4.2
 const OFFLINE_CAP := 6.0 * 3600.0
 const QUEST_SLOTS := 4
+## Çiftçinin geçemediği dekorlar.
+const BLOCK_DECOR := ["fence", "rock", "lantern", "hay", "scarecrow", "bush", "flowers"]
 const QUEST_SKIP_COOLDOWN := 24.0 * 3600.0
 const QUEST_SKIP_GEMS := 2
 const FSPEED := 5.2
@@ -41,7 +43,7 @@ const TOOLS := [
 	{"id": "garden", "icon": "🌼", "name": "Bahçe", "shelf": "garden", "tip": "Çiçek tarhı ve balık göleti"},
 	{"id": "remove", "icon": "🗑️", "name": "Kaldır", "shelf": "", "tip": "Nesneyi kaldır (%25 iade)"},
 ]
-const ACT_TXT := {"plant": "🌱 Ek", "water": "💧 Sula", "harvest": "🧺 Topla", "feed": "🌾 Yemle", "flower": "🌼 Çiçek dik", "pond": "🐟 Gölet kur", "plow": "⛏️ Sür", "tree": "🌳 Dik", "animal": "🐾 Yerleştir", "decor": "🎨 Yerleştir", "remove": "🗑️ Kaldır"}
+const ACT_TXT := {"plant": "🌱 Ek", "water": "💧 Sula", "harvest": "🧺 Topla", "feed": "🌾 Yemle", "flower": "🌼 Çiçek dik", "pond": "🐟 Gölet kur", "coop": "🛖 Kümes kur", "plow": "⛏️ Sür", "tree": "🌳 Dik", "animal": "🐾 Yerleştir", "decor": "🎨 Yerleştir", "remove": "🗑️ Kaldır"}
 const MARKER_COL := {"hand": "#ffffff", "plow": "#a1673f", "seed": "#8bc34a", "water": "#4fc3f7", "tree": "#2e7d32", "animal": "#ffca28", "decor": "#ce93d8", "garden": "#f48fb1", "remove": "#e53935"}
 
 # ------------------------------------------------------------ durum
@@ -106,6 +108,7 @@ var mouse_pos := Vector2.ZERO
 
 var walk_phase := 0.0
 var move_target = null   # Vector3: tıklanan yere yürü
+var walk_path: Array = []  # move_target'a giden ara noktalar
 var move_marker: MeshInstance3D
 var act_t := 0.0
 var night_f := 0.0
@@ -552,9 +555,13 @@ func _add_entity(d: Dictionary) -> Dictionary:
 	var e := d.duplicate()
 	var g := Node3D.new()
 	e.group = g
-	if e.kind == "pond":
+	if e.kind == "pond" or e.kind == "coop":
 		e.w = 2
 		e.d = 2
+	if e.kind == "coop":
+		for f in ["eggs", "value", "xp", "yield"]:
+			if not e.has(f):
+				e[f] = 0
 	if e.has("w"):
 		g.position = Vector3(e.x + e.w / 2.0, 0, e.z + e.d / 2.0)
 		for i in int(e.w):
@@ -564,7 +571,7 @@ func _add_entity(d: Dictionary) -> Dictionary:
 		g.position = tile_center(e.x, e.z)
 		tiles[key(e.x, e.z)] = e
 	if not e.has("rot"):
-		var flat: bool = e.kind == "plot" or e.kind == "pond" or e.get("type", "") == "fence" or e.get("type", "") == "path"
+		var flat: bool = e.kind == "plot" or e.kind == "pond" or e.kind == "coop" or e.get("type", "") == "gate" or e.get("type", "") == "fence" or e.get("type", "") == "path"
 		e.rot = 0.0 if flat else float(randi() % 8) * PI / 4.0
 	g.rotation.y = e.rot
 	add_child(g)
@@ -600,7 +607,7 @@ func _add_entity(d: Dictionary) -> Dictionary:
 	if e.get("type", "") == "lantern":
 		lanterns.append(e)
 	_refresh(e)
-	if e.get("type", "") == "fence":
+	if e.get("type", "") == "fence" or e.get("type", "") == "gate":
 		_refresh_fence_neighbors(e.x, e.z)
 	if e.get("type", "") == "scarecrow":
 		_recompute_boosts()
@@ -618,19 +625,19 @@ func _remove_entity(e: Dictionary) -> void:
 	else:
 		tiles.erase(key(e.x, e.z))
 	lanterns.erase(e)
-	if e.get("type", "") == "fence":
+	if e.get("type", "") == "fence" or e.get("type", "") == "gate":
 		_refresh_fence_neighbors(e.x, e.z)
 	if e.get("type", "") == "scarecrow":
 		_recompute_boosts()
 
 func _is_fence(x: int, z: int) -> bool:
 	var t = tiles.get(key(x, z))
-	return t != null and t.get("type", "") == "fence"
+	return t != null and (t.get("type", "") == "fence" or t.get("type", "") == "gate")
 
 func _refresh_fence_neighbors(x: int, z: int) -> void:
 	for dd in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
 		var t = tiles.get(key(x + dd.x, z + dd.y))
-		if t != null and t.get("type", "") == "fence":
+		if t != null and (t.get("type", "") == "fence" or t.get("type", "") == "gate"):
 			_refresh(t)
 
 func _scarecrow_near(x: int, z: int) -> bool:
@@ -688,6 +695,20 @@ func _refresh(e: Dictionary) -> void:
 			e.wet_shown = _wet(e)
 			e.stage = 3 if e.ready else mini(2, int(e.t * 3.0))
 			g.add_child(Models.flower_bed(f.color, f.center, e.stage, e.wet_shown))
+		"coop":
+			g.add_child(Models.coop())
+			var el := Label3D.new()
+			el.font = font
+			el.font_size = 56
+			el.pixel_size = 0.01
+			el.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+			el.no_depth_test = true
+			el.outline_size = 12
+			el.outline_modulate = Color(0.2, 0.12, 0.05, 0.7)
+			el.position.y = 2.1
+			g.add_child(el)
+			e.icon = el
+			_update_coop(e)
 		"pond":
 			g.add_child(Models.fish_pond())
 			var fl := Label3D.new()
@@ -796,8 +817,9 @@ func _simulate(dt: float) -> void:
 					e.t += step / at
 					if e.t >= 1.0:
 						e.t = 0.0
-						e.ready = true
-						e.icon.visible = true
+						if not _lay_egg(e):
+							e.ready = true
+							e.icon.visible = true
 					if e.food <= 0.0 or e.ready:
 						_update_hungry(e)
 
@@ -862,6 +884,8 @@ func _resolve(t: String, arg, x: int, z: int):
 				return "harvest"
 			if e.kind == "pond" and e.ready:
 				return "harvest"
+			if e.kind == "coop" and e.eggs > 0:
+				return "harvest"
 			if e.kind == "flower":
 				if e.ready:
 					return "harvest"
@@ -887,6 +911,8 @@ func _resolve(t: String, arg, x: int, z: int):
 			var c = Data.TREES.get(arg)
 			return "tree" if e == null and _unlocked(c) and coins >= c.cost else null
 		"animal":
+			if arg == "coop":
+				return "coop" if _unlocked(Data.COOP) and coins >= Data.COOP.cost and _free_area(x, z, 2, 2) else null
 			var c = Data.ANIMALS.get(arg)
 			return "animal" if e == null and _unlocked(c) and coins >= c.cost else null
 		"decor":
@@ -971,6 +997,18 @@ func _perform(item: Dictionary) -> bool:
 				_update_hungry(e)
 			elif e.kind == "flower":
 				_harvest_flower(e, pos)
+			elif e.kind == "coop":
+				var cc := Vector3(e.x + 1.0, 0, e.z + 1.0)
+				var n: int = e.eggs
+				_burst(cc + Vector3(0, 1.0, 0), "#fff8e1", 12, 3.0)
+				_gain(e.value, e.xp, cc, "🥚")
+				_store("chicken", cc, e.yield - Data.YIELD.chicken[1])
+				_quest_event("animal", "chicken", n)
+				e.eggs = 0
+				e.value = 0
+				e.xp = 0
+				e.yield = 0
+				_update_coop(e)
 			elif e.kind == "pond":
 				var pd = Data.POND
 				e.ready = false
@@ -991,6 +1029,13 @@ func _perform(item: Dictionary) -> bool:
 			_float_text(pos, "-%d 🪙" % f.cost, Color("#ffb4a8"))
 			_burst(pos + Vector3(0, 0.2, 0), f.color, 8, 2.0)
 			_sfx("plant")
+		"coop":
+			_spend(Data.COOP.cost)
+			_add_entity({"kind": "coop", "type": "coop", "x": x, "z": z})
+			var ccp := Vector3(x + 1.0, 0, z + 1.0)
+			_float_text(ccp, "-%d 🪙" % Data.COOP.cost, Color("#ffb4a8"))
+			_burst(ccp + Vector3(0, 0.5, 0), "#c9874d", 14, 3.0)
+			_sfx("place")
 		"pond":
 			_spend(Data.POND.cost)
 			_add_entity({"kind": "pond", "type": "pond", "x": x, "z": z})
@@ -1031,6 +1076,8 @@ func _perform(item: Dictionary) -> bool:
 				def = Data.FLOWERS[e.type]
 			elif e.kind == "pond":
 				def = Data.POND
+			elif e.kind == "coop":
+				def = Data.COOP
 			_remove_entity(e)
 			_burst(pos + Vector3(0, 0.3, 0), "#9e9e9e", 10, 2.5)
 			if def != null and def.cost >= 8:
@@ -1080,7 +1127,7 @@ func _enqueue(t: Vector2i) -> void:
 
 func _explain_fail(arg, x: int, z: int) -> void:
 	var e = tiles.get(key(x, z))
-	var list = {"seed": Data.CROPS, "hand": Data.CROPS, "tree": Data.TREES, "animal": Data.ANIMALS, "decor": Data.DECOR, "garden": Data.garden()}.get(tool)
+	var list = {"seed": Data.CROPS, "hand": Data.CROPS, "tree": Data.TREES, "animal": Data.animal_shop(), "decor": Data.DECOR, "garden": Data.garden()}.get(tool)
 	var def = list.get(arg) if list != null and arg != null else null
 	if def != null and not _unlocked(def):
 		_toast("🔒 %s için seviye %d gerekli" % [def.name, def.level], "warn")
@@ -1102,6 +1149,9 @@ func _explain_fail(arg, x: int, z: int) -> void:
 		_sfx("error")
 		_toast("🪙 Yeterli altının yok", "warn")
 		return
+	if tool == "animal" and arg == "coop" and not _free_area(x, z, 2, 2):
+		_toast("🛖 Kümes için 2×2 boş alan gerekli", "hint")
+		return
 	if tool == "garden" and arg == "pond" and not _free_area(x, z, 2, 2):
 		_toast("🐟 Gölet için 2×2 boş alan gerekli", "hint")
 		return
@@ -1119,49 +1169,63 @@ func _update_farmer(dt: float) -> void:
 	var kx := (1.0 if Input.is_physical_key_pressed(KEY_D) or Input.is_physical_key_pressed(KEY_RIGHT) else 0.0) - (1.0 if Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_LEFT) else 0.0)
 	var kf := (1.0 if Input.is_physical_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_UP) else 0.0) - (1.0 if Input.is_physical_key_pressed(KEY_S) or Input.is_physical_key_pressed(KEY_DOWN) else 0.0)
 	var dir := Vector3.ZERO
+	var seek = null   # yol izlerken sıradaki ara nokta
 	if kx != 0.0 or kf != 0.0:
 		var fwd := Vector3(-sin(cam_yaw), 0, -cos(cam_yaw))
 		var right := Vector3(cos(cam_yaw), 0, -sin(cam_yaw))
 		dir = (fwd * kf + right * kx).normalized()
 		move_target = null
 	elif move_target != null:
-		var d: Vector3 = move_target - farmer.position
-		d.y = 0.0
-		if d.length() < 0.08:
+		var nxt = _path_next(walk_path)
+		if nxt == null:
 			move_target = null
 		else:
-			dir = d.normalized()
+			seek = nxt
+			dir = Vector3(nxt.x - farmer.position.x, 0, nxt.z - farmer.position.z).normalized()
 	elif act_t <= 0.0:
 		while queue.size() > 0 and _resolve(queue[0].tool, queue[0].arg, queue[0].x, queue[0].z) == null:
 			queue.pop_front().marker.queue_free()
 		if queue.size() > 0:
 			var q = queue[0]
-			var tgt := tile_center(q.x, q.z)
-			var d := Vector3(tgt.x - farmer.position.x, 0, tgt.z - farmer.position.z)
-			var target_e = tiles.get(key(q.x, q.z))
-			if q.tool == "garden" and q.arg == "pond" or (target_e != null and target_e.kind == "pond"):
-				tgt = Vector3(target_e.x + 1.0, 0, target_e.z + 1.0) if target_e != null else Vector3(q.x + 1.0, 0, q.z + 1.0)
-				d = Vector3(tgt.x - farmer.position.x, 0, tgt.z - farmer.position.z)
-			var reach := 1.6 if q.tool == "garden" and q.arg == "pond" or (target_e != null and target_e.kind == "pond") else 1.0 if q.tool == "tree" or q.tool == "animal" or (target_e != null and target_e.kind == "tree") else 0.75
-			if d.length() > reach:
-				dir = d.normalized()
-			else:
-				if d.length() > 0.01:
-					farmer.rotation.y = atan2(d.x, d.z)
+			var rect := _target_rect(q)
+			var adj := _target_adjacent(q)
+			var fp := Vector2(farmer.position.x, farmer.position.z)
+			var dist := _rect_dist(fp, rect)
+			if not q.has("path"):
+				q.path = _find_path(farmer.position, rect, 0.75 if adj else 0.0)
+			var tc := rect.get_center()
+			if dist <= (0.85 if adj else 0.3):
+				var dd := Vector2(tc.x - fp.x, tc.y - fp.y)
+				if dd.length() > 0.01:
+					farmer.rotation.y = atan2(dd.x, dd.y)
 				_perform(q)
 				q.marker.queue_free()
 				queue.pop_front()
 				act_t = 0.22
 				hud_dirty = true
+			else:
+				var nxt = null if q.path == null else _path_next(q.path)
+				if nxt == null:
+					if dist <= 1.6:
+						_perform(q)
+						act_t = 0.22
+					else:
+						_toast("🚧 Oraya ulaşılamıyor. Çite 🚪 kapı ekle (Dekor).", "warn")
+					q.marker.queue_free()
+					queue.pop_front()
+					hud_dirty = true
+				else:
+					seek = nxt
+					dir = Vector3(nxt.x - farmer.position.x, 0, nxt.z - farmer.position.z).normalized()
 	if dir != Vector3.ZERO:
 		var step := dir * FSPEED * dt
-		if move_target != null:
-			var rem: Vector3 = move_target - farmer.position
+		if seek != null:
+			var rem: Vector3 = seek - farmer.position
 			rem.y = 0.0
 			if step.length() > rem.length():
 				step = rem
 		var np := farmer.position + step
-		if _blocked(np):
+		if _blocked(np) and not _blocked(farmer.position):
 			# bina: eksen boyunca kaymayı dene
 			if not _blocked(Vector3(np.x, 0, farmer.position.z)):
 				np = Vector3(np.x, 0, farmer.position.z)
@@ -1216,16 +1280,206 @@ func _pick_point(mp: Vector2):
 func _walk_to(p) -> void:
 	if p == null:
 		return
-	p.x = clampf(p.x, -40.0, 40.0)
-	p.z = clampf(p.z, -40.0, 40.0)
+	p.x = clampf(p.x, -39.9, 39.9)
+	p.z = clampf(p.z, -39.9, 39.9)
 	p.y = 0.0
+	var tx := floori(p.x)
+	var tz := floori(p.z)
+	var ok := _walkable(tx, tz)
+	var path = _find_path(farmer.position, Rect2(tx, tz, 1, 1), 0.0 if ok else 0.75)
+	if path == null:
+		_toast("🚧 Oraya yol yok", "hint")
+		return
+	if ok:
+		path.append(Vector3(p.x, 0, p.z))
+	elif path.is_empty():
+		return
+	else:
+		p = path[path.size() - 1]
+	walk_path = path
 	move_target = p
 	move_marker.position = Vector3(p.x, height_at(p.x, p.z) + 0.05, p.z)
 	move_marker.visible = true
 
+func _walkable(x: int, z: int) -> bool:
+	if x < -40 or x > 39 or z < -40 or z > 39:
+		return false
+	var t = tiles.get(key(x, z))
+	if t == null:
+		return true
+	match t.kind:
+		"building", "pond", "coop", "tree":
+			return false
+		"decor":
+			return not BLOCK_DECOR.has(t.type)
+	return true
+
 func _blocked(p: Vector3) -> bool:
-	var t = tiles.get(key(floori(p.x), floori(p.z)))
-	return t != null and t.kind == "building"
+	return not _walkable(floori(p.x), floori(p.z))
+
+static func _rect_dist(p: Vector2, r: Rect2) -> float:
+	var dx := maxf(maxf(r.position.x - p.x, 0.0), p.x - r.end.x)
+	var dz := maxf(maxf(r.position.y - p.y, 0.0), p.y - r.end.y)
+	return Vector2(dx, dz).length()
+
+## İş sırası öğesinin hedef alanı (çok kareli nesnelerde tüm kaplama).
+func _target_rect(q) -> Rect2:
+	var e = tiles.get(key(q.x, q.z))
+	if e != null and e.has("w"):
+		return Rect2(e.x, e.z, e.w, e.d)
+	if (q.tool == "garden" and q.arg == "pond") or (q.tool == "animal" and q.arg == "coop"):
+		return Rect2(q.x, q.z, 2, 2)
+	return Rect2(q.x, q.z, 1, 1)
+
+## Hedefe yanından mı ulaşılır (engel ya da engel olacak bir şey yerleştiriliyor)?
+func _target_adjacent(q) -> bool:
+	if not _walkable(q.x, q.z):
+		return true
+	match q.tool:
+		"tree":
+			return true
+		"animal":
+			return q.arg == "coop"
+		"garden":
+			return q.arg == "pond"
+		"decor":
+			return BLOCK_DECOR.has(q.arg)
+	return false
+
+func _line_clear(a: Vector3, b: Vector3) -> bool:
+	var d := Vector3(b.x - a.x, 0, b.z - a.z)
+	var n := int(ceil(d.length() / 0.2))
+	var side := Vector3(-d.z, 0, d.x).normalized() * 0.18
+	for i in range(1, n + 1):
+		var p := a + d * (float(i) / n)
+		if _blocked(p) or _blocked(p + side) or _blocked(p - side):
+			return false
+	return true
+
+## Yol izlerken sıradaki noktayı verir; ulaşılanları ve görüşte olanları atlar.
+func _path_next(path: Array):
+	while path.size() > 0:
+		var p: Vector3 = path[0]
+		if Vector2(p.x - farmer.position.x, p.z - farmer.position.z).length() < 0.1:
+			path.pop_front()
+			continue
+		break
+	while path.size() >= 2 and _line_clear(farmer.position, path[1]):
+		path.pop_front()
+	return path[0] if path.size() > 0 else null
+
+## Izgara üzerinde A*: merkezinin hedef dikdörtgene uzaklığı <= thr olan yürünebilir kareye.
+## Ulaşılamazsa null; zaten hedefteyse boş dizi.
+func _find_path(from: Vector3, goal: Rect2, thr: float):
+	var start := Vector2i(floori(from.x), floori(from.z))
+	var gc := goal.get_center()
+	var is_goal := func(c: Vector2i) -> bool:
+		return _walkable(c.x, c.y) and _rect_dist(Vector2(c.x + 0.5, c.y + 0.5), goal) <= thr + 0.001
+	if is_goal.call(start) and thr > 0.0:
+		return []
+	var open: Array = [[0.0, start]]
+	var gs := {start: 0.0}
+	var came := {}
+	var closed := {}
+	var found = null
+	var dirs := [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1), Vector2i(1, 1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(-1, -1)]
+	var n := 0
+	while open.size() > 0 and n < 8000:
+		var cur: Vector2i = _hpop(open)[1]
+		if closed.has(cur):
+			continue
+		closed[cur] = true
+		n += 1
+		if is_goal.call(cur):
+			found = cur
+			break
+		for d in dirs:
+			var nb: Vector2i = cur + d
+			if closed.has(nb) or not _walkable(nb.x, nb.y):
+				continue
+			if d.x != 0 and d.y != 0 and (not _walkable(cur.x + d.x, cur.y) or not _walkable(cur.x, cur.y + d.y)):
+				continue
+			var g: float = gs[cur] + (1.414 if d.x != 0 and d.y != 0 else 1.0)
+			if g < gs.get(nb, INF):
+				gs[nb] = g
+				came[nb] = cur
+				_hpush(open, [g + Vector2(nb.x + 0.5 - gc.x, nb.y + 0.5 - gc.y).length(), nb])
+	if found == null:
+		return null
+	var out := []
+	var c: Vector2i = found
+	while c != start:
+		out.push_front(Vector3(c.x + 0.5, 0, c.y + 0.5))
+		c = came[c]
+	return out
+
+static func _hpush(h: Array, it: Array) -> void:
+	h.append(it)
+	var i := h.size() - 1
+	while i > 0:
+		var p := (i - 1) / 2
+		if h[p][0] <= h[i][0]:
+			break
+		var t = h[p]
+		h[p] = h[i]
+		h[i] = t
+		i = p
+
+static func _hpop(h: Array) -> Array:
+	var top = h[0]
+	var last = h.pop_back()
+	if h.size() > 0:
+		h[0] = last
+		var i := 0
+		while true:
+			var l := i * 2 + 1
+			var r := l + 1
+			var m := i
+			if l < h.size() and h[l][0] < h[m][0]:
+				m = l
+			if r < h.size() and h[r][0] < h[m][0]:
+				m = r
+			if m == i:
+				break
+			var t = h[m]
+			h[m] = h[i]
+			h[i] = t
+			i = m
+	return top
+
+# ------------------------------------------------------------ tavuk kümesi
+func _coop_for(e: Dictionary):
+	var best = null
+	var bd := 1e9
+	for c in entities:
+		if c.kind != "coop" or c.eggs >= Data.COOP_CAP:
+			continue
+		var d := _rect_dist(Vector2(e.x + 0.5, e.z + 0.5), Rect2(c.x, c.z, 2, 2))
+		if d <= Data.COOP_RANGE and d < bd:
+			bd = d
+			best = c
+	return best
+
+func _lay_egg(e: Dictionary) -> bool:
+	if e.type != "chicken":
+		return false
+	var c = _coop_for(e)
+	if c == null:
+		return false
+	var a = Data.ANIMALS.chicken
+	c.eggs += 1
+	c.value += int(round(a.sell * Data.animal_sell_mult(e.lv)))
+	c.xp += a.xp
+	c.yield += Data.YIELD.chicken[1] + Data.animal_extra_yield(e.lv)
+	if not loading:
+		_animal_harvested(e, tile_center(e.x, e.z))
+	_update_coop(c)
+	return true
+
+func _update_coop(c: Dictionary) -> void:
+	if c.has("icon") and c.icon != null:
+		c.icon.text = "🥚 %d" % c.eggs
+		c.icon.visible = c.eggs > 0
 
 func _input(ev: InputEvent) -> void:
 	if ev is InputEventMouseMotion:
@@ -1393,6 +1647,10 @@ func _describe(e, act, arg, x: int, z: int) -> String:
 					s += " · 💧 " + bar(e.water)
 				else:
 					s += " · 🏜️ kuru"
+			"coop":
+				s = "🛖 %s\n🥚 %d / %d yumurta" % [Data.COOP.name, e.eggs, Data.COOP_CAP]
+				if e.eggs == 0:
+					s += "\nÇevredeki tavuklar buraya yumurtlar"
 			"pond":
 				s = "🐟 %s\n" % Data.POND.name
 				s += "✅ Balıklar hazır!" if e.ready else "🐟 " + bar(e.t)
@@ -1407,6 +1665,7 @@ func _describe(e, act, arg, x: int, z: int) -> String:
 			"feed": extra = " " + _feed_cost_text(e)
 			"flower": extra = " %s %s  -%d🪙" % [Data.FLOWERS[arg].icon, Data.FLOWERS[arg].name, Data.FLOWERS[arg].cost]
 			"pond": extra = "  -%d🪙" % Data.POND.cost
+			"coop": extra = "  -%d🪙" % Data.COOP.cost
 			"tree": extra = " %s  -%d🪙" % [Data.TREES[arg].icon, Data.TREES[arg].cost]
 			"animal": extra = " %s  -%d🪙" % [Data.ANIMALS[arg].icon, Data.ANIMALS[arg].cost]
 			"decor": extra = " %s  -%d🪙" % [Data.DECOR[arg].icon, Data.DECOR[arg].cost]
@@ -1896,7 +2155,7 @@ func _build_ui() -> void:
 	var body := Label.new()
 	body.custom_minimum_size = Vector2(520, 0)
 	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	body.text = "Toprağı sür, tohum ek, sula, hasat et; altınla ağaç, hayvan ve dekor al. Seviye atladıkça yeni ekinler açılır.\n\n• Sol tık / sürükle — seçili aleti karelere uygula (çiftçi sırayla yapar)\n• Sağ tık sürükle veya Q / E — kamerayı döndür · Tekerlek — yakınlaştır\n• Boş yere tıkla — çiftçi oraya yürür · WASD / oklar — yürüt\n• 1–9 — alet seç · B — 📦 Ambar (kaynak sat, sipariş teslim et) · Esc — iptal\n• ✋ El akıllıdır: boş tarlaya seçili tohumu eker, susuzu sular, hazırı toplar.\n• 💧 Sulanan toprak bir süre ıslak kalır (2× hız), sonra kurur · 🧑‍🌾 Korkuluk çevresine +%25 hız verir.\n• 🐔 Hayvanlar yem ister (tahıl; yoksa altın). Aç hayvan üretmez; ✋ ile yemle. Yan yana aynı tür hayvanlar ağıl olur, biri yemlenince hepsi yer. Topladıkça seviye atlar, daha çok kazandırır.\n• 🌼 Bahçe (9): çiçek tarhları kalıcıdır, sabit sürede açar; büyürken sulu kalırsa 3 kata kadar kazanç. 🐟 Gölet 2×2 kare, kendiliğinden balık verir.\n• 📜 Görevler (J): aynı anda 4 görev; bitince 🏅 madalya, 💎 elmas ve XP. Günde bir görev ücretsiz silinir, sonrası 2 💎.\n• 🌸 Dört mevsim (10'ar dk): bazı tohumlar yalnız kendi mevsiminde ekilir. 🌧️ Yağmur sular, 🔥 kuraklıkta su çabuk biter, 🌨️ karda sulamaya gerek yok.\n• Oyun otomatik kaydedilir; sen yokken de çiftlik büyür."
+	body.text = "Toprağı sür, tohum ek, sula, hasat et; altınla ağaç, hayvan ve dekor al. Seviye atladıkça yeni ekinler açılır.\n\n• Sol tık / sürükle — seçili aleti karelere uygula (çiftçi sırayla yapar)\n• Sağ tık sürükle veya Q / E — kamerayı döndür · Tekerlek — yakınlaştır\n• Boş yere tıkla — çiftçi oraya yürür · WASD / oklar — yürüt\n• 1–9 — alet seç · B — 📦 Ambar (kaynak sat, sipariş teslim et) · Esc — iptal\n• ✋ El akıllıdır: boş tarlaya seçili tohumu eker, susuzu sular, hazırı toplar.\n• 💧 Sulanan toprak bir süre ıslak kalır (2× hız), sonra kurur · 🧑‍🌾 Korkuluk çevresine +%25 hız verir.\n• 🐔 Hayvanlar yem ister (tahıl; yoksa altın). Aç hayvan üretmez; ✋ ile yemle. Yan yana aynı tür hayvanlar ağıl olur, biri yemlenince hepsi yer. Topladıkça seviye atlar, daha çok kazandırır.\n• 🌼 Bahçe (9): çiçek tarhları kalıcıdır, sabit sürede açar; büyürken sulu kalırsa 3 kata kadar kazanç. 🐟 Gölet 2×2 kare, kendiliğinden balık verir.\n• 📜 Görevler (J): aynı anda 4 görev; bitince 🏅 madalya, 💎 elmas ve XP. Günde bir görev ücretsiz silinir, sonrası 2 💎.\n• 🚧 Çiftçi çitlerden, kayalardan, ağaçlardan geçmez; ağıla 🚪 kapıdan girer. 🛖 Kümes: çevresindeki tavuklar yumurtayı oraya bırakır.\n• 🌸 Dört mevsim (10'ar dk): bazı tohumlar yalnız kendi mevsiminde ekilir. 🌧️ Yağmur sular, 🔥 kuraklıkta su çabuk biter, 🌨️ karda sulamaya gerek yok.\n• Oyun otomatik kaydedilir; sen yokken de çiftlik büyür."
 	hv.add_child(body)
 	var go := Button.new()
 	go.text = "Başlayalım!"
@@ -1960,7 +2219,7 @@ func _render_shelf() -> void:
 	shelf_panel.visible = true
 	for c in shelf_box.get_children():
 		c.queue_free()
-	var list = {"seed": Data.CROPS, "tree": Data.TREES, "animal": Data.ANIMALS, "decor": Data.DECOR, "garden": Data.garden()}[cat]
+	var list = {"seed": Data.CROPS, "tree": Data.TREES, "animal": Data.animal_shop(), "decor": Data.DECOR, "garden": Data.garden()}[cat]
 	for k in list:
 		var it = list[k]
 		var locked: bool = it.level > level
@@ -1968,7 +2227,7 @@ func _render_shelf() -> void:
 		match cat:
 			"seed": meta = "⏱%s → %d🪙" % [fmt_time(it.time), it.sell] if _in_season(it) else "🚫 " + Data.season_icons(it.seasons)
 			"tree": meta = "🍃%s → %d🪙" % [fmt_time(it.regrow), it.sell]
-			"animal": meta = "%s%s → %d🪙" % [it.picon, fmt_time(it.time), it.sell]
+			"animal": meta = "🥚 yuva 2×2" if k == "coop" else "%s%s → %d🪙" % [it.picon, fmt_time(it.time), it.sell]
 			"decor": meta = "✨ bonus" if it.has("info") else " "
 			"garden":
 				if k == "pond":
@@ -2047,6 +2306,8 @@ func _save() -> void:
 				s.at = e.t
 				s.rd = e.ready
 				s.fd = snappedf(e.food, 0.001)
+				s.lv = e.lv
+				s.hv = e.hv
 			"flower":
 				s.at = e.t
 				s.rd = e.ready
@@ -2055,8 +2316,11 @@ func _save() -> void:
 			"pond":
 				s.at = e.t
 				s.rd = e.ready
-				s.lv = e.lv
-				s.hv = e.hv
+			"coop":
+				s.eg = e.eggs
+				s.ev = e.value
+				s.ex = e.xp
+				s.ey = e.yield
 		ents.append(s)
 	var data := {"v": 1, "gems": gems, "quests": quests, "qskip": quest_skip_at, "flv": flv, "season": season, "season_t": season_t, "year": year, "weather": weather, "weather_t": weather_t, "medals": medals, "res": res, "order": order, "coins": coins, "xp": xp, "level": level, "day_time": day_time, "day": day, "sel": sel, "muted": muted,
 		"saved_at": Time.get_unix_time_from_system(), "ents": ents, "fx": farmer.position.x, "fz": farmer.position.z}
@@ -2132,15 +2396,29 @@ func _load() -> bool:
 				base.t = float(s.get("at", 0.0))
 				base.ready = bool(s.get("rd", false))
 				base.food = float(s.get("fd", 1.0))
+				base.lv = int(s.get("lv", 1))
+				base.hv = int(s.get("hv", 0))
+			"coop":
+				base.eggs = int(s.get("eg", 0))
+				base.value = int(s.get("ev", 0))
+				base.xp = int(s.get("ex", 0))
+				base.yield = int(s.get("ey", 0))
 			"flower", "pond":
 				base.t = float(s.get("at", 0.0))
 				base.ready = bool(s.get("rd", false))
 				base.water = float(s.get("wa", 0.0))
 				base.wet_t = float(s.get("wt", 0.0))
-				base.lv = int(s.get("lv", 1))
-				base.hv = int(s.get("hv", 0))
 		_add_entity(base)
 	_recompute_boosts()
+	var has_gate := false
+	for e in entities:
+		if e.get("type", "") == "gate":
+			has_gate = true
+			break
+	var old_side = tiles.get(key(-3, 3))
+	if not has_gate and old_side != null and old_side.get("type", "") == "fence":
+		_remove_entity(old_side)
+		_add_entity({"kind": "decor", "type": "gate", "x": -3, "z": 3})
 	if order.is_empty():
 		_new_order()
 	_fill_quests()
@@ -2172,15 +2450,16 @@ func _new_game() -> void:
 			_add_entity({"kind": "plot", "x": x, "z": z, "crop": ("wheat" if i < 8 else "carrot") if planted else null,
 				"progress": (1.0 if i < 4 else 0.15 + (i % 5) * 0.15) if planted else 0.0, "watered": planted and i % 3 != 0})
 			i += 1
-	_add_entity({"kind": "animal", "type": "chicken", "x": -6, "z": 2})
-	_add_entity({"kind": "animal", "type": "chicken", "x": -5, "z": 3, "ready": true, "t": 0.0})
-	_add_entity({"kind": "animal", "type": "chicken", "x": -7, "z": 3, "t": 0.5, "food": 0.0})
+	_add_entity({"kind": "animal", "type": "chicken", "x": -8, "z": 2, "ready": true, "t": 0.0})
+	_add_entity({"kind": "animal", "type": "chicken", "x": -6, "z": 2, "t": 0.6})
+	_add_entity({"kind": "animal", "type": "chicken", "x": -7, "z": 4, "t": 0.5, "food": 0.0})
+	_add_entity({"kind": "coop", "type": "coop", "x": -5, "z": 2, "eggs": 2, "value": 36, "xp": 8, "yield": 4})
 	for x in range(-9, -2):
 		_add_entity({"kind": "decor", "type": "fence", "x": x, "z": 1})
 		_add_entity({"kind": "decor", "type": "fence", "x": x, "z": 5})
 	for z in range(2, 5):
 		_add_entity({"kind": "decor", "type": "fence", "x": -9, "z": z})
-		_add_entity({"kind": "decor", "type": "fence", "x": -3, "z": z})
+		_add_entity({"kind": "decor", "type": "gate" if z == 4 else "fence", "x": -3, "z": z})
 	_add_entity({"kind": "tree", "type": "apple", "x": -6, "z": -3, "age": 1.0, "fruit_t": 0.0, "has_fruit": true})
 	_add_entity({"kind": "tree", "type": "apple", "x": -3, "z": -3, "age": 0.4, "fruit_t": 0.0, "has_fruit": false})
 	_new_order()
@@ -2289,9 +2568,15 @@ func _selftest() -> void:
 	_selftest_animals(fails)
 	_selftest_garden(fails)
 	_selftest_quests(fails)
+	_selftest_paths(fails)
 	var n_before := entities.size()
 	_save()
 	var data = JSON.parse_string(FileAccess.get_file_as_string(SAVE_PATH))
+	var lv_ok := false
+	for se in data.ents:
+		if se.k == "animal" and se.has("lv"):
+			lv_ok = true
+	if not lv_ok: fails.append("hayvan seviyesi kaydedilmedi")
 	if data.ents.size() != n_before - 4: fails.append("kayıt varlık sayısı %d / %d" % [data.ents.size(), n_before - 4])
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(SAVE_PATH))
 	print("SELFTEST ", "OK" if fails.is_empty() else "FAIL: " + ", ".join(fails))
@@ -2325,6 +2610,46 @@ func _demo() -> void:
 	farmer.position = Vector3(6.5, 0, 1.5)
 	cam_target = farmer.position
 	cam_dist = 11.0
+
+# ============================================================ çarpışma, yol, kümes testleri
+func _selftest_paths(fails: Array) -> void:
+	_clear_queue()
+	var ring := []
+	for x in range(8, 11):
+		for z in range(-3, 0):
+			if x == 9 and z == -2:
+				continue
+			ring.append(_add_entity({"kind": "decor", "type": "fence", "x": x, "z": z}))
+	farmer.position = Vector3(6.5, 0, -2.5)
+	_walk_to(Vector3(9.5, 0, -1.5))
+	if move_target != null: fails.append("kapalı ağıla yol bulundu")
+	var side = tiles[key(9, -1)]
+	_remove_entity(side)
+	ring.erase(side)
+	ring.append(_add_entity({"kind": "decor", "type": "gate", "x": 9, "z": -1}))
+	_walk_to(Vector3(9.5, 0, -1.5))
+	for i in 300:
+		_update_farmer(0.05)
+		if _blocked(farmer.position): fails.append("çitin içinden geçti %s" % farmer.position)
+	if farmer.position.distance_to(Vector3(9.5, 0, -1.5)) > 0.1: fails.append("kapıdan girilemedi %s" % farmer.position)
+	for f in ring:
+		_remove_entity(f)
+	# kümes
+	coins = 1000
+	level = 3
+	res = {}
+	if not _perform({"x": 2, "z": 6, "tool": "animal", "arg": "coop"}): fails.append("kümes kurma")
+	var cp = tiles.get(key(3, 7))
+	if cp == null or cp.kind != "coop": fails.append("kümes 2×2 değil")
+	var ch := _add_entity({"kind": "animal", "type": "chicken", "x": 5, "z": 6, "t": 0.999, "food": 1.0})
+	_simulate(1.0)
+	if ch.ready or cp.eggs != 1: fails.append("tavuk kümese yumurtlamadı")
+	var c0 := coins
+	if not _perform({"x": 3, "z": 7, "tool": "hand", "arg": "wheat"}): fails.append("kümesten toplama")
+	if coins != c0 + Data.ANIMALS.chicken.sell or res.get("egg", 0) != 2 or cp.eggs != 0: fails.append("kümes hasadı %d %s" % [coins - c0, res])
+	_remove_entity(ch)
+	_remove_entity(cp)
+	res = {}
 
 # ============================================================ görevler (Aşama 5)
 func _owned(kind: String, type: String) -> bool:

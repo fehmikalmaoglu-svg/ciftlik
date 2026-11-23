@@ -726,9 +726,59 @@ static func fence(n := false, s := false, e := false, w := false) -> Node3D:
 		if n: add(g, box(0.05, 0.07, 0.5, RL, 0, y, -0.25))
 	return g
 
+## Çit kapısı: iki direk + çapraz destekli kanat. along_x: kapı x ekseni boyunca uzanır.
+static func gate(along_x: bool) -> Node3D:
+	var g := node()
+	const P := "#8d5f3a"
+	const D := "#d9ae7a"
+	var inner := node()
+	for x in [-0.44, 0.44]:
+		add(inner, box(0.15, 0.78, 0.15, P, x, 0.39, 0))
+		add(inner, box(0.19, 0.05, 0.19, "#6d4527", x, 0.8, 0))
+	for y in [0.2, 0.42, 0.62]:
+		add(inner, box(0.74, 0.08, 0.05, D, 0, y, 0))
+	var br := box(0.8, 0.06, 0.05, D, 0, 0.41, 0.01)
+	br.rotation.z = 0.5
+	add(inner, br)
+	add(inner, box(0.05, 0.05, 0.06, "#424242", 0.3, 0.42, 0.03))
+	if not along_x:
+		inner.rotation.y = PI / 2.0
+	add(g, inner)
+	return g
+
+## Tavuk kümesi: 2×2 kare, merkez orijinde, kapı +z yönünde.
+static func coop() -> Node3D:
+	var g := node()
+	const W := "#c9874d"
+	const WD := "#a86a35"
+	for x in [-0.55, 0.55]:
+		for z in [-0.45, 0.45]:
+			add(g, box(0.09, 0.42, 0.09, WD, x, 0.21, z))
+	add(g, box(1.35, 0.1, 1.15, WD, 0, 0.45, 0))
+	add(g, box(1.25, 0.75, 1.05, W, 0, 0.87, 0))
+	for x in [-0.45, -0.15, 0.15, 0.45]:
+		add(g, box(0.025, 0.75, 1.07, WD, x, 0.87, 0))
+	var roof := gable_roof(1.25, 1.05, 0.5, W, "#b8402f", 0.16)
+	roof.position.y = 1.24
+	add(g, roof)
+	add(g, box(0.34, 0.44, 0.04, "#5d3a1a", 0, 0.73, 0.54))
+	add(g, box(0.4, 0.05, 0.05, "#f0c75e", 0, 0.52, 0.56))
+	var ramp := box(0.3, 0.035, 0.7, WD, 0, 0.27, 0.82)
+	ramp.rotation.x = 0.62
+	add(g, ramp)
+	for i in 4:
+		add(g, box(0.3, 0.02, 0.03, "#7a4a24", 0, 0.12 + i * 0.1, 0.62 + i * 0.13))
+	var win := cyl(0.12, 0.12, 0.04, 8, "#ffe9a8", 0.4, 1.0, 0.54)
+	win.rotation.x = PI / 2.0
+	add(g, win)
+	add(g, box(0.5, 0.12, 0.3, "#e6c15a", -0.45, 0.06, 0.75))
+	return g
+
 static func decor(type: String, conn := {}) -> Node3D:
 	var g := node()
 	match type:
+		"gate":
+			return gate(conn.get("e", false) or conn.get("w", false) or not (conn.get("n", false) or conn.get("s", false)))
 		"fence":
 			return fence(conn.get("n", false), conn.get("s", false), conn.get("e", false), conn.get("w", false))
 		"path":

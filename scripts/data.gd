@@ -27,6 +27,7 @@ const ANIMALS := {
 const DECOR := {
 	"path":      {"name": "Taş Yol",  "icon": "🪨", "cost": 2,  "level": 1},
 	"fence":     {"name": "Çit",      "icon": "🪵", "cost": 4,  "level": 1},
+	"gate":      {"name": "Çit Kapısı", "icon": "🚪", "cost": 10, "level": 1, "info": "Çitin içinden geçilebilen kapı"},
 	"flowers":   {"name": "Çiçeklik", "icon": "🌷", "cost": 15, "level": 1},
 	"rock":      {"name": "Kaya",     "icon": "⛰️", "cost": 8,  "level": 1},
 	"bush":      {"name": "Çalı",     "icon": "🌿", "cost": 12, "level": 2},
@@ -49,6 +50,16 @@ const FLOWER_HARVESTS_PER_LV := 5
 
 ## Balık göleti (Aşama 4): 2×2 kare, yem istemez.
 const POND := {"name": "Balık Göleti", "icon": "🐟", "cost": 350, "time": 450.0, "sell": 40, "xp": 10, "level": 3, "info": "2×2 kare. Kendiliğinden balık üretir."}
+
+## Tavuk kümesi: 2×2. Yakındaki tavuklar yumurtayı buraya bırakır, tek tıkla toplanır.
+const COOP := {"name": "Tavuk Kümesi", "icon": "🛖", "cost": 200, "level": 1, "info": "2×2. Çevresindeki (6 kare) tavuklar buraya yumurtlar."}
+const COOP_RANGE := 6
+const COOP_CAP := 12
+
+static func animal_shop() -> Dictionary:
+	var d := ANIMALS.duplicate()
+	d["coop"] = COOP
+	return d
 
 static func garden() -> Dictionary:
 	var d := FLOWERS.duplicate()
