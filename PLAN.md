@@ -89,3 +89,11 @@ Her aşama kendi içinde oynanabilir biter; sonunda `--selftest` genişletilir v
 ## Teknik hazırlık (Aşama 1'den önce)
 - `game.gd` ~1300 satır; aşamalar eklendikçe bölünür: `world.gd`, `farm.gd` (varlıklar + simülasyon), `ui.gd`, `save.gd`, `audio.gd`.
 - Kayıt dosyasına sürüm alanı zaten var (`v`); her aşamada geçiş (migration) eklenir.
+
+### Geri bildirim turu 2 (23.11.2026) ✅
+- Ağıl kapısı ve çiftlik girişi çiftçi yaklaşınca ondan uzağa açılır, uzaklaşınca kapanır.
+- Eşya seçimi: alete tıklayınca açılan sayfalı pencere (8'li ızgara, ◀ ▶); seçilen eşyanın simgesi alet düğmesinde.
+- Gece: özel gökyüzü shader'ı (ay, hilal gölgesi, titreşen yıldızlar, samanyolu), geceleri ay ışığı; dalgalı, fresnel yansımalı su.
+- Uzaklar: ufukta karlı dağlar, büyüyen tepeler, MultiMesh uzak orman, ufuk bulutları.
+- Hikâyeli yeni kariyer: Nermin Teyze'nin mektubu (5 sayfa), ot/taş/kütük bürümüş arazi, 9 adımlık ⭐ Hikâye görevi (temizle → sür → ek → sula → hasat → sat → tavuk → kümes → yumurta). Hikâye bitene kadar rastgele görev yok.
+

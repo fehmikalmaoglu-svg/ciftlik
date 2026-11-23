@@ -156,6 +156,7 @@ const HELP_PAGES := [
 		["🌸", "Dört mevsim var, her biri 30 dakika. Bazı tohumlar yalnız kendi mevsiminde ekilir."],
 		["🌧️", "Yağmur her şeyi sular. 🔥 Kuraklıkta su çabuk biter. 🌨️ Karda sulamaya gerek yok."],
 		["🌙", "Gün 15 dakika sürer, gece kısadır; fenerler geceleri yanar."],
+		["⭐", "Yeni kariyer bir hikâyeyle başlar: ot ve taş bürümüş araziyi temizle, ⭐ Hikâye görevlerini izle. Hikâye bitince günlük görevler gelir."],
 		["💾", "Oyun otomatik kaydedilir; sen yokken de çiftlik büyür."],
 	]],
 ]
@@ -187,6 +188,42 @@ const TOOLS := [
 	{"id": "remove", "icon": "🗑️", "name": "Kaldır", "shelf": "", "tip": "Nesneyi kaldır (%25 iade)"},
 ]
 const ACT_TXT := {"plant": "🌱 Ek", "water": "💧 Sula", "harvest": "🧺 Topla", "feed": "🌾 Yemle", "flower": "🌼 Çiçek dik", "pond": "🐟 Gölet kur", "coop": "🛖 Kümes kur", "plow": "⛏️ Sür", "tree": "🌳 Dik", "animal": "🐾 Yerleştir", "decor": "🎨 Yerleştir", "remove": "🗑️ Kaldır"}
+## Yeni kariyerin başında temizlenecek yabani şeyler: [modeller, ölçek, altın, XP, yolu kapatır mı]
+const DEBRIS := {
+	"weed": [["grass_leafsLarge.glb", "plant_bushSmall.glb", "plant_flatTall.glb"], 1.7, 2, 1, false],
+	"stone": [["rock_smallB.glb", "rock_largeD.glb", "stone_smallC.glb"], 1.3, 4, 1, true],
+	"stump": [["stump_old.glb", "stump_roundDetailed.glb"], 1.5, 5, 2, true],
+	"log": [["log_large.glb"], 1.3, 6, 2, true],
+}
+## Hikâye: sırayla açılan görevler. kind/arg _quest_event ile eşleşir.
+const STORY := [
+	{"kind": "clear", "arg": "", "need": 6, "text": "🪓 Araziyi temizle: 6 ot, taş ya da kütük kaldır (🗑️ Kaldır)", "coins": 40, "xp": 10,
+		"say": "Taşların altından kara, yumuşak bir toprak çıktı. Teyzen haklıymış!"},
+	{"kind": "plow", "arg": "", "need": 6, "text": "⛏️ Çapa ile 6 kare tarla sür", "coins": 30, "xp": 10,
+		"say": "Tarla hazır. Ambarın önündeki çuvalda buğday tohumu var."},
+	{"kind": "plant", "arg": "wheat", "need": 6, "text": "🌱 6 kare buğday ek (🌱 Tohum)", "coins": 20, "xp": 10,
+		"say": "Toprak susamış görünüyor…"},
+	{"kind": "water", "arg": "", "need": 6, "text": "💧 Ektiğin tarlaları sula", "coins": 20, "xp": 10,
+		"say": "Sulanan ekin iki kat hızlı büyür. Biraz bekle, çiftliği gez."},
+	{"kind": "crop", "arg": "wheat", "need": 6, "text": "🌾 İlk buğday hasadını topla (✋ El)", "coins": 80, "xp": 20,
+		"say": "İlk hasat! Kasabalılar taze buğdaya bayılır."},
+	{"kind": "sell", "arg": "", "need": 6, "text": "📦 Ambarda 6 ürün sat (B tuşu)", "coins": 100, "xp": 15,
+		"say": "Biraz paran oldu. Bir çiftlik hayvansız olur mu?"},
+	{"kind": "buy", "arg": "chicken", "need": 2, "text": "🐔 2 tavuk al (🐔 Hayvan)", "coins": 60, "xp": 15,
+		"say": "Tavuklar yumurtlayacak bir yuva arıyor."},
+	{"kind": "buy", "arg": "coop", "need": 1, "text": "🛖 Tavukların yanına kümes kur", "coins": 40, "xp": 20,
+		"say": "Kümes hazır! Tavukların yanında olduğu sürece yumurtalar oraya bırakılır."},
+	{"kind": "animal", "arg": "chicken", "need": 3, "text": "🥚 Kümesten 3 yumurta topla (✋ El)", "coins": 100, "xp": 30,
+		"say": ""},
+]
+const STORY_PAGES := [
+	["📮", "Bir mektup", "Bir sabah kapına eski, mühürlü bir zarf bırakılmış. Üzerinde tanıdık bir el yazısı var: Nermin Teyze."],
+	["✉️", "Teyzenin sözleri", "\"Sevgili yeğenim, yaşım ilerledi, tepedeki çiftliğe artık bakamıyorum. Onu sana bırakıyorum. Her yeri ot ve taş bürüdü ama toprağı hâlâ bereketlidir. Ona iyi bak.\""],
+	["🧳", "Yola çıkış", "Bavulunu topladın, kasabanın dışındaki tepeye tırmandın. Gıcırdayan kapının üstünde solmuş bir tabela: %s."],
+	["🏚️", "Çiftlik", "İçeride eski bir ev, tozlu bir ambar ve ot bürümüş bir arazi var. Cebinde biraz para, ambarın önünde bir çuval buğday tohumu."],
+	["💪", "Hadi başlayalım!", "Önce araziyi temizle, sonra ilk tarlanı sür. Sol üstteki ⭐ Hikâye görevi sana yol gösterecek."],
+]
+
 const SHELF_COLS := 4
 const SHELF_PER_PAGE := 8
 const SHELF_TITLES := {"seed": "🌱 Tohumlar", "tree": "🌳 Meyve Ağaçları", "animal": "🐔 Hayvanlar", "decor": "🌷 Dekor", "garden": "🌼 Bahçe"}
@@ -305,6 +342,9 @@ var shelf_open := false
 var shelf_page := {}
 var entrance_doors := []   # giriş kapısı kanatları
 var sky_mat: ShaderMaterial
+var story_step := 0        # STORY içindeki adım; STORY.size() = bitti
+var story_have := 0
+var story_ui: ColorRect
 var look_up := 0.0   # yalnız ekran görüntüsü için (--lookup=N)
 var tool_buttons := {}
 var tip_panel: PanelContainer
@@ -467,9 +507,14 @@ func _ready() -> void:
 	var loaded := false
 	if save_path != "" and not is_new and not args.has("--fresh"):
 		loaded = _load()
+	var story_new := false
 	if not loaded:
 		var nm := farm_name
-		_new_game()
+		story_new = is_new or args.has("--story")
+		if story_new:
+			_new_story_game()
+		else:
+			_new_game()
 		farm_name = nm
 	if args.has("--night"):
 		day_time = 0.88
@@ -500,7 +545,9 @@ func _ready() -> void:
 	if args.has("--menu"):
 		start_play = false
 	if start_play:
-		_start_play(is_new or (not loaded and not dev))
+		_start_play((is_new or (not loaded and not dev)) and not story_new)
+		if story_new and (shot_path == "" or args.has("--storyshot")):
+			_show_story(0)
 	else:
 		_show_menu()
 	if args.has("--selftest"):
@@ -1383,6 +1430,19 @@ func _refresh(e: Dictionary) -> void:
 			_update_mark(e)
 		"tree":
 			g.add_child(Visuals.tree(e.type, e.age >= 1.0, e.has_fruit))
+		"debris":
+			var dd: Array = DEBRIS.get(e.type, DEBRIS.weed)
+			var files: Array = dd[0]
+			var h := absi(e.x * 31 + e.z * 17)
+			var m := Assets.inst(NAT + files[h % files.size()], dd[1] * (0.9 + (h % 5) * 0.06))
+			if m != null:
+				g.add_child(m)
+				if e.type == "weed":
+					var m2 := Assets.inst(NAT + "grass_leafs.glb", 1.6, 1.3, Vector3(0.25, 0, -0.2))
+					if m2 != null:
+						g.add_child(m2)
+			else:
+				g.add_child(Models.decor("rock" if dd[4] else "bush", {}))
 		"animal":
 			e.model = Visuals.animal(e.type)
 			g.add_child(e.model)
@@ -1663,6 +1723,7 @@ func _perform(item: Dictionary) -> bool:
 	match act:
 		"plow":
 			_add_entity({"kind": "plot", "x": x, "z": z, "crop": null, "progress": 0.0, "water": 0.0})
+			_quest_event("plow", "", 1)
 			_burst(pos + Vector3(0, 0.15, 0), "#8b5a3c", 8, 2.0)
 			_sfx("plow")
 		"plant":
@@ -1749,6 +1810,7 @@ func _perform(item: Dictionary) -> bool:
 		"coop":
 			_spend(Data.COOP.cost)
 			_add_entity({"kind": "coop", "type": "coop", "x": x, "z": z})
+			_quest_event("buy", "coop", 1)
 			var ccp := Vector3(x + 1.0, 0, z + 1.0)
 			_float_text(ccp, "-%d 🪙" % Data.COOP.cost, Color("#ffb4a8"))
 			_burst(ccp + Vector3(0, 0.5, 0), "#c9874d", 14, 3.0)
@@ -1772,6 +1834,7 @@ func _perform(item: Dictionary) -> bool:
 			var a = Data.ANIMALS[arg]
 			_spend(a.cost)
 			_add_entity({"kind": "animal", "type": arg, "x": x, "z": z, "t": 0.0, "ready": false})
+			_quest_event("buy", arg, 1)
 			_float_text(pos, "-%d 🪙" % a.cost, Color("#ffb4a8"))
 			_burst(pos + Vector3(0, 0.5, 0), "#ffffff", 10, 2.5)
 			_sfx("animal")
@@ -1795,6 +1858,14 @@ func _perform(item: Dictionary) -> bool:
 				def = Data.POND
 			elif e.kind == "coop":
 				def = Data.COOP
+			if e.kind == "debris":
+				var dd: Array = DEBRIS.get(e.type, DEBRIS.weed)
+				_remove_entity(e)
+				_burst(pos + Vector3(0, 0.3, 0), "#8d6e63" if dd[4] else "#7cb342", 12, 2.5)
+				_gain(dd[2], dd[3], pos, "🪓")
+				_quest_event("clear", e.type, 1)
+				_sfx("remove")
+				return true
 			_remove_entity(e)
 			_burst(pos + Vector3(0, 0.3, 0), "#9e9e9e", 10, 2.5)
 			if def != null and def.cost >= 8:
@@ -2048,6 +2119,8 @@ func _walkable(x: int, z: int) -> bool:
 			return false
 		"decor":
 			return not BLOCK_DECOR.has(t.type)
+		"debris":
+			return not DEBRIS.get(t.type, DEBRIS.weed)[4]
 	return true
 
 func _blocked(p: Vector3) -> bool:
@@ -3189,6 +3262,73 @@ func _migrate_old_save() -> void:
 		DirAccess.rename_absolute(ProjectSettings.globalize_path(OLD_SAVE), ProjectSettings.globalize_path(_slot_path(1)))
 		_set_last(1)
 
+func _show_story(i: int) -> void:
+	if story_ui == null:
+		story_ui = ColorRect.new()
+		story_ui.color = Color(0.06, 0.09, 0.05, 0.82)
+		story_ui.set_anchors_preset(Control.PRESET_FULL_RECT)
+		story_ui.mouse_filter = Control.MOUSE_FILTER_STOP
+		ui.add_child(story_ui)
+	for c in story_ui.get_children():
+		c.queue_free()
+	if i >= STORY_PAGES.size():
+		story_ui.visible = false
+		_render_quests()
+		return
+	story_ui.visible = true
+	var cc := CenterContainer.new()
+	cc.set_anchors_preset(Control.PRESET_FULL_RECT)
+	story_ui.add_child(cc)
+	var pn := _panel(30)
+	pn.custom_minimum_size = Vector2(620, 0)
+	cc.add_child(pn)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 16)
+	pn.add_child(v)
+	var pg: Array = STORY_PAGES[i]
+	var ic := Label.new()
+	ic.text = pg[0]
+	ic.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	ic.add_theme_font_size_override("font_size", 64)
+	v.add_child(ic)
+	var tl := Label.new()
+	tl.text = pg[1]
+	tl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	tl.add_theme_font_size_override("font_size", 26)
+	v.add_child(tl)
+	var tx := Label.new()
+	tx.text = pg[2] % farm_name.to_upper() if pg[2].contains("%s") else pg[2]
+	tx.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	tx.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	tx.add_theme_font_size_override("font_size", 18)
+	v.add_child(tx)
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 12)
+	v.add_child(row)
+	var dots := Label.new()
+	var dt := ""
+	for k in STORY_PAGES.size():
+		dt += "● " if k == i else "○ "
+	dots.text = dt
+	dots.add_theme_color_override("font_color", Color("#a0731b"))
+	row.add_child(dots)
+	var last := i == STORY_PAGES.size() - 1
+	if not last:
+		var sk := _small_btn("Geç", func(): _show_story(STORY_PAGES.size()))
+		sk.custom_minimum_size = Vector2(80, 40)
+		row.add_child(sk)
+	var go := Button.new()
+	go.text = "Çiftliğe git!" if last else "İleri  ▶"
+	go.focus_mode = Control.FOCUS_NONE
+	go.custom_minimum_size = Vector2(170, 44)
+	go.add_theme_font_size_override("font_size", 17)
+	for st in ["font_color", "font_hover_color", "font_pressed_color"]:
+		go.add_theme_color_override(st, Color.WHITE)
+	_btn_styles(go, Color("#6fbf3b"), Color("#7fcf4b"))
+	go.pressed.connect(func(): _show_story(i + 1))
+	row.add_child(go)
+
 func _start_play(show_help := false) -> void:
 	playing = true
 	menu_layer.visible = false
@@ -3540,7 +3680,7 @@ func _save() -> void:
 				s.ex = e.xp
 				s.ey = e.yield
 		ents.append(s)
-	var data := {"v": 1, "parcels": parcels, "name": farm_name, "gems": gems, "quests": quests, "qskip": quest_skip_at, "flv": flv, "season": season, "season_t": season_t, "year": year, "weather": weather, "weather_t": weather_t, "medals": medals, "res": res, "order": order, "coins": coins, "xp": xp, "level": level, "day_time": day_time, "day": day, "sel": sel, "muted": muted,
+	var data := {"v": 1, "story": story_step, "sh": story_have, "parcels": parcels, "name": farm_name, "gems": gems, "quests": quests, "qskip": quest_skip_at, "flv": flv, "season": season, "season_t": season_t, "year": year, "weather": weather, "weather_t": weather_t, "medals": medals, "res": res, "order": order, "coins": coins, "xp": xp, "level": level, "day_time": day_time, "day": day, "sel": sel, "muted": muted,
 		"saved_at": Time.get_unix_time_from_system(), "ents": ents, "fx": farmer.position.x, "fz": farmer.position.z}
 	var f := FileAccess.open(save_path, FileAccess.WRITE)
 	if f:
@@ -3566,6 +3706,8 @@ func _load() -> bool:
 		parcels.append(str(pc))
 	farm_name = str(data.get("name", "Çiftliğim"))
 	quest_skip_at = float(data.get("qskip", 0.0))
+	story_step = clampi(int(data.get("story", STORY.size())), 0, STORY.size())
+	story_have = int(data.get("sh", 0))
 	quests = []
 	var qd = data.get("quests", [])
 	if typeof(qd) == TYPE_ARRAY:
@@ -3659,7 +3801,39 @@ func _load() -> bool:
 		_toast("🌙 Sen yokken çiftliğin %s boyunca büyüdü!" % fmt_time(away), "level")
 	return true
 
+## Hikâyeli yeni kariyer: ot ve taş bürümüş arazi, az para, hayvan yok.
+func _new_story_game() -> void:
+	for z in range(-6, 12):
+		for x in [-1, 0]:
+			_add_entity({"kind": "decor", "type": "path", "x": x, "z": z})
+	for d in [["lantern", -2, 10], ["lantern", 1, 10]]:
+		_add_entity({"kind": "decor", "type": d[0], "x": d[1], "z": d[2]})
+	var r := RandomNumberGenerator.new()
+	r.seed = 2026
+	var kinds := ["weed", "weed", "weed", "stone", "weed", "stump", "stone", "weed", "log", "stone"]
+	var n := 0
+	var tries := 0
+	while n < 26 and tries < 400:
+		tries += 1
+		var x := r.randi_range(-11, 10)
+		var z := r.randi_range(-11, 10)
+		if x >= -3 and x <= 2:
+			continue
+		if tiles.has(key(x, z)) or tiles.has(key(x + 1, z)) or tiles.has(key(x, z + 1)):
+			continue
+		_add_entity({"kind": "debris", "type": kinds[n % kinds.size()], "x": x, "z": z})
+		n += 1
+	coins = 60
+	sel.seed = "wheat"
+	story_step = 0
+	story_have = 0
+	_new_order()
+	_recompute_boosts()
+	quests = []
+	_render_quests()
+
 func _new_game() -> void:
+	story_step = STORY.size()
 	for z in range(-6, 12):
 		for x in [-1, 0]:
 			_add_entity({"kind": "decor", "type": "path", "x": x, "z": z})
@@ -3824,6 +3998,7 @@ func _selftest() -> void:
 	_selftest_quests(fails)
 	_selftest_paths(fails)
 	_selftest_gates(fails)
+	_selftest_story(fails)
 	_selftest_parcels(fails)
 	var n_before := entities.size()
 	_save()
@@ -3911,6 +4086,29 @@ func _open_land(pc: Vector2i) -> void:
 	row.add_child(_small_btn("  Vazgeç  ", func(): land_dlg.visible = false))
 	land_box.add_child(row)
 	land_dlg.visible = true
+
+func _selftest_story(fails: Array) -> void:
+	var keep_q = quests
+	story_step = 0
+	story_have = 0
+	var c0 := coins
+	_quest_event("clear", "weed", 6)
+	if story_step != 1: fails.append("hikâye 1. adım geçmedi")
+	if coins < c0 + STORY[0].coins: fails.append("hikâye ödülü yok")
+	_quest_event("plant", "carrot", 6)
+	if story_step != 1: fails.append("hikâye yanlış olayla ilerledi")
+	_fill_quests()
+	if not quests.is_empty(): fails.append("hikâye sürerken rastgele görev")
+	for i in range(1, STORY.size()):
+		var st: Dictionary = STORY[i]
+		_quest_event(st.kind, st.arg if st.arg != "" else "x", st.need)
+	if _story_on(): fails.append("hikâye bitmedi")
+	if quests.size() != QUEST_SLOTS: fails.append("hikâye sonrası görev gelmedi")
+	quests = keep_q
+	var d := _add_entity({"kind": "debris", "type": "stone", "x": 11, "z": -11})
+	if _walkable(11, -11): fails.append("taş yolu kapatmıyor")
+	if not _perform({"tool": "remove", "arg": null, "x": 11, "z": -11}): fails.append("taş kaldırılamadı")
+	if tiles.has(key(11, -11)): fails.append("taş kaldı")
 
 func _selftest_gates(fails: Array) -> void:
 	var gate = tiles.get(key(-3, 4))
@@ -4096,14 +4294,45 @@ func _random_quest() -> Dictionary:
 	var pick = c[randi() % c.size()]
 	return _make_quest(pick[0], pick[1])
 
+func _story_on() -> bool:
+	return story_step < STORY.size()
+
 func _fill_quests() -> void:
+	if _story_on():
+		quests = []
+		_render_quests()
+		return
 	while quests.size() < QUEST_SLOTS:
 		quests.append(_random_quest())
+	_render_quests()
+
+func _story_event(kind: String, arg: String, n: int) -> void:
+	if not _story_on():
+		return
+	var st: Dictionary = STORY[story_step]
+	if st.kind != kind or (st.arg != "" and st.arg != arg):
+		return
+	story_have = mini(st.need, story_have + n)
+	if story_have < st.need:
+		_render_quests()
+		return
+	story_step += 1
+	story_have = 0
+	_sfx("level")
+	if st.say != "":
+		_toast("⭐ %s" % st.say, "level")
+	_gain(st.coins, st.xp, farmer.position, "⭐")
+	if not _story_on():
+		gems += 3
+		_toast("🎉 Çiftlik yeniden canlandı! Nermin Teyze gurur duyardı.\n+3 💎 · Artık günlük görevler de geliyor.", "level")
+		_fill_quests()
+	hud_dirty = true
 	_render_quests()
 
 func _quest_event(kind: String, arg: String, n: int) -> void:
 	if n <= 0:
 		return
+	_story_event(kind, arg, n)
 	var done := []
 	for i in quests.size():
 		var q = quests[i]
@@ -4174,6 +4403,38 @@ func _render_quests() -> void:
 	quest_panel.reset_size()
 	if not quest_open:
 		return
+	if _story_on():
+		var st: Dictionary = STORY[story_step]
+		var sp := PanelContainer.new()
+		sp.add_theme_stylebox_override("panel", _sb(Color("#fff4cc"), 10, Color("#f2c94c"), 2, 0))
+		var sv := VBoxContainer.new()
+		sv.add_theme_constant_override("separation", 4)
+		sp.add_child(sv)
+		var sh := Label.new()
+		sh.text = "⭐ Hikâye · %d / %d" % [story_step + 1, STORY.size()]
+		sh.add_theme_font_size_override("font_size", 12)
+		sh.add_theme_color_override("font_color", Color("#a0731b"))
+		sv.add_child(sh)
+		var sl := Label.new()
+		sl.text = st.text
+		sl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		sl.custom_minimum_size = Vector2(250, 0)
+		sl.add_theme_font_size_override("font_size", 14)
+		sv.add_child(sl)
+		var spb := ProgressBar.new()
+		spb.show_percentage = false
+		spb.custom_minimum_size = Vector2(0, 7)
+		spb.max_value = st.need
+		spb.value = story_have
+		spb.add_theme_stylebox_override("background", _sb(Color("#eadcc6"), 3, Color(0, 0, 0, 0), 0, 0))
+		spb.add_theme_stylebox_override("fill", _sb(Color("#f2a900"), 3, Color(0, 0, 0, 0), 0, 0))
+		sv.add_child(spb)
+		var sr := Label.new()
+		sr.text = "%d / %d   ·   ödül: %d 🪙  +%d XP" % [story_have, st.need, st.coins, st.xp]
+		sr.add_theme_font_size_override("font_size", 12)
+		sr.add_theme_color_override("font_color", Color("#8a7260"))
+		sv.add_child(sr)
+		quest_box.add_child(sp)
 	for i in quests.size():
 		var q = quests[i]
 		var row := VBoxContainer.new()

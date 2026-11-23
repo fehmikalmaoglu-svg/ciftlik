@@ -27,6 +27,8 @@ Web sürümüyle aynı: ⛏️ Çapa ile sür, 🌱 ek, 💧 sula (2× hız), �
 
 **Ana menü ve kariyerler:** açılışta yükleme ekranı ve ana menü gelir. 3 kariyer yuvası var: *Yeni Kariyer* (çiftliğine ad ver), *Kariyerler* (yükle / iki basışla sil), *Devam Et*. Oyun içindeki 🏠 düğmesi kaydedip menüye döner; sıfırlama yok.
 
+**Yeni kariyer:** bir mektup ve hikâyeyle başlar; ot, taş ve kütük bürümüş araziyi 🗑️ Kaldır ile temizleyip ⭐ Hikâye görevlerini izlersin.
+
 **Arazi:** başlangıçta ortadaki 24×24 alan açık. Çevresindeki 8×8 parsellere tıklayıp seviye ve altınla satın alırsın; her parsel bir öncekinden pahalı. Kilitli parseller çalı, kaya, kütük, çiçek ve mantarla dolu yabani arazidir; satın alınca temizlenir. Çiftlik dışında orman, çiçek tarlaları, kamp alanı ve gölette kano var.
 
 **Hayvanlar ve çitler:** çiftçi çitlerden, kayalardan, ağaçlardan ve binalardan geçmez, etrafından dolaşır; ağıla 🚪 çit kapısından girer. 🛖 Kümes (Hayvan rafı): çevresindeki 6 karedeki tavuklar yumurtayı kümese bırakır, kümese tıklayınca hepsi toplanır.
@@ -62,4 +64,4 @@ Editörde *Proje → Dışa Aktar*. İlk seferde Godot "dışa aktarma şablonla
 - [Quaternius LowPoly Crops](https://opengameart.org/node/126983) — ekinler ve meyve ağaçları (`assets/crops`)
 - [Quaternius Farm Animals](https://opengameart.org/content/lowpoly-animated-farm-animal-pack) — inek, domuz, koyun (`assets/animals`)
 
-Geliştirici araçları: `tools/career_test.gd` (kariyer akışı testi: `--headless --script res://tools/career_test.gd`), `tools/probe.gd` (model boyut/animasyon listesi), `tools/preview.gd` (modelleri tek karede önizle). Ek bayraklar: `--demo` (her türden örnek), `--barn` (ambarı açık başlat), `--season=0..3` (mevsim seç), `--weather=rain|drought|snow` (hava olayı başlat).
+Geliştirici araçları: `tools/career_test.gd` (kariyer akışı testi: `--headless --script res://tools/career_test.gd`), `tools/probe.gd` (model boyut/animasyon listesi), `tools/preview.gd` (modelleri tek karede önizle). Ek bayraklar: `--demo` (her türden örnek), `--barn` (ambarı açık başlat), `--season=0..3` (mevsim seç), `--weather=rain|drought|snow` (hava olayı başlat), `--story` (hikâyeli başlangıç), `--night`, `--tool=seed` (eşya penceresi açık), `--pitch=`/`--yaw=`/`--lookup=` (kamera açısı).
