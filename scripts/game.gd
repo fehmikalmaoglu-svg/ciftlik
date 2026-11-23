@@ -63,6 +63,47 @@ void fragment() {
 	BACKLIGHT = vec3(0.25, 0.35, 0.1);
 }
 """
+## Yardım sayfaları: [başlık, [[simge/tuş, açıklama], ...]]
+const HELP_PAGES := [
+	["🎮  Kontroller", [
+		["Sol tık", "Seçili aleti kareye uygular. Sürükleyerek çok kareye iş verirsin; çiftçi sırayla yapar."],
+		["Boş yere tık", "Çiftçi oraya yürür. WASD ile de yürütebilirsin."],
+		["Sağ sürükle", "Kamerayı döndürür ve eğer. Q / E döndürür, R / F eğer."],
+		["Orta sürükle", "Haritada gezersin. Ok tuşları da kamerayı kaydırır; Boşluk çiftçiye geri döner."],
+		["Tekerlek", "Yakınlaştır / uzaklaştır."],
+		["1 – 9", "Alet seç: El, Çapa, Tohum, Sula, Ağaç, Hayvan, Dekor, Bahçe, Kaldır."],
+		["B · J · Esc", "B ambarı, J görev panelini açar; Esc iş kuyruğunu ve pencereleri kapatır."],
+	]],
+	["🌱  Tarım", [
+		["⛏️", "Çapa ile toprağı sür, 🌱 tohum ek, 💧 sula, ✋ El ile topla."],
+		["✋", "El akıllıdır: boş tarlaya seçili tohumu eker, susuz tarlayı sular, hazır olanı toplar."],
+		["💧", "Sulanan toprak bir süre ıslak kalır ve ekin 2 kat hızlı büyür. Tarla üstünde 💧 görürsen su istiyor demektir."],
+		["🧺", "Tarla üstündeki sepet, ürünün hasada hazır olduğunu gösterir."],
+		["🧑‍🌾", "Korkuluk çevresindeki ekinleri %25 hızlandırır."],
+		["📦", "Hasat ambara gider. Ambarda kaynak satar, pazar siparişlerini teslim edersin."],
+	]],
+	["🐔  Hayvanlar", [
+		["🌾", "Hayvanlar yem ister (tahıl; yoksa altın). Aç hayvan üretmez; ✋ ile yemle."],
+		["🐑", "Yan yana duran aynı tür hayvanlar ağıl olur; biri yemlenince hepsi yer."],
+		["⭐", "Hayvanlar topladıkça seviye atlar ve daha çok kazandırır."],
+		["🛖", "Kümes: çevresindeki tavuklar yumurtayı oraya bırakır, kümesten toplarsın."],
+		["🚪", "Çiftçi çitlerden, kayalardan ve ağaçlardan geçmez; ağıla kapıdan girer."],
+	]],
+	["🌼  Bahçe ve Görevler", [
+		["🌷", "Bahçe (9): çiçek tarhları kalıcıdır, sabit sürede açar. Büyürken sulu kalırsa 3 kata kadar kazandırır."],
+		["🐟", "Gölet 2×2 kare kaplar ve kendiliğinden balık verir."],
+		["📜", "Aynı anda 4 görev olur. Biten görev 🏅 madalya, 💎 elmas ve XP verir."],
+		["✖️", "Günde bir görevi ücretsiz silebilirsin; sonrası 2 💎."],
+	]],
+	["🗺️  Arazi ve Mevsimler", [
+		["🔒", "Kilitli araziye tıkla: seviye ve altınla yeni 8×8 parsel açılır. Her parsel bir öncekinden pahalıdır."],
+		["🌸", "Dört mevsim var, her biri 30 dakika. Bazı tohumlar yalnız kendi mevsiminde ekilir."],
+		["🌧️", "Yağmur her şeyi sular. 🔥 Kuraklıkta su çabuk biter. 🌨️ Karda sulamaya gerek yok."],
+		["🌙", "Gün 15 dakika sürer, gece kısadır; fenerler geceleri yanar."],
+		["💾", "Oyun otomatik kaydedilir; sen yokken de çiftlik büyür."],
+	]],
+]
+
 const SEASON_TINT := [["#7ccf4a", 0.0], ["#b8bf45", 0.3], ["#d0902e", 0.5], ["#eef3f8", 0.7]]
 
 const TOOLS := [
@@ -1475,8 +1516,8 @@ func _clear_queue() -> void:
 # ============================================================ çiftçi
 func _update_farmer(dt: float) -> void:
 	var moving := false
-	var kx := (1.0 if Input.is_physical_key_pressed(KEY_D) else 0.0) - (1.0 if Input.is_physical_key_pressed(KEY_A) else 0.0)
-	var kf := (1.0 if Input.is_physical_key_pressed(KEY_W) else 0.0) - (1.0 if Input.is_physical_key_pressed(KEY_S) else 0.0)
+	var kx := (1.0 if _key(KEY_D) else 0.0) - (1.0 if _key(KEY_A) else 0.0)
+	var kf := (1.0 if _key(KEY_W) else 0.0) - (1.0 if _key(KEY_S) else 0.0)
 	var dir := Vector3.ZERO
 	var seek = null   # yol izlerken sıradaki ara nokta
 	if kx != 0.0 or kf != 0.0:
@@ -1564,18 +1605,27 @@ func _update_farmer(dt: float) -> void:
 	else:
 		fparts.arm_r.rotation.x = lerpf(fparts.arm_r.rotation.x, sw * 0.8, 0.3)
 
+## Oyun tuşu basılı mı? Menüdeyken, yardım açıkken ya da bir yazı kutusuna yazılırken hayır.
+func _key(k: Key) -> bool:
+	if not playing or help.visible:
+		return false
+	var f := get_viewport().gui_get_focus_owner()
+	if f is LineEdit or f is TextEdit:
+		return false
+	return Input.is_physical_key_pressed(k)
+
 func _update_camera(dt: float) -> void:
-	if Input.is_physical_key_pressed(KEY_Q):
+	if _key(KEY_Q):
 		cam_yaw += dt * 1.8
-	if Input.is_physical_key_pressed(KEY_E):
+	if _key(KEY_E):
 		cam_yaw -= dt * 1.8
-	var px := (1.0 if Input.is_physical_key_pressed(KEY_RIGHT) else 0.0) - (1.0 if Input.is_physical_key_pressed(KEY_LEFT) else 0.0)
-	var pz := (1.0 if Input.is_physical_key_pressed(KEY_UP) else 0.0) - (1.0 if Input.is_physical_key_pressed(KEY_DOWN) else 0.0)
+	var px := (1.0 if _key(KEY_RIGHT) else 0.0) - (1.0 if _key(KEY_LEFT) else 0.0)
+	var pz := (1.0 if _key(KEY_UP) else 0.0) - (1.0 if _key(KEY_DOWN) else 0.0)
 	if px != 0.0 or pz != 0.0:
 		_pan_camera(Vector2(px, -pz) * dt * cam_dist * 1.1)
-	if Input.is_physical_key_pressed(KEY_R):
+	if _key(KEY_R):
 		cam_pitch = clampf(cam_pitch + dt * 0.8, 0.3, 1.4)
-	if Input.is_physical_key_pressed(KEY_F):
+	if _key(KEY_F):
 		cam_pitch = clampf(cam_pitch - dt * 0.8, 0.3, 1.4)
 	if cam_follow:
 		cam_target = cam_target.lerp(farmer.position, 1.0 - exp(-dt * 4.0))
@@ -2486,42 +2536,97 @@ func _build_ui() -> void:
 	toasts.add_theme_constant_override("separation", 6)
 	ui.add_child(toasts)
 
-	# --- yardım
+	# --- yardım: tam ekran sayfa, solda bölümler, sağda maddeler
 	help = ColorRect.new()
-	help.color = Color(0.12, 0.2, 0.08, 0.35)
+	help.color = Color(0.1, 0.16, 0.07, 0.75)
 	help.set_anchors_preset(Control.PRESET_FULL_RECT)
 	help.mouse_filter = Control.MOUSE_FILTER_STOP
 	ui.add_child(help)
-	var cc := CenterContainer.new()
-	cc.set_anchors_preset(Control.PRESET_FULL_RECT)
-	help.add_child(cc)
+	var hm := MarginContainer.new()
+	hm.set_anchors_preset(Control.PRESET_FULL_RECT)
+	for side in ["left", "right", "top", "bottom"]:
+		hm.add_theme_constant_override("margin_" + side, 40)
+	help.add_child(hm)
 	var hp := _panel(24)
-	cc.add_child(hp)
+	hm.add_child(hp)
 	var hv := VBoxContainer.new()
-	hv.add_theme_constant_override("separation", 10)
+	hv.add_theme_constant_override("separation", 14)
 	hp.add_child(hv)
+	var htop := HBoxContainer.new()
+	hv.add_child(htop)
 	var h1 := Label.new()
-	h1.text = "🌾 Çiftliğim 3D"
+	h1.text = "🌾 Nasıl Oynanır?"
 	h1.add_theme_font_size_override("font_size", 28)
-	hv.add_child(h1)
-	var body := Label.new()
-	body.custom_minimum_size = Vector2(520, 0)
-	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	body.text = "Toprağı sür, tohum ek, sula, hasat et; altınla ağaç, hayvan ve dekor al. Seviye atladıkça yeni ekinler açılır.\n\n• Sol tık / sürükle — seçili aleti karelere uygula (çiftçi sırayla yapar)\n• Sağ tık sürükle — kamerayı döndür/eğ · Orta tık sürükle veya ok tuşları — haritada gez · Boşluk — çiftçiye dön
-• Q / E — döndür · R / F — eğ · Tekerlek — yakınlaştır\n• Boş yere tıkla — çiftçi oraya yürür · WASD / oklar — yürüt\n• 1–9 — alet seç · B — 📦 Ambar (kaynak sat, sipariş teslim et) · Esc — iptal\n• ✋ El akıllıdır: boş tarlaya seçili tohumu eker, susuzu sular, hazırı toplar.\n• 💧 Sulanan toprak bir süre ıslak kalır (2× hız), sonra kurur · 🧑‍🌾 Korkuluk çevresine +%25 hız verir.\n• 🐔 Hayvanlar yem ister (tahıl; yoksa altın). Aç hayvan üretmez; ✋ ile yemle. Yan yana aynı tür hayvanlar ağıl olur, biri yemlenince hepsi yer. Topladıkça seviye atlar, daha çok kazandırır.\n• 🌼 Bahçe (9): çiçek tarhları kalıcıdır, sabit sürede açar; büyürken sulu kalırsa 3 kata kadar kazanç. 🐟 Gölet 2×2 kare, kendiliğinden balık verir.\n• 📜 Görevler (J): aynı anda 4 görev; bitince 🏅 madalya, 💎 elmas ve XP. Günde bir görev ücretsiz silinir, sonrası 2 💎.\n• 🚧 Çiftçi çitlerden, kayalardan, ağaçlardan geçmez; ağıla 🚪 kapıdan girer. 🛖 Kümes: çevresindeki tavuklar yumurtayı oraya bırakır.\n• 🗺️ Kilitli araziye tıkla: seviye ve altınla yeni 8×8 parsel aç.\n• 🌸 Dört mevsim (10'ar dk): bazı tohumlar yalnız kendi mevsiminde ekilir. 🌧️ Yağmur sular, 🔥 kuraklıkta su çabuk biter, 🌨️ karda sulamaya gerek yok.\n• Oyun otomatik kaydedilir; sen yokken de çiftlik büyür."
-	hv.add_child(body)
+	h1.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	htop.add_child(h1)
 	var go := Button.new()
 	go.text = "Başlayalım!"
 	go.focus_mode = Control.FOCUS_NONE
-	go.custom_minimum_size = Vector2(180, 44)
-	go.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	go.custom_minimum_size = Vector2(170, 42)
 	go.add_theme_font_size_override("font_size", 17)
 	go.add_theme_color_override("font_color", Color.WHITE)
 	go.add_theme_color_override("font_hover_color", Color.WHITE)
 	go.add_theme_color_override("font_pressed_color", Color.WHITE)
 	_btn_styles(go, Color("#6fbf3b"), Color("#7fcf4b"))
 	go.pressed.connect(func(): help.visible = false)
-	hv.add_child(go)
+	htop.add_child(go)
+	var row := HBoxContainer.new()
+	row.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	row.add_theme_constant_override("separation", 20)
+	hv.add_child(row)
+	var tabs := VBoxContainer.new()
+	tabs.custom_minimum_size = Vector2(210, 0)
+	tabs.add_theme_constant_override("separation", 6)
+	row.add_child(tabs)
+	var sc := ScrollContainer.new()
+	sc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	row.add_child(sc)
+	var page := VBoxContainer.new()
+	page.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	page.add_theme_constant_override("separation", 12)
+	sc.add_child(page)
+	var tab_btns := []
+	for i in HELP_PAGES.size():
+		var b := Button.new()
+		b.text = HELP_PAGES[i][0]
+		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		b.focus_mode = Control.FOCUS_NONE
+		b.custom_minimum_size = Vector2(0, 44)
+		b.add_theme_font_size_override("font_size", 17)
+		tabs.add_child(b)
+		tab_btns.append(b)
+	var show_page := func(idx: int) -> void:
+		for c in page.get_children():
+			c.queue_free()
+		for j in tab_btns.size():
+			var on: bool = j == idx
+			_btn_styles(tab_btns[j], Color("#6fbf3b") if on else Color(1, 1, 1, 0.55), Color("#7fcf4b") if on else Color(1, 1, 1, 0.85))
+			var fc := Color.WHITE if on else Color("#4a3b2a")
+			for st in ["font_color", "font_hover_color", "font_pressed_color"]:
+				tab_btns[j].add_theme_color_override(st, fc)
+		for item in HELP_PAGES[idx][1]:
+			var line := HBoxContainer.new()
+			line.add_theme_constant_override("separation", 12)
+			var ic := Label.new()
+			ic.text = item[0]
+			ic.custom_minimum_size = Vector2(120 if item[0].length() > 3 else 40, 0)
+			ic.add_theme_font_size_override("font_size", 18 if item[0].length() > 3 else 24)
+			ic.vertical_alignment = VERTICAL_ALIGNMENT_TOP
+			line.add_child(ic)
+			var tx := Label.new()
+			tx.text = item[1]
+			tx.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			tx.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			tx.add_theme_font_size_override("font_size", 17)
+			line.add_child(tx)
+			page.add_child(line)
+			page.add_child(HSeparator.new())
+		sc.scroll_vertical = 0
+	for i in tab_btns.size():
+		var idx := i
+		tab_btns[i].pressed.connect(func(): show_page.call(idx))
+	show_page.call(0)
 	help.visible = false
 	_build_barn_ui()
 	_build_quest_ui()
@@ -2642,7 +2747,7 @@ func _start_play(show_help := false) -> void:
 	if slot > 0:
 		_set_last(slot)
 	_save()
-	if show_help and shot_path == "":
+	if (show_help and shot_path == "") or OS.get_cmdline_user_args().has("--showhelp"):
 		help.visible = true
 
 func _show_menu() -> void:
