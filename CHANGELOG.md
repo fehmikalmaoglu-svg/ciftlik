@@ -1,5 +1,13 @@
 # Çiftliğim 3D — Sürüm Notları
 
+## v0.9.0 · Erken Erişim
+- 🏘️ **Kasaba pazarı**: çiftliğin güneyinde, yolun yanında çeşmeli bir pazar meydanı ve 4 köylü: Fırıncı Zeynep, Balıkçı Rıza, Çiçekçi Leyla, Muhtar Hasan.
+- 📜 Her sabah her köylü bir şey ister. Ambardan getirirsen altın, XP ve ❤ dostluk kazanırsın. İsteği olanın başında ❗ görünür.
+- 🎁 Günde bir hediye verebilirsin; çok sevdiği şey iki kat dostluk getirir.
+- ❤️ Her yeni kalpte köylü sana altın hediye eder. 5 kalpte kalıcı bir yetenek açılır: fırında daha uzun altın kıvam, balıkta daha geniş yeşil alan, %20 daha hızlı çiçekler, pazar siparişlerinden %20 fazla altın.
+- 🤝 Yeni görev: köylülerin isteklerini yap.
+- 🌐 Online: köylüler, istekler ve dostluk iki oyuncuda da aynı. Katılan oyuncu da teslim edip hediye verebilir.
+
 ## v0.8.0 · Erken Erişim
 - 🔥 Fırın (🏗️ Yapı, seviye 3, 2×2, 250 🪙). Tıkla, tarif seç:
   - 🥐 Poğaça: 2 🥖 un + 1 🥚 yumurta → 30 🪙

@@ -146,6 +146,7 @@ const HELP_PAGES := [
 		["🚚 · 🗑️", "Taşı: nesneye tıkla, sonra yeni yerine tıkla; seçiliyken kendisine tıkla ya da T ile döndür (Esc vazgeçer). Her nesnenin (bina, fener, çit, ağaç, hayvan…) üstünde basılı tut: Döndür / Taşı / Kaldır menüsü; ambar, ev, ağaç, hayvan, çit… hepsi taşınır, bedava. Kaldır: nesneyi siler, yarı fiyatı geri gelir."],
 		["B · J · Esc", "B ambarı, J görev panelini açar; Esc iş kuyruğunu ve pencereleri kapatır."],
 		["🎣", "Balık tutma: gölün batı kıyısındaki 🎣 Balıkçı tezgâhından olta ve yem al. Göle tıkla; ❗ çıkınca tıkla (ya da Boşluk), mini oyunda basılı tutarak yeşil alanı balığın üstünde tut. 6 tür var, yayın balığı geceleri çıkar; tezgâhta balık defterin durur."],
+		["🏘️", "Kasaba pazarı yolun güneyinde: 4 köylü var. Her sabah her biri bir şey ister; getirirsen altın ve ❤ dostluk. Günde bir hediye verebilirsin (çok sevdiği şey ❤ ×2). Her kalpte hediye, 5 kalpte kalıcı bir yetenek açılır."],
 		["🔥", "Fırın (Yapı, seviye 3, 2×2): un ile poğaça (+yumurta), balık ekmek (+balık) ve meyveli turta (+süt, meyve) pişir. Tıkla ya da Boşluk ile körükle, ısıyı yeşil bantta tut; çabuk pişirirsen +1 ürün."],
 		["🌬️", "Değirmen (çiftliğin kuzeydoğusu, seviye 2): 6 tahılı una çevirir. İbre yeşil bölgedeyken tıkla; 5 turun her isabeti 1 🥖 un, altın ortası fazladan XP."],
 		["🏠", "Çiftlik evi her sabah kapına hediye altın bırakır (seviyenle artar)."],
@@ -418,6 +419,23 @@ var bake_ui: PanelContainer
 var bake_therm: Control
 var bake_bar: ProgressBar
 var bake_msg: Label
+## Kasaba pazarı ve köylüler. likes: istek ve hediye; loves: çok sevdiği hediye (×2 dostluk).
+const MARKET := Vector3(-8, 0, 31)
+const VILLAGERS := [
+	{"id": "zeynep", "name": "Fırıncı Zeynep", "icon": "🥖", "shirt": "#f2a65a", "likes": ["flour", "egg", "milk", "pogaca"], "loves": ["pie"],
+		"say": "Fırınım bütün kasabayı doyurur. Biraz un getirsen ne güzel olur!", "perk": "Fırında altın kıvam süresi +3 sn"},
+	{"id": "riza", "name": "Balıkçı Rıza", "icon": "🎣", "shirt": "#4a90d9", "likes": ["fish", "veg", "cereal"], "loves": ["fishbread"],
+		"say": "Göl eskiden balık kaynardı. Hâlâ kaynıyor, sabredene!", "perk": "Balık tutarken yeşil alan daha geniş"},
+	{"id": "leyla", "name": "Çiçekçi Leyla", "icon": "🌷", "shirt": "#d94a8c", "likes": ["flower", "fruit", "nut"], "loves": ["flower"],
+		"say": "Her mevsimin kendi çiçeği var. Senin tarlanda neler açıyor?", "perk": "Çiçek tarhları %20 daha hızlı açar"},
+	{"id": "hasan", "name": "Muhtar Hasan", "icon": "🎩", "shirt": "#2fae8f", "likes": ["milk", "egg", "wool", "veg", "cereal"], "loves": ["pogaca"],
+		"say": "Kasabanın işleri hiç bitmez. Çalışkan bir çiftçi hepimize lazım.", "perk": "Pazar siparişlerinden %20 fazla altın"},
+]
+const HEART_PTS := 10
+const HEARTS_MAX := 5
+var vill := {}           # id → {"pts", "r", "n", "done", "gd"}
+var vill_nodes := {}     # id → Node3D
+var vill_open := ""      # açık köylü penceresi
 ## Değirmen: bir öğütme 6 tahıl alır, 5 vuruşun her isabeti 1 un verir.
 const MILL_POS := Vector3(25, 0, -12)
 const MILL_IN := 6
@@ -532,6 +550,17 @@ var set_layer: CanvasLayer
 var set_box: VBoxContainer
 var fps_lbl: Label
 
+func _load_vill(d) -> void:
+	vill = {}
+	if typeof(d) == TYPE_DICTIONARY:
+		for v in VILLAGERS:
+			var x = d.get(v.id)
+			if typeof(x) == TYPE_DICTIONARY and Data.RESOURCES.has(str(x.get("r", ""))):
+				vill[v.id] = {"pts": clampi(int(x.get("pts", 0)), 0, HEARTS_MAX * HEART_PTS), "r": str(x.r), "n": maxi(1, int(x.get("n", 1))),
+					"done": bool(x.get("done", false)), "gd": int(x.get("gd", -1))}
+	_vill_ensure()
+	_vill_marks()
+
 func _load_fishgear(d) -> void:
 	fishgear = {"rod": 0, "bait": 0, "bait2": 0, "use2": false, "log": {}}
 	if typeof(d) != TYPE_DICTIONARY:
@@ -620,7 +649,7 @@ func height_at(x: float, z: float) -> float:
 	var d := maxf(absf(x), absf(z))
 	var outside := smoothstep(21.5, 30.0, d)
 	var h := (sin(x * 0.15) + cos(z * 0.13) + sin((x + z) * 0.07)) * 1.3 + 1.2
-	h = maxf(0.0, h) * outside
+	h = maxf(0.0, h) * outside * smoothstep(10.0, 15.0, Vector2(x - MARKET.x, z - MARKET.z).length())
 	var pd := Vector2(x - POND_X, z - POND_Z).length()
 	return lerpf(-0.7, h, smoothstep(POND_R - 0.6, POND_R + 2.5, pd))
 
@@ -648,6 +677,7 @@ func _ready() -> void:
 	_build_surroundings()
 	_build_outskirts()
 	_build_stall()
+	_build_market()
 	_build_farm_frame()
 	_build_grass()
 	_build_cursor()
@@ -1108,6 +1138,8 @@ func _build_surroundings() -> void:
 			continue
 		if Vector2(x - POND_X, z - POND_Z).length() < POND_R + 2.0:
 			continue
+		if Vector2(x - MARKET.x, z - MARKET.z).length() < 11.0:
+			continue
 		if absf(x) < 3.0 and z > 12.0:
 			continue
 		if Vector2(x - 17.0, z + 8.0).length() < 3.0:
@@ -1128,7 +1160,7 @@ func _build_surroundings() -> void:
 	for i in 160:
 		var x := (r.randf() - 0.5) * 70.0
 		var z := (r.randf() - 0.5) * 70.0
-		if maxf(absf(x), absf(z)) < 21.0 or Vector2(x - POND_X, z - POND_Z).length() < POND_R + 1.0:
+		if maxf(absf(x), absf(z)) < 21.0 or Vector2(x - POND_X, z - POND_Z).length() < POND_R + 1.0 or Vector2(x - MARKET.x, z - MARKET.z).length() < 10.0:
 			continue
 		var t := Models.tuft()
 		t.position = Vector3(x, height_at(x, z), z)
@@ -1195,7 +1227,7 @@ func _build_wild_ring() -> void:
 			var x := cx + r.randf_range(0.2, 1.8)
 			var z := cz + r.randf_range(0.2, 1.8)
 			var out := maxf(maxf(-farm_h - x, x - farm_h), maxf(-farm_h - z, z - farm_h))   # kareye uzaklık (m)
-			if out < 1.5 or (absf(x) < 2.6 and z > 0.0):   # çitin dibi ve giriş yolu boş
+			if out < 1.5 or (absf(x) < 2.6 and z > 0.0) or Vector2(x - MARKET.x, z - MARKET.z).length() < 9.0:   # çitin dibi, giriş yolu ve pazar boş
 				continue
 			var roll := r.randf()
 			if roll < 0.15 and out > 2.6:
@@ -1226,6 +1258,8 @@ func _build_outskirts() -> void:
 	add_child(root)
 	var camp := Vector2(-31, 14)
 	var free := func(x: float, z: float) -> bool:
+		if Vector2(x - MARKET.x, z - MARKET.z).length() < 11.0:
+			return false
 		if maxf(absf(x), absf(z)) < 22.0:
 			return false
 		if Vector2(x - POND_X, z - POND_Z).length() < POND_R + 1.5:
@@ -1752,7 +1786,7 @@ func _simulate(dt: float) -> void:
 				elif e.water > 0.0:
 					e.water = maxf(0.0, e.water - drain * (0.5 if e.get("wn", false) else 1.0))
 				if not e.ready:
-					var ft: float = Data.FLOWERS[e.type].time
+					var ft: float = Data.FLOWERS[e.type].time * (0.8 if _perk("leyla") else 1.0)
 					var step := minf(dt, (1.0 - e.t) * ft)
 					if _wet(e) or weather == "snow":
 						e.wet_t += step
@@ -3001,6 +3035,9 @@ func _unhandled_input(ev: InputEvent) -> void:
 					bake_stoke += 1
 					return
 				var gp = _pick_point(ev.position)
+				if gp != null and _near_villager(gp) != "":
+					_open_villager(_near_villager(gp))
+					return
 				if gp != null and _near_mill(gp):
 					_open_mill()
 					return
@@ -3443,6 +3480,8 @@ func _update_day(dt: float) -> void:
 		day_time -= 1.0
 		day += 1
 		hud_dirty = true
+		if net_role != "guest" and not loading:
+			_vill_new_day()
 		if _count_buildings("house") > 0 and not loading and net_role != "guest":
 			var gift := 20 + level * 5
 			_gain(gift, 2, farmer.position, "🏠")
@@ -4453,6 +4492,14 @@ func net_req(t: String, a: String, x: int, z: int) -> void:
 		_deliver()
 		net_quest_dirty = true
 		return
+	if t == "@vdeliver":
+		_vill_deliver(a)
+		return
+	if t == "@vgift":
+		var pp := a.split(":")
+		if pp.size() == 2:
+			_vill_gift(pp[0], pp[1])
+		return
 	if t == "@bake":
 		_bake_finish(a, x)
 		return
@@ -4547,7 +4594,7 @@ func _net_sync_dict() -> Dictionary:
 	for e in entities:
 		ents.append(_ent_dict(e))
 	return {"coins": coins, "xp": xp, "level": level, "day_time": day_time, "day": day, "season": season, "season_t": season_t,
-		"year": year, "weather": weather, "weather_t": weather_t, "fh": farm_h, "res": res, "ents": ents, "q": _net_quest_dict(), "order": order, "fg": fishgear}
+		"year": year, "weather": weather, "weather_t": weather_t, "fh": farm_h, "res": res, "ents": ents, "q": _net_quest_dict(), "order": order, "fg": fishgear, "vill": vill}
 
 @rpc("authority", "reliable")
 func net_sync(d: Dictionary) -> void:
@@ -4578,6 +4625,10 @@ func net_sync(d: Dictionary) -> void:
 		net_quests(d.q)
 	if d.has("order") and typeof(d.order) == TYPE_DICTIONARY:
 		order = d.order
+	if d.has("vill"):
+		_load_vill(d.vill)
+		if vill_open != "" and land_dlg.visible:
+			_open_villager(vill_open)
 	if d.has("fg"):
 		var use2 := bool(fishgear.use2)
 		_load_fishgear(d.fg)
@@ -5391,7 +5442,7 @@ func _state_dict() -> Dictionary:
 	var ents := []
 	for e in entities:
 		ents.append(_ent_dict(e))
-	return {"v": 1, "bv": 1, "sv": 2, "story": story_step, "sh": story_have, "fh": farm_h, "fg": fishgear, "name": farm_name, "gems": gems, "quests": quests, "qskip": quest_skip_at, "flv": flv, "season": season, "season_t": season_t, "year": year, "weather": weather, "weather_t": weather_t, "medals": medals, "res": res, "order": order, "coins": coins, "xp": xp, "level": level, "day_time": day_time, "day": day, "sel": sel, "muted": muted,
+	return {"v": 1, "bv": 1, "sv": 2, "story": story_step, "sh": story_have, "fh": farm_h, "fg": fishgear, "vill": vill, "name": farm_name, "gems": gems, "quests": quests, "qskip": quest_skip_at, "flv": flv, "season": season, "season_t": season_t, "year": year, "weather": weather, "weather_t": weather_t, "medals": medals, "res": res, "order": order, "coins": coins, "xp": xp, "level": level, "day_time": day_time, "day": day, "sel": sel, "muted": muted,
 		"saved_at": Time.get_unix_time_from_system(), "ents": ents, "fx": farmer.position.x, "fz": farmer.position.z}
 
 func _ent_dict(e: Dictionary) -> Dictionary:
@@ -5445,6 +5496,7 @@ func _load_dict(data, offline: bool) -> bool:
 	medals = int(data.get("medals", 0))
 	gems = int(data.get("gems", 0))
 	_load_fishgear(data.get("fg", {}))
+	_load_vill(data.get("vill", {}))
 	farm_h = int(data.get("fh", 0))
 	if farm_h <= 0:
 		farm_h = _farm_h_from_parcels(data.get("parcels", []))
@@ -5668,6 +5720,7 @@ func _process(delta: float) -> void:
 	_update_fishing(dt)
 	_update_mill(dt)
 	_update_bake(dt)
+	_update_villagers(dt)
 	sim_acc += dt
 	if sim_acc > 0.1:
 		_simulate(sim_acc)
@@ -5705,6 +5758,16 @@ func _process(delta: float) -> void:
 					_set_tool(a.substr(7), true)
 				elif a == "--wheel":
 					_open_wheel(Vector2(640, 380))
+				elif a == "--town":   # geliştirici: kasabaya git, Zeynep'in penceresi
+					farmer.position = MARKET + Vector3(0, 0, -3.5)
+					cam_target = farmer.position
+					res = {"flour": 8, "egg": 3, "pie": 1}
+					vill.zeynep.r = "flour"
+					vill.zeynep.n = 5
+					vill.zeynep.pts = 27
+					_vill_marks()
+					if not args_has("--nodlg"):
+						_open_villager("zeynep")
 				elif a == "--oven" or a == "--bakegame":   # geliştirici: fırın
 					level = maxi(level, 4)
 					res = {"flour": 6, "egg": 3, "fish": 2, "milk": 1, "fruit": 4}
@@ -6103,7 +6166,7 @@ func _fish_click() -> bool:
 func _fish_start_game() -> void:
 	fish_pick = _fish_roll(fish_bait2)
 	var rod := int(fishgear.rod)
-	fish_g = {"zx": 0.35, "zv": 0.0, "zw": 0.30 if rod <= 1 else 0.40, "fx": 0.5, "ftx": 0.5, "ft": 0.0,
+	fish_g = {"zx": 0.35, "zv": 0.0, "zw": (0.30 if rod <= 1 else 0.40) + (0.06 if _perk("riza") else 0.0), "fx": 0.5, "ftx": 0.5, "ft": 0.0,
 		"p": 0.35, "diff": float(fish_pick.diff), "fill": 0.30 if rod <= 1 else 0.38}
 	fish_state = "game"
 	bobber.get_node("Ex").visible = false
@@ -6254,6 +6317,7 @@ func _update_fishing(dt: float) -> void:
 
 ## Balıkçı tezgâhı: olta, yem, yem seçimi ve balık defteri.
 func _open_fish_shop() -> void:
+	vill_open = ""
 	for c in land_box.get_children():
 		land_box.remove_child(c)
 		c.queue_free()
@@ -6316,6 +6380,303 @@ func _open_fish_shop() -> void:
 		land_dlg.visible = false, true, true))
 	land_dlg.visible = true
 
+# ============================================================ kasaba ve köylüler
+func args_has(f: String) -> bool:
+	return OS.get_cmdline_user_args().has(f)
+
+func _vdef(id: String) -> Dictionary:
+	for v in VILLAGERS:
+		if v.id == id:
+			return v
+	return {}
+
+func _hearts(id: String) -> int:
+	return mini(HEARTS_MAX, int(vill.get(id, {}).get("pts", 0)) / HEART_PTS)
+
+func _perk(id: String) -> bool:
+	return _hearts(id) >= HEARTS_MAX
+
+func _bake_gold_t() -> float:
+	return 9.5 + (3.0 if _perk("zeynep") else 0.0)
+
+func _vill_ensure() -> void:
+	for v in VILLAGERS:
+		if not vill.has(v.id):
+			vill[v.id] = {"pts": 0, "r": "", "n": 0, "done": false, "gd": -1}
+		if str(vill[v.id].r) == "":
+			_vill_new_request(v.id)
+
+func _vill_new_request(id: String) -> void:
+	var v := _vdef(id)
+	var r: String = v.likes[randi() % v.likes.size()]
+	var price := int(Data.RESOURCES[r].price)
+	var n := randi_range(1, 2) if price >= 25 else randi_range(4, 7) + level / 3
+	vill[id].r = r
+	vill[id].n = n
+	vill[id].done = false
+
+## Her sabah: köylülerin yeni istekleri.
+func _vill_new_day() -> void:
+	_vill_ensure()
+	for v in VILLAGERS:
+		_vill_new_request(v.id)
+	net_quest_dirty = true
+	_vill_marks()
+
+func _vill_reward(id: String) -> int:
+	var st: Dictionary = vill[id]
+	return int(round(int(st.n) * int(Data.RESOURCES[st.r].price) * 1.6))
+
+## Dostluk puanı ekler; yeni kalpte hediye, 5 kalpte kalıcı yetenek.
+func _vill_add_pts(id: String, p: int) -> void:
+	var h0 := _hearts(id)
+	vill[id].pts = mini(HEARTS_MAX * HEART_PTS, int(vill[id].pts) + p)
+	var h1 := _hearts(id)
+	if h1 > h0:
+		var v := _vdef(id)
+		var gift := 40 * h1
+		coins += gift
+		_quest_event("earn", "", gift)
+		_toast_all("❤️ %s ile dostluğun %d kalp oldu! Sana %d 🪙 hediye etti." % [v.name, h1, gift], "level")
+		if h1 >= HEARTS_MAX:
+			gems += 2
+			_toast_all("🌟 %s en yakın dostun! Kalıcı yetenek: %s  (+2 💎)" % [v.name, v.perk], "level")
+
+func _vill_deliver(id: String) -> bool:
+	_vill_ensure()
+	var st: Dictionary = vill.get(id, {})
+	if st.is_empty() or bool(st.done) or int(res.get(st.r, 0)) < int(st.n):
+		return false
+	if net_role == "guest":
+		rpc_id(1, "net_req", "@vdeliver", id, 0, 0)
+		return true
+	res[st.r] = int(res.get(st.r, 0)) - int(st.n)
+	var c := _vill_reward(id)
+	st.done = true
+	var pos: Vector3 = vill_nodes[id].position if vill_nodes.has(id) else farmer.position
+	_gain(c, 10, pos, _vdef(id).icon)
+	_quest_event("villager", id, 1)
+	_vill_add_pts(id, 5)
+	_sfx("level")
+	net_quest_dirty = true
+	_vill_marks()
+	if vill_open == id:
+		_open_villager(id)
+	return true
+
+func _vill_gift(id: String, r: String) -> bool:
+	_vill_ensure()
+	var v := _vdef(id)
+	var st: Dictionary = vill.get(id, {})
+	if v.is_empty() or int(st.gd) == day or int(res.get(r, 0)) <= 0 or not (v.likes.has(r) or v.loves.has(r)):
+		return false
+	if net_role == "guest":
+		rpc_id(1, "net_req", "@vgift", id + ":" + r, 0, 0)
+		return true
+	res[r] = int(res.get(r, 0)) - 1
+	st.gd = day
+	var love: bool = v.loves.has(r)
+	_toast("%s %s: \"%s\"" % [v.icon, v.name, "Bayıldım, tam sevdiğim şey!" if love else "Ne incelik, teşekkürler!"], "level")
+	_vill_add_pts(id, 6 if love else 3)
+	_sfx("harvest")
+	net_quest_dirty = true
+	if vill_open == id:
+		_open_villager(id)
+	return true
+
+func _hearts_text(id: String) -> String:
+	var h := _hearts(id)
+	return "❤️".repeat(h) + "🤍".repeat(HEARTS_MAX - h)
+
+func _open_villager(id: String) -> void:
+	_vill_ensure()
+	var v := _vdef(id)
+	var st: Dictionary = vill[id]
+	vill_open = id
+	shop_open = false
+	for c in land_box.get_children():
+		land_box.remove_child(c)
+		c.queue_free()
+	var t := Label.new()
+	t.text = "%s %s" % [v.icon, v.name]
+	t.add_theme_font_size_override("font_size", 26)
+	land_box.add_child(t)
+	var hl := Label.new()
+	hl.text = "%s   %d / %d" % [_hearts_text(id), int(st.pts), HEARTS_MAX * HEART_PTS]
+	land_box.add_child(hl)
+	var h := _hearts(id)
+	var greet: String = ["Merhaba! Yeni çiftçi sen misin?", "Seni görmek güzel!", "Seni görmek güzel!", "Bak kim gelmiş, en sevdiğim komşu!", "Bak kim gelmiş, en sevdiğim komşu!", "Kardeş gibiyiz artık!"][h]
+	var sy := Label.new()
+	sy.text = "\"%s %s\"" % [greet, v.say]
+	sy.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	sy.custom_minimum_size = Vector2(380, 0)
+	sy.add_theme_color_override("font_color", Color("#7a5a3a"))
+	land_box.add_child(sy)
+	var rq := PanelContainer.new()
+	rq.add_theme_stylebox_override("panel", _sb(Color("#fff4cc"), 10, Color("#f2c94c"), 2, 10))
+	var rv := HBoxContainer.new()
+	rv.add_theme_constant_override("separation", 10)
+	rq.add_child(rv)
+	var rl := Label.new()
+	var info = Data.RESOURCES[st.r]
+	if bool(st.done):
+		rl.text = "✅ Bugünkü isteği yaptın. Yarın yeni bir isteği olacak."
+	else:
+		rl.text = "📜 Bugün istediği: %d %s %s\nÖdül: %d 🪙 · +10 XP · ❤ +5   (ambarda %d)" % [st.n, info.icon, info.name, _vill_reward(id), int(res.get(st.r, 0))]
+	rl.custom_minimum_size = Vector2(290, 0)
+	rl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	rv.add_child(rl)
+	if not bool(st.done):
+		var did := id
+		rv.add_child(_small_btn("  Ver  ", func(): _vill_deliver(did), int(res.get(st.r, 0)) >= int(st.n), true))
+	land_box.add_child(rq)
+	var gl := Label.new()
+	gl.text = "🎁 Hediye (günde bir):" if int(st.gd) != day else "🎁 Bugün hediyeni verdin."
+	land_box.add_child(gl)
+	if int(st.gd) != day:
+		var gr := HBoxContainer.new()
+		gr.add_theme_constant_override("separation", 6)
+		var any := false
+		for r in v.loves + v.likes:
+			if int(res.get(r, 0)) > 0 and gr.get_child_count() < 5:
+				var rr: String = r
+				var b := _small_btn(" %s%s " % [Data.RESOURCES[r].icon, " ❤" if v.loves.has(r) else ""], func(): _vill_gift(id, rr))
+				b.tooltip_text = "%s ver (%s)" % [Data.RESOURCES[r].name, "çok sever: ❤ +6" if v.loves.has(r) else "sever: ❤ +3"]
+				gr.add_child(b)
+				any = true
+		if not any:
+			var nl := Label.new()
+			var names := []
+			for r in v.loves + v.likes:
+				names.append(Data.RESOURCES[r].icon)
+			nl.text = "Ambarında sevdiği bir şey yok. Sevdikleri: %s" % " ".join(names)
+			nl.add_theme_font_size_override("font_size", 12)
+			gr.add_child(nl)
+		land_box.add_child(gr)
+	var pk := Label.new()
+	pk.text = ("🌟 Yeteneği açık: " if _perk(id) else "🔒 5 kalpte kalıcı yetenek: ") + v.perk
+	pk.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	pk.add_theme_font_size_override("font_size", 13)
+	pk.add_theme_color_override("font_color", Color("#33691e") if _perk(id) else Color("#8a7260"))
+	land_box.add_child(pk)
+	land_box.add_child(_small_btn("  Kapat  ", func():
+		vill_open = ""
+		land_dlg.visible = false, true, true))
+	land_dlg.visible = true
+
+## Pazar tezgâhı (renkli tente).
+func _market_stall(col: String) -> Node3D:
+	var g := Node3D.new()
+	for x in [-0.9, 0.9]:
+		for z in [-0.5, 0.5]:
+			g.add_child(Models.box(0.1, 1.9, 0.1, "#8d5f3a", x, 0.95, z))
+	g.add_child(Models.box(2.0, 0.75, 0.8, "#c79a6a", 0, 0.375, 0.1))
+	for i in 5:
+		g.add_child(Models.box(0.42, 0.07, 1.3, col if i % 2 == 0 else "#fff8e1", -0.84 + i * 0.42, 1.95, 0.0))
+	for i in 4:
+		g.add_child(Models.ball(0.11, ["#e57373", "#ffd54f", "#aed581", "#ffb74d"][i], -0.6 + i * 0.4, 0.86, 0.15))
+	return g
+
+func _build_market() -> void:
+	var root := Node3D.new()
+	add_child(root)
+	var y := height_at(MARKET.x, MARKET.z)
+	var plaza := MeshInstance3D.new()
+	var pm := CylinderMesh.new()
+	pm.top_radius = 7.5
+	pm.bottom_radius = 7.6
+	pm.height = 0.08
+	pm.radial_segments = 32
+	plaza.mesh = pm
+	var sm := StandardMaterial3D.new()
+	sm.albedo_color = Color("#dccaa4")
+	sm.roughness = 0.95
+	plaza.material_override = sm
+	plaza.position = Vector3(MARKET.x, y + 0.02, MARKET.z)
+	root.add_child(plaza)
+	# çeşme
+	root.add_child(Models.cyl(1.3, 1.4, 0.5, 16, "#b0a8a0", MARKET.x, y + 0.25, MARKET.z))
+	var wtr := MeshInstance3D.new()
+	var wm := CylinderMesh.new()
+	wm.top_radius = 1.15
+	wm.bottom_radius = 1.15
+	wm.height = 0.04
+	wm.radial_segments = 16
+	wtr.mesh = wm
+	wtr.material_override = Models.water()
+	wtr.position = Vector3(MARKET.x, y + 0.46, MARKET.z)
+	root.add_child(wtr)
+	root.add_child(Models.cyl(0.18, 0.22, 1.2, 8, "#b0a8a0", MARKET.x, y + 0.9, MARKET.z))
+	root.add_child(Models.ball(0.3, "#b0a8a0", MARKET.x, y + 1.55, MARKET.z))
+	var sg := Label3D.new()
+	sg.font = font
+	sg.text = "🏘️ KASABA PAZARI"
+	sg.font_size = 72
+	sg.pixel_size = 0.007
+	sg.outline_size = 10
+	sg.outline_modulate = Color(0.2, 0.12, 0.05, 0.8)
+	sg.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	sg.position = Vector3(MARKET.x, y + 3.2, MARKET.z)
+	root.add_child(sg)
+	vill_nodes.clear()
+	for i in VILLAGERS.size():
+		var v: Dictionary = VILLAGERS[i]
+		var a := -PI / 2.0 + i * TAU / VILLAGERS.size() + PI / 4.0
+		var dir := Vector3(cos(a), 0, sin(a))
+		var st := _market_stall(["#e57373", "#64b5f6", "#f48fb1", "#81c784"][i])
+		st.position = Vector3(MARKET.x, y, MARKET.z) + dir * 4.6
+		st.rotation.y = atan2(-dir.x, -dir.z)
+		root.add_child(st)
+		var npc := Models.farmer(v.shirt)
+		npc.position = Vector3(MARKET.x, y, MARKET.z) + dir * 5.6
+		npc.rotation.y = atan2(-dir.x, -dir.z)
+		npc.set_meta("yaw0", npc.rotation.y)
+		root.add_child(npc)
+		var nl := Label3D.new()
+		nl.font = font
+		nl.text = "%s %s" % [v.icon, v.name]
+		nl.font_size = 48
+		nl.pixel_size = 0.006
+		nl.outline_size = 10
+		nl.outline_modulate = Color(0, 0, 0, 0.6)
+		nl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		nl.position = Vector3(0, 2.25, 0)
+		npc.add_child(nl)
+		var ex := Label3D.new()
+		ex.name = "Ex"
+		ex.font = font
+		ex.text = "❗"
+		ex.font_size = 80
+		ex.pixel_size = 0.006
+		ex.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		ex.position = Vector3(0, 2.75, 0)
+		npc.add_child(ex)
+		vill_nodes[v.id] = npc
+	_vill_ensure()
+	_vill_marks()
+
+## İsteği bekleyen köylünün başında ❗
+func _vill_marks() -> void:
+	for id in vill_nodes:
+		var ex = vill_nodes[id].get_node_or_null("Ex")
+		if ex != null:
+			ex.visible = vill.has(id) and not bool(vill[id].done)
+
+func _near_villager(p: Vector3) -> String:
+	for id in vill_nodes:
+		var n: Node3D = vill_nodes[id]
+		if Vector2(p.x - n.position.x, p.z - n.position.z).length() < 1.3:
+			return id
+	return ""
+
+## Köylüler yakına gelen çiftçiye döner.
+func _update_villagers(dt: float) -> void:
+	for id in vill_nodes:
+		var n: Node3D = vill_nodes[id]
+		var d := Vector2(farmer.position.x - n.position.x, farmer.position.z - n.position.z)
+		var want: float = atan2(d.x, d.y) if d.length() < 6.0 else float(n.get_meta("yaw0"))
+		n.rotation.y = lerp_angle(n.rotation.y, want, minf(1.0, dt * 4.0))
+
 # ============================================================ fırın
 func _recipe(id: String) -> Dictionary:
 	for rc in RECIPES:
@@ -6338,6 +6699,7 @@ static func _recipe_text(rc: Dictionary) -> String:
 	return " + ".join(parts)
 
 func _open_oven() -> void:
+	vill_open = ""
 	for c in land_box.get_children():
 		land_box.remove_child(c)
 		c.queue_free()
@@ -6416,7 +6778,7 @@ func _update_bake(dt: float) -> void:
 			bake_ui.visible = false
 			var qty := 0
 			if bake_g.res == "done":
-				qty = 2 if float(bake_g.t) <= 9.5 else 1
+				qty = 2 if float(bake_g.t) <= _bake_gold_t() else 1
 			elif float(bake_g.p) >= 0.5:
 				qty = 1
 			if net_role == "guest":
@@ -6434,7 +6796,7 @@ func _update_bake(dt: float) -> void:
 		bake_g.res = r
 		bake_g.end = 0.8
 		if r == "done":
-			bake_msg.text = "✨ Altın kıvamında!" if float(bake_g.t) <= 9.5 else "👍 Pişti!"
+			bake_msg.text = "✨ Altın kıvamında!" if float(bake_g.t) <= _bake_gold_t() else "👍 Pişti!"
 			_sfx("level")
 		else:
 			bake_msg.text = "⏳ Süre bitti" + (" · biraz çiğ ama yenir" if float(bake_g.p) >= 0.5 else " · hamur çiğ kaldı")
@@ -6538,6 +6900,7 @@ func _near_mill(p: Vector3) -> bool:
 	return Vector2(p.x - MILL_POS.x, p.z - MILL_POS.z).length() < 2.8
 
 func _open_mill() -> void:
+	vill_open = ""
 	for c in land_box.get_children():
 		land_box.remove_child(c)
 		c.queue_free()
@@ -6776,6 +7139,7 @@ func _build_land_ui() -> void:
 
 func _open_land() -> void:
 	shop_open = false
+	vill_open = ""
 	if net_role == "guest":
 		_toast("🗺️ Arazi genişletme çiftlik sahibinde.", "hint")
 		return
@@ -6996,6 +7360,7 @@ func _selftest_build(fails: Array) -> void:
 	_selftest_fish(fails)
 	_selftest_mill(fails)
 	_selftest_bake(fails)
+	_selftest_town(fails)
 	var rb := _refund_of(tiles.get(key(sp.x, sp.y)))
 	var c2 := coins
 	if not _perform({"x": sp.x, "z": sp.y, "tool": "remove", "arg": null}) or _count_buildings("barn") != b0: fails.append("bina kaldırma")
@@ -7006,6 +7371,42 @@ func _selftest_build(fails: Array) -> void:
 	var pe2 = tiles.get(key(ps.x, ps.y))
 	if pe2 != null and pe2.kind == "plot":
 		_remove_entity(pe2)
+
+func _selftest_town(fails: Array) -> void:
+	var keep_res := res.duplicate()
+	var keep_v := vill.duplicate(true)
+	vill = {}
+	_vill_ensure()
+	if vill.size() != VILLAGERS.size(): fails.append("köylü sayısı")
+	if vill_nodes.size() != VILLAGERS.size() or _near_villager(vill_nodes.zeynep.position) != "zeynep": fails.append("köylü bulma")
+	vill.zeynep.r = "egg"
+	vill.zeynep.n = 3
+	res = {"egg": 2}
+	if _vill_deliver("zeynep"): fails.append("eksikle istek")
+	res = {"egg": 5}
+	var c0 := coins
+	if not _vill_deliver("zeynep") or int(res.egg) != 2 or coins <= c0 or int(vill.zeynep.pts) != 5 or not bool(vill.zeynep.done): fails.append("istek teslimi")
+	if _vill_deliver("zeynep"): fails.append("istek iki kez")
+	res = {"pie": 2, "flour": 1}
+	if not _vill_gift("zeynep", "pie") or int(vill.zeynep.pts) != 11 or _hearts("zeynep") != 1: fails.append("hediye ve kalp")
+	if _vill_gift("zeynep", "flour"): fails.append("günde iki hediye")
+	if _vill_gift("riza", "pie"): fails.append("sevmediği hediye")
+	vill.hasan.pts = 47
+	vill.hasan.gd = -1
+	res = {"pogaca": 1}
+	var g0 := gems
+	_vill_gift("hasan", "pogaca")
+	if not _perk("hasan") or gems != g0 + 2: fails.append("5 kalp yeteneği")
+	_vill_new_day()
+	if bool(vill.zeynep.done): fails.append("yeni gün isteği")
+	var sv := _state_dict()
+	_load_vill(sv.vill)
+	if int(vill.hasan.pts) != 50: fails.append("köylü kaydı")
+	if absf(height_at(MARKET.x + 3, MARKET.z)) > 0.05: fails.append("pazar düz değil")
+	vill = keep_v
+	_vill_ensure()
+	_vill_marks()
+	res = keep_res
 
 func _selftest_bake(fails: Array) -> void:
 	var keep_res := res.duplicate()
@@ -7245,6 +7646,10 @@ func _make_quest(kind: String, arg: String) -> Dictionary:
 			need = 1 + lv / 5
 			val = 100.0
 			text = "🌳 %d ağaç dik" % need
+		"villager":
+			need = 1 + lv / 5
+			val = 80.0
+			text = "🤝 %d köylünün isteğini yap" % need
 		"bake":
 			need = 2 + lv / 4
 			val = 60.0
@@ -7273,6 +7678,8 @@ func _quest_candidates() -> Array:
 		out.append(["fish", ""])
 	if _count_buildings("oven") > 0:
 		out.append(["bake", ""])
+	if level >= 2:
+		out.append(["villager", ""])
 	for k in ["plant", "water", "sell", "order", "earn"]:
 		out.append([k, ""])
 	if _owned_kind("animal"):
@@ -7967,7 +8374,7 @@ func _deliver() -> void:
 	medals += order.medals
 	_quest_event("order", "", 1)
 	var got: int = order.medals
-	_gain(order.coins, order.xp, farmer.position, "🏅")
+	_gain(int(order.coins * (1.2 if _perk("hasan") else 1.0)), order.xp, farmer.position, "🏅")
 	_new_order()
 	_toast("📋 Sipariş teslim edildi! +%d 🏅" % got, "level")
 	hud_dirty = true
