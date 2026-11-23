@@ -19,6 +19,7 @@ const POND_R := 4.2
 const OFFLINE_CAP := 6.0 * 3600.0
 const QUEST_SLOTS := 4
 ## Çiftçinin geçemediği dekorlar.
+const WALK_LIM := 56     # çiftçinin gezebileceği alan (±), görünen arazinin içi
 const BLOCK_DECOR := ["fence", "rock", "lantern", "hay", "scarecrow", "bush", "flowers"]
 const QUEST_SKIP_COOLDOWN := 24.0 * 3600.0
 const QUEST_SKIP_GEMS := 2
@@ -340,7 +341,8 @@ var shelf_title: Label
 var shelf_nav: HBoxContainer
 var shelf_open := false
 var shelf_page := {}
-var entrance_doors := []   # giriş kapısı kanatları
+var entrance_doors := []
+var frame_block := {}      # çiftlik sınır çitinin kareleri (yürünmez)   # giriş kapısı kanatları
 var sky_mat: ShaderMaterial
 var story_step := 0        # STORY içindeki adım; STORY.size() = bitti
 var story_have := 0
@@ -1089,10 +1091,12 @@ func _refresh_parcels() -> void:
 	var gate_z := FARM_MAX + 1
 	while in_farm(0, gate_z):
 		gate_z += 1
+	frame_block.clear()
 	for x in range(WORLD_MIN - 1, WORLD_MAX + 2):
 		for z in range(WORLD_MIN - 1, WORLD_MAX + 2):
 			if not _frame_ring(x, z, gate_z):
 				continue
+			frame_block[Vector2i(x, z)] = true
 			var f := Models.fence(_frame_ring(x, z - 1, gate_z), _frame_ring(x, z + 1, gate_z), _frame_ring(x + 1, z, gate_z), _frame_ring(x - 1, z, gate_z))
 			f.position = Vector3(x + 0.5, 0, z + 0.5)
 			frame_root.add_child(f)
@@ -2023,7 +2027,7 @@ func _update_farmer(dt: float) -> void:
 			else:
 				np = farmer.position
 				move_target = null
-		farmer.position = Vector3(clampf(np.x, -40, 40), farmer.position.y, clampf(np.z, -40, 40))
+		farmer.position = Vector3(clampf(np.x, -WALK_LIM, WALK_LIM), farmer.position.y, clampf(np.z, -WALK_LIM, WALK_LIM))
 		farmer.rotation.y = lerp_angle(farmer.rotation.y, atan2(dir.x, dir.z), minf(1.0, dt * 14.0))
 		moving = true
 	farmer.position.y = maxf(0.0, height_at(farmer.position.x, farmer.position.z))
@@ -2072,23 +2076,43 @@ func _update_camera(dt: float) -> void:
 	cam.look_at(cam_target + Vector3(0, 0.5 + look_up, 0), Vector3.UP)
 
 # ============================================================ girdi
-func _pick(mp: Vector2):
+## Fare ışınının araziye (tepeler dahil) çarptığı nokta.
+func _ground_hit(mp: Vector2):
 	var from := cam.project_ray_origin(mp)
 	var dir := cam.project_ray_normal(mp)
-	var hit = Plane(Vector3.UP, 0.1).intersects_ray(from, dir)
+	var prev := 0.0
+	var t := 0.0
+	while t < 400.0:
+		t += 0.5 if t < 120.0 else 2.0
+		var p := from + dir * t
+		if p.y <= far_height(p.x, p.z):
+			var lo := prev
+			var hi := t
+			for i in 12:
+				var m := (lo + hi) * 0.5
+				var q := from + dir * m
+				if q.y <= far_height(q.x, q.z):
+					hi = m
+				else:
+					lo = m
+			return from + dir * hi
+		prev = t
+	return null
+
+func _pick(mp: Vector2):
+	var hit = _ground_hit(mp)
 	if hit == null:
 		return null
 	return Vector2i(floori(hit.x), floori(hit.z))
 
 func _pick_point(mp: Vector2):
-	var hit = Plane(Vector3.UP, 0.0).intersects_ray(cam.project_ray_origin(mp), cam.project_ray_normal(mp))
-	return hit
+	return _ground_hit(mp)
 
 func _walk_to(p) -> void:
 	if p == null:
 		return
-	p.x = clampf(p.x, -39.9, 39.9)
-	p.z = clampf(p.z, -39.9, 39.9)
+	p.x = clampf(p.x, -WALK_LIM + 0.1, WALK_LIM - 0.1)
+	p.z = clampf(p.z, -WALK_LIM + 0.1, WALK_LIM - 0.1)
 	p.y = 0.0
 	var tx := floori(p.x)
 	var tz := floori(p.z)
@@ -2109,7 +2133,11 @@ func _walk_to(p) -> void:
 	move_marker.visible = true
 
 func _walkable(x: int, z: int) -> bool:
-	if x < -40 or x > 39 or z < -40 or z > 39:
+	if x < -WALK_LIM or x >= WALK_LIM or z < -WALK_LIM or z >= WALK_LIM:
+		return false
+	if frame_block.has(Vector2i(x, z)):
+		return false
+	if Vector2(x + 0.5 - POND_X, z + 0.5 - POND_Z).length() < POND_R - 0.2:
 		return false
 	var t = tiles.get(key(x, z))
 	if t == null:
@@ -2193,7 +2221,7 @@ func _find_path(from: Vector3, goal: Rect2, thr: float):
 	var found = null
 	var dirs := [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1), Vector2i(1, 1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(-1, -1)]
 	var n := 0
-	while open.size() > 0 and n < 8000:
+	while open.size() > 0 and n < 16000:
 		var cur: Vector2i = _hpop(open)[1]
 		if closed.has(cur):
 			continue
@@ -2295,8 +2323,8 @@ func _pan_camera(v: Vector2) -> void:
 	var fwd := Vector3(-sin(cam_yaw), 0, -cos(cam_yaw))
 	var right := Vector3(cos(cam_yaw), 0, -sin(cam_yaw))
 	cam_target += right * v.x - fwd * v.y
-	cam_target.x = clampf(cam_target.x, -45.0, 45.0)
-	cam_target.z = clampf(cam_target.z, -45.0, 45.0)
+	cam_target.x = clampf(cam_target.x, -WALK_LIM, WALK_LIM)
+	cam_target.z = clampf(cam_target.z, -WALK_LIM, WALK_LIM)
 	cam_target.y = 0.0
 	cam_follow = false
 
@@ -4111,6 +4139,16 @@ func _selftest_story(fails: Array) -> void:
 	if tiles.has(key(11, -11)): fails.append("taş kaldı")
 
 func _selftest_gates(fails: Array) -> void:
+	if _walkable(FARM_MAX + 1, 0): fails.append("sınır çiti yürünebilir")
+	var pth = _find_path(Vector3(5.5, 0, 5.5), Rect2(FARM_MAX + 4, 5, 1, 1), 0.0)
+	if pth == null:
+		fails.append("çiftlik dışına yol yok")
+	else:
+		var via_gate := false
+		for w in pth:
+			if w.z > FARM_MAX and absf(w.x) < 2.5:
+				via_gate = true
+		if not via_gate: fails.append("yol kapıdan geçmiyor")
 	var gate = tiles.get(key(-3, 4))
 	if gate == null or gate.get("type", "") != "gate":
 		fails.append("ağıl kapısı yok")
