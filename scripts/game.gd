@@ -10,12 +10,28 @@ const POND_Z := 6.0
 const POND_R := 4.2
 const OFFLINE_CAP := 6.0 * 3600.0
 const FSPEED := 5.2
+## Zemin: köşe rengi + mevsim tonu (yaz kuru, sonbahar sarı, kış karlı).
+const GROUND_SHADER := """
+shader_type spatial;
+render_mode cull_disabled;
+uniform vec4 tint : source_color = vec4(1.0);
+uniform float amt = 0.0;
+void fragment() {
+	vec3 c = COLOR.rgb;
+	c = mix(pow((c + vec3(0.055)) / 1.055, vec3(2.4)), c / 12.92, lessThan(c, vec3(0.04045)));
+	float lum = dot(c, vec3(0.3, 0.59, 0.11));
+	ALBEDO = mix(c, tint.rgb * (0.8 + 1.2 * lum), amt);
+	ROUGHNESS = 1.0;
+	SPECULAR = 0.3;
+}
+"""
+const SEASON_TINT := [["#7ccf4a", 0.0], ["#b8bf45", 0.3], ["#d0902e", 0.5], ["#eef3f8", 0.7]]
 
 const TOOLS := [
 	{"id": "hand", "icon": "✋", "name": "El", "shelf": "seed", "tip": "Akıllı el: ek, sula, topla"},
 	{"id": "plow", "icon": "⛏️", "name": "Çapa", "shelf": "", "tip": "Boş çimeni tarlaya çevir"},
 	{"id": "seed", "icon": "🌱", "name": "Tohum", "shelf": "seed", "tip": "Seçili tohumu ek"},
-	{"id": "water", "icon": "💧", "name": "Sula", "shelf": "", "tip": "Sulanan ekin 2× hızlı büyür"},
+	{"id": "water", "icon": "💧", "name": "Sula", "shelf": "", "tip": "Toprağı ıslat: kuruyana kadar 2× hız"},
 	{"id": "tree", "icon": "🌳", "name": "Ağaç", "shelf": "tree", "tip": "Meyve ağacı dik"},
 	{"id": "animal", "icon": "🐔", "name": "Hayvan", "shelf": "animal", "tip": "Hayvan al"},
 	{"id": "decor", "icon": "🌷", "name": "Dekor", "shelf": "decor", "tip": "Çit, yol, çiçek…"},
@@ -36,6 +52,12 @@ var muted := false
 var medals := 0
 var res := {}            # kaynak -> adet
 var order := {}          # {"need": {kaynak: adet}, "medals", "xp", "coins"}
+var season := 0          # 0 ilkbahar … 3 kış
+var season_t := 0.0      # mevsim içinde 0..1
+var year := 1
+var weather := ""        # "", rain, drought, snow
+var weather_t := 0.0     # kalan saniye
+var loading := false
 
 var tiles := {}          # Vector2i -> entity (Dictionary)
 var entities: Array = []
@@ -56,6 +78,11 @@ var grid: MeshInstance3D
 var windmill: Node3D
 var clouds: Array = []
 var lamp_lights: Array = []
+var ground_mat: ShaderMaterial
+var rain_fx: GPUParticles3D
+var snow_fx: GPUParticles3D
+var wx_f := 0.0          # yağmur/kar görsel karışımı
+var dr_f := 0.0          # kuraklık görsel karışımı
 var font: SystemFont
 
 # kamera ve girdi
@@ -171,6 +198,12 @@ func _ready() -> void:
 			help.visible = true
 	if args.has("--night"):
 		day_time = 0.88
+	for a in args:
+		if a.begins_with("--season="):
+			season = clampi(int(a.substr(9)), 0, 3)
+		elif a.begins_with("--weather="):
+			_start_weather(a.substr(10))
+	_apply_season_visual(true)
 	if args.has("--demo"):
 		_demo()
 	if args.has("--barn"):
@@ -244,11 +277,42 @@ func _build_env() -> void:
 		add_child(l)
 		lamp_lights.append(l)
 
+	rain_fx = _weather_particles(1800, 0.8, Vector3(0.015, 0.45, 0.015), Color(0.8, 0.88, 1.0, 0.45), 20.0, 3.0, -9.8)
+	snow_fx = _weather_particles(1200, 5.0, Vector3(0.045, 0.045, 0.045), Color(1, 1, 1, 0.85), 2.0, 25.0, -0.6)
+
 	cam = Camera3D.new()
 	cam.fov = 40.0
 	cam.far = 250.0
 	add_child(cam)
 	cam.make_current()
+
+func _weather_particles(n: int, life: float, sz: Vector3, col: Color, vel: float, spread: float, grav: float) -> GPUParticles3D:
+	var pm := ParticleProcessMaterial.new()
+	pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
+	pm.emission_box_extents = Vector3(18, 0.5, 18)
+	pm.direction = Vector3(0, -1, 0)
+	pm.spread = spread
+	pm.initial_velocity_min = vel * 0.85
+	pm.initial_velocity_max = vel * 1.15
+	pm.gravity = Vector3(0.6, grav, 0.2)
+	var mesh := BoxMesh.new()
+	mesh.size = sz
+	var mm := StandardMaterial3D.new()
+	mm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mm.albedo_color = col
+	mesh.material = mm
+	var g := GPUParticles3D.new()
+	g.amount = n
+	g.lifetime = life
+	g.process_material = pm
+	g.draw_pass_1 = mesh
+	g.local_coords = false
+	g.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	g.visibility_aabb = AABB(Vector3(-25, -20, -25), Vector3(50, 30, 50))
+	g.emitting = false
+	add_child(g)
+	return g
 
 func _build_terrain() -> void:
 	var size := 120.0
@@ -296,14 +360,13 @@ func _build_terrain() -> void:
 			_tri(st, p[0], p[1], p[2], cs[ids[0]])
 			_tri(st, p[1], p[3], p[2], cs[ids[3]])
 	var m := st.commit()
-	var mat := StandardMaterial3D.new()
-	mat.vertex_color_use_as_albedo = true
-	mat.vertex_color_is_srgb = true
-	mat.roughness = 1.0
-	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	var sh := Shader.new()
+	sh.code = GROUND_SHADER
+	ground_mat = ShaderMaterial.new()
+	ground_mat.shader = sh
 	var ground := MeshInstance3D.new()
 	ground.mesh = m
-	ground.material_override = mat
+	ground.material_override = ground_mat
 	add_child(ground)
 
 	var water := MeshInstance3D.new()
@@ -493,6 +556,12 @@ func _add_entity(d: Dictionary) -> Dictionary:
 			e.t = 0.0
 		if not e.has("ready"):
 			e.ready = false
+	if e.kind == "plot":
+		if e.has("watered"):
+			e.water = 1.0 if e.watered else 0.0
+			e.erase("watered")
+		if not e.has("water"):
+			e.water = 0.0
 	if e.get("type", "") == "lantern":
 		lanterns.append(e)
 	_refresh(e)
@@ -547,7 +616,8 @@ func _refresh(e: Dictionary) -> void:
 		c.free()
 	match e.kind:
 		"plot":
-			g.add_child(Models.soil(e.watered and e.crop != null and e.progress < 1.0))
+			e.wet_shown = _wet(e)
+			g.add_child(Models.soil(e.wet_shown))
 			if e.crop != null:
 				e.stage = crop_stage(e)
 				g.add_child(Visuals.crop(e.crop, e.stage))
@@ -566,16 +636,49 @@ func _refresh(e: Dictionary) -> void:
 			g.add_child(Models.building(e.type))
 
 # ============================================================ simülasyon
+func _wet(e: Dictionary) -> bool:
+	return e.water > 0.0
+
+func _grow_rate(e: Dictionary) -> float:
+	var r := 0.5
+	if weather == "snow":
+		r = 0.6
+	elif _wet(e):
+		r = 1.0
+	return r * (1.25 if e.boost else 1.0)
+
+func _in_season(c) -> bool:
+	return c == null or not c.has("seasons") or c.seasons.has(season)
+
 func _simulate(dt: float) -> void:
+	season_t += dt / Data.SEASON_LEN
+	while season_t >= 1.0:
+		season_t -= 1.0
+		season = (season + 1) % 4
+		if season == 0:
+			year += 1
+		_on_season_start()
+	if weather != "":
+		weather_t -= dt
+		if weather_t <= 0.0:
+			_end_weather()
+	var drain := 0.0 if weather == "snow" else dt / Data.WATER_DUR * (3.0 if weather == "drought" else 1.0)
 	for e in entities:
 		match e.kind:
 			"plot":
+				if weather == "rain":
+					e.water = minf(1.0, e.water + dt / 8.0)
+				elif e.water > 0.0:
+					e.water = maxf(0.0, e.water - drain)
+				var refreshed := false
 				if e.crop != null and e.progress < 1.0:
 					var c = Data.CROPS[e.crop]
-					var rate := (1.0 if e.watered else 0.5) * (1.25 if e.boost else 1.0)
-					e.progress = minf(1.0, e.progress + dt * rate / c.time)
+					e.progress = minf(1.0, e.progress + dt * _grow_rate(e) / c.time)
 					if crop_stage(e) != e.stage:
 						_refresh(e)
+						refreshed = true
+				if not refreshed and _wet(e) != e.wet_shown:
+					_refresh(e)
 			"tree":
 				var t = Data.TREES[e.type]
 				if e.age < 1.0:
@@ -645,10 +748,10 @@ func _resolve(t: String, arg, x: int, z: int):
 			if e.kind == "plot":
 				if e.crop == null:
 					var c = Data.CROPS.get(arg)
-					return "plant" if _unlocked(c) and coins >= c.cost else null
+					return "plant" if _unlocked(c) and _in_season(c) and coins >= c.cost else null
 				if e.progress >= 1.0:
 					return "harvest"
-				if not e.watered:
+				if e.water < Data.WATER_REFILL and weather != "snow":
 					return "water"
 				return null
 			if e.kind == "tree" and e.has_fruit:
@@ -660,9 +763,9 @@ func _resolve(t: String, arg, x: int, z: int):
 			return "plow" if e == null else null
 		"seed":
 			var c = Data.CROPS.get(arg)
-			return "plant" if e != null and e.kind == "plot" and e.crop == null and _unlocked(c) and coins >= c.cost else null
+			return "plant" if e != null and e.kind == "plot" and e.crop == null and _unlocked(c) and _in_season(c) and coins >= c.cost else null
 		"water":
-			return "water" if e != null and e.kind == "plot" and e.crop != null and not e.watered and e.progress < 1.0 else null
+			return "water" if e != null and e.kind == "plot" and e.water < Data.WATER_REFILL and weather != "snow" and (e.crop == null or e.progress < 1.0) else null
 		"tree":
 			var c = Data.TREES.get(arg)
 			return "tree" if e == null and _unlocked(c) and coins >= c.cost else null
@@ -687,7 +790,7 @@ func _perform(item: Dictionary) -> bool:
 	var pos := tile_center(x, z)
 	match act:
 		"plow":
-			_add_entity({"kind": "plot", "x": x, "z": z, "crop": null, "progress": 0.0, "watered": false})
+			_add_entity({"kind": "plot", "x": x, "z": z, "crop": null, "progress": 0.0, "water": 0.0})
 			_burst(pos + Vector3(0, 0.15, 0), "#8b5a3c", 8, 2.0)
 			_sfx("plow")
 		"plant":
@@ -695,13 +798,12 @@ func _perform(item: Dictionary) -> bool:
 			_spend(c.cost)
 			e.crop = arg
 			e.progress = 0.0
-			e.watered = false
 			_refresh(e)
 			_float_text(pos, "-%d 🪙" % c.cost, Color("#ffb4a8"))
 			_burst(pos + Vector3(0, 0.2, 0), "#8bc34a", 6, 2.0)
 			_sfx("plant")
 		"water":
-			e.watered = true
+			e.water = 1.0
 			_refresh(e)
 			_burst(pos + Vector3(0, 0.5, 0), "#4fc3f7", 12, 2.5)
 			_sfx("water")
@@ -712,7 +814,6 @@ func _perform(item: Dictionary) -> bool:
 				_burst(pos + Vector3(0, 0.4, 0), c.color, 12, 3.5)
 				e.crop = null
 				e.progress = 0.0
-				e.watered = false
 				_refresh(e)
 				_gain(c.sell, c.xp, pos, c.icon)
 				_store(ck, pos)
@@ -815,6 +916,13 @@ func _explain_fail(arg, x: int, z: int) -> void:
 		_toast("🔒 %s için seviye %d gerekli" % [def.name, def.level], "warn")
 		return
 	var seedish := tool == "hand" or tool == "seed"
+	if def != null and seedish and not _in_season(def) and e != null and e.kind == "plot" and e.crop == null:
+		_sfx("error")
+		_toast("%s %s bu mevsim ekilmez (%s)" % [Data.SEASONS[season].icon, def.name, Data.season_names(def.seasons)], "warn")
+		return
+	if tool == "water" and weather == "snow":
+		_toast("🌨️ Kar yağarken sulamaya gerek yok", "hint")
+		return
 	var target_ok: bool = (e != null and e.kind == "plot" and e.crop == null) if seedish else e == null
 	if def != null and coins < def.cost and target_ok:
 		_sfx("error")
@@ -1051,11 +1159,16 @@ func _describe(e, act, arg, x: int, z: int) -> String:
 					if e.progress >= 1.0:
 						s += "✅ Hasada hazır!"
 					else:
-						var rate := (1.0 if e.watered else 0.5) * (1.25 if e.boost else 1.0)
+						var rate := _grow_rate(e)
 						s += "%s · %s" % [bar(e.progress), fmt_time((1.0 - e.progress) * c.time / rate)]
-						s += " · 💧" if e.watered else " · susuz"
 					if e.boost:
 						s += " · 🧑‍🌾+25%"
+				if weather == "snow":
+					s += "\n🌨️ kar: sabit hız, sulama gerekmez"
+				elif _wet(e):
+					s += "\n💧 " + bar(e.water)
+				else:
+					s += "\n🏜️ kuru · yarı hız"
 			"tree":
 				var t = Data.TREES[e.type]
 				s = "%s %s\n" % [t.icon, t.name]
@@ -1135,6 +1248,8 @@ func _update_floats(dt: float) -> void:
 			floats.remove_at(i)
 
 func _toast(msg: String, kind := "") -> void:
+	if loading:
+		return
 	for c in toasts.get_children():
 		if c.get_meta("msg", "") == msg:
 			return
@@ -1239,6 +1354,17 @@ func _update_day(dt: float) -> void:
 	night_f = 1.0 - smoothstep(-0.15, 0.1, elev)
 	var set_f := maxf(0.0, 1.0 - absf(elev) / 0.32) * (1.0 if elev > -0.3 else 0.0)
 	var sky := Color("#0d1633").lerp(Color("#9fd4ff"), day_f).lerp(Color("#ffa66b"), set_f * 0.55)
+	wx_f = move_toward(wx_f, 1.0 if weather == "rain" or weather == "snow" else 0.0, dt * 0.3)
+	dr_f = move_toward(dr_f, 1.0 if weather == "drought" else 0.0, dt * 0.3)
+	var grey := Color("#c3cbd5") if weather == "snow" or season == 3 else Color("#7f8b99")
+	sky = sky.lerp(grey.lerp(Color("#151a26"), night_f), wx_f * 0.7)
+	sky = sky.lerp(Color("#f2d79c"), dr_f * 0.35 * day_f)
+	env.fog_density = 0.0025 + 0.012 * wx_f
+	var ep := cam_target + Vector3(0, 14, 0)
+	rain_fx.global_position = ep
+	snow_fx.global_position = ep
+	rain_fx.emitting = weather == "rain"
+	snow_fx.emitting = weather == "snow"
 	env.background_color = sky
 	env.fog_light_color = sky
 	env.ambient_light_color = Color("#6d82c9").lerp(Color("#dff1ff"), day_f)
@@ -1247,13 +1373,18 @@ func _update_day(dt: float) -> void:
 	var s_elev := maxf(sin(qang), 0.15)
 	var off := Vector3(cos(qang) * 30.0, s_elev * 35.0, 12.0)
 	sun.look_at_from_position(off, Vector3.ZERO, Vector3.UP)
-	sun.light_energy = 1.15 * day_f + 0.12
-	sun.light_color = Color("#9fb4ff") if night_f > 0.5 else Color("#ffb37a").lerp(Color("#fff3d6"), smoothstep(0.0, 0.5, elev))
+	sun.light_energy = (1.15 * day_f + 0.12) * (1.0 - 0.5 * wx_f)
+	sun.light_color = Color("#9fb4ff") if night_f > 0.5 else Color("#ffb37a").lerp(Color("#fff3d6"), smoothstep(0.0, 0.5, elev)).lerp(Color("#ffcf86"), dr_f * 0.5)
 	Models.glow().emission_energy_multiplier = night_f * 3.0
 	var hh := int(day_time * 24.0)
 	var mm := int(day_time * 24.0 * 60.0) % 60
 	var icon := "🌙" if night_f > 0.6 else ("🌅" if set_f > 0.4 else "☀️")
-	lbl_clock.text = "%s %02d:%02d · Gün %d" % [icon, hh, mm - mm % 10, day]
+	var sn = Data.SEASONS[season]
+	var left := ceili((1.0 - season_t) * Data.SEASON_LEN / 60.0)
+	var txt := "%s %02d:%02d · Gün %d   ·   %s %s (%d dk) · Yıl %d" % [icon, hh, mm - mm % 10, day, sn.icon, sn.name, left, year]
+	if weather != "":
+		txt += "   ·   %s %s" % [Data.WEATHER[weather].icon, Data.WEATHER[weather].name]
+	lbl_clock.text = txt
 
 func _update_lamps(dt: float) -> void:
 	lamp_timer -= dt
@@ -1538,7 +1669,7 @@ func _build_ui() -> void:
 	var body := Label.new()
 	body.custom_minimum_size = Vector2(520, 0)
 	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	body.text = "Toprağı sür, tohum ek, sula, hasat et; altınla ağaç, hayvan ve dekor al. Seviye atladıkça yeni ekinler açılır.\n\n• Sol tık / sürükle — seçili aleti karelere uygula (çiftçi sırayla yapar)\n• Sağ tık sürükle veya Q / E — kamerayı döndür · Tekerlek — yakınlaştır\n• Boş yere tıkla — çiftçi oraya yürür · WASD / oklar — yürüt\n• 1–8 — alet seç · B — 📦 Ambar (kaynak sat, sipariş teslim et) · Esc — iptal\n• ✋ El akıllıdır: boş tarlaya seçili tohumu eker, susuzu sular, hazırı toplar.\n• 💧 Sulanan ekin 2× hızlı büyür · 🧑‍🌾 Korkuluk çevresine +%25 hız verir.\n• Oyun otomatik kaydedilir; sen yokken de çiftlik büyür."
+	body.text = "Toprağı sür, tohum ek, sula, hasat et; altınla ağaç, hayvan ve dekor al. Seviye atladıkça yeni ekinler açılır.\n\n• Sol tık / sürükle — seçili aleti karelere uygula (çiftçi sırayla yapar)\n• Sağ tık sürükle veya Q / E — kamerayı döndür · Tekerlek — yakınlaştır\n• Boş yere tıkla — çiftçi oraya yürür · WASD / oklar — yürüt\n• 1–8 — alet seç · B — 📦 Ambar (kaynak sat, sipariş teslim et) · Esc — iptal\n• ✋ El akıllıdır: boş tarlaya seçili tohumu eker, susuzu sular, hazırı toplar.\n• 💧 Sulanan toprak bir süre ıslak kalır (2× hız), sonra kurur · 🧑‍🌾 Korkuluk çevresine +%25 hız verir.\n• 🌸 Dört mevsim (10'ar dk): bazı tohumlar yalnız kendi mevsiminde ekilir. 🌧️ Yağmur sular, 🔥 kuraklıkta su çabuk biter, 🌨️ karda sulamaya gerek yok.\n• Oyun otomatik kaydedilir; sen yokken de çiftlik büyür."
 	hv.add_child(body)
 	var go := Button.new()
 	go.text = "Başlayalım!"
@@ -1607,7 +1738,7 @@ func _render_shelf() -> void:
 		var locked: bool = it.level > level
 		var meta := ""
 		match cat:
-			"seed": meta = "⏱%s → %d🪙" % [fmt_time(it.time), it.sell]
+			"seed": meta = "⏱%s → %d🪙" % [fmt_time(it.time), it.sell] if _in_season(it) else "🚫 " + Data.season_icons(it.seasons)
 			"tree": meta = "🍃%s → %d🪙" % [fmt_time(it.regrow), it.sell]
 			"animal": meta = "%s%s → %d🪙" % [it.picon, fmt_time(it.time), it.sell]
 			"decor": meta = "✨ bonus" if it.has("info") else " "
@@ -1617,9 +1748,11 @@ func _render_shelf() -> void:
 		b.add_theme_font_size_override("font_size", 12)
 		b.text = "%s\n%s\n🪙 %d\n%s" % [it.icon, it.name, it.cost, ("🔒 Sv %d" % it.level) if locked else meta]
 		b.tooltip_text = it.get("info", it.name)
+		if cat == "seed":
+			b.tooltip_text = "%s\nMevsim: %s" % [it.name, Data.season_names(it.seasons)]
 		var selected: bool = sel[cat] == k
 		_btn_styles(b, Color("#f1ffe6") if selected else Color.WHITE, Color("#fbf3e4"), Color("#6fbf3b") if selected else Color("#e7d7bf"), 2)
-		if locked:
+		if locked or (cat == "seed" and not _in_season(it)):
 			b.modulate = Color(0.7, 0.7, 0.7, 0.75)
 		b.set_meta("cost", it.cost)
 		var kk: String = k
@@ -1669,7 +1802,7 @@ func _save() -> void:
 			"plot":
 				s.c = e.crop
 				s.p = e.progress
-				s.w = e.watered
+				s.w = snappedf(e.water, 0.001)
 			"tree":
 				s.a = e.age
 				s.f = e.fruit_t
@@ -1678,7 +1811,7 @@ func _save() -> void:
 				s.at = e.t
 				s.rd = e.ready
 		ents.append(s)
-	var data := {"v": 1, "medals": medals, "res": res, "order": order, "coins": coins, "xp": xp, "level": level, "day_time": day_time, "day": day, "sel": sel, "muted": muted,
+	var data := {"v": 1, "season": season, "season_t": season_t, "year": year, "weather": weather, "weather_t": weather_t, "medals": medals, "res": res, "order": order, "coins": coins, "xp": xp, "level": level, "day_time": day_time, "day": day, "sel": sel, "muted": muted,
 		"saved_at": Time.get_unix_time_from_system(), "ents": ents, "fx": farmer.position.x, "fz": farmer.position.z}
 	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if f:
@@ -1697,6 +1830,13 @@ func _load() -> bool:
 	day = int(data.get("day", 1))
 	muted = bool(data.get("muted", false))
 	medals = int(data.get("medals", 0))
+	season = clampi(int(data.get("season", 0)), 0, 3)
+	season_t = float(data.get("season_t", 0.0))
+	year = int(data.get("year", 1))
+	weather = str(data.get("weather", ""))
+	if not Data.WEATHER.has(weather):
+		weather = ""
+	weather_t = float(data.get("weather_t", 0.0))
 	res = {}
 	for k in data.get("res", {}):
 		res[k] = int(data.res[k])
@@ -1721,7 +1861,8 @@ func _load() -> bool:
 			"plot":
 				base.crop = s.get("c")
 				base.progress = float(s.get("p", 0.0))
-				base.watered = bool(s.get("w", false))
+				var w = s.get("w", 0.0)
+				base.water = (1.0 if w else 0.0) if typeof(w) == TYPE_BOOL else float(w)
 			"tree":
 				base.age = float(s.get("a", 0.0))
 				base.fruit_t = float(s.get("f", 0.0))
@@ -1739,9 +1880,11 @@ func _load() -> bool:
 	var away := minf(OFFLINE_CAP, Time.get_unix_time_from_system() - float(data.get("saved_at", 0)))
 	if away > 20.0:
 		var left := away
+		loading = true
 		while left > 0.0:
 			_simulate(minf(5.0, left))
 			left -= 5.0
+		loading = false
 		_toast("🌙 Sen yokken çiftliğin %s boyunca büyüdü!" % fmt_time(away), "level")
 	return true
 
@@ -1808,6 +1951,9 @@ func _process(delta: float) -> void:
 # ============================================================ öz test (--selftest)
 func _selftest() -> void:
 	var fails := []
+	season = 0
+	season_t = 0.0
+	weather = ""
 	var c0 := coins
 	if not _perform({"x": 2, "z": 1, "tool": "hand", "arg": "wheat"}): fails.append("hasat")
 	if coins != c0 + 12: fails.append("hasat altını %d" % coins)
@@ -1859,6 +2005,7 @@ func _selftest() -> void:
 	_store("pumpkin", Vector3.ZERO)
 	if _res_total() != Data.BARN_CAP: fails.append("ambar kapasitesi %d" % _res_total())
 	res = {}
+	_selftest_seasons(fails)
 	var n_before := entities.size()
 	_save()
 	var data = JSON.parse_string(FileAccess.get_file_as_string(SAVE_PATH))
@@ -1889,6 +2036,109 @@ func _demo() -> void:
 	farmer.position = Vector3(6.5, 0, 1.5)
 	cam_target = farmer.position
 	cam_dist = 11.0
+
+# ============================================================ mevsim ve hava (Aşama 2)
+func _on_season_start() -> void:
+	var sn = Data.SEASONS[season]
+	var prev := (season + 3) % 4
+	var fresh := []
+	for k in Data.CROPS:
+		var c = Data.CROPS[k]
+		if c.seasons.has(season) and not c.seasons.has(prev) and c.level <= level:
+			fresh.append(c.icon + " " + c.name)
+	var msg := "%s %s geldi!" % [sn.icon, sn.name]
+	if fresh.size() > 0:
+		msg += "\nEkilebilir: " + ", ".join(fresh)
+	_toast(msg, "level")
+	if season != 3:
+		var n := 0
+		for e in entities:
+			if e.kind == "tree" and e.age >= 1.0 and not e.has_fruit:
+				e.has_fruit = true
+				e.fruit_t = 0.0
+				_refresh(e)
+				n += 1
+		if n > 0:
+			_toast("🌳 Ağaçlar mevsim meyvesi verdi (%d)" % n)
+	if weather != "":
+		_end_weather()
+	var r := randf()
+	for wc in Data.WEATHER_CHANCE[season]:
+		if r < wc[1]:
+			_start_weather(wc[0])
+			break
+		r -= wc[1]
+	_apply_season_visual(loading)
+	if shelf_box != null:
+		_render_shelf()
+
+func _start_weather(w: String) -> void:
+	if not Data.WEATHER.has(w):
+		return
+	weather = w
+	weather_t = randf_range(150.0, 300.0)
+	_toast("%s %s" % [Data.WEATHER[w].icon, Data.WEATHER[w].msg], "warn" if w == "drought" else "")
+
+func _end_weather() -> void:
+	if weather != "":
+		_toast("🌤️ Hava açıldı")
+	weather = ""
+	weather_t = 0.0
+
+func _apply_season_visual(instant: bool) -> void:
+	var t = SEASON_TINT[season]
+	var col := Color(t[0])
+	if instant:
+		ground_mat.set_shader_parameter("tint", col)
+		ground_mat.set_shader_parameter("amt", t[1])
+		return
+	var tw := create_tween().set_parallel()
+	tw.tween_property(ground_mat, "shader_parameter/tint", col, 6.0)
+	tw.tween_property(ground_mat, "shader_parameter/amt", t[1], 6.0)
+
+func _selftest_seasons(fails: Array) -> void:
+	season = 0
+	season_t = 0.0
+	weather = ""
+	coins = 1000
+	level = 6
+	if not _perform({"x": 9, "z": 3, "tool": "plow", "arg": null}): fails.append("sürme 3")
+	if not _perform({"x": 9, "z": 3, "tool": "seed", "arg": "tomato"}): fails.append("ilkbaharda domates")
+	var e = tiles[key(9, 3)]
+	var b := 1.25 if e.boost else 1.0
+	_simulate(45.0)
+	if absf(e.progress - 0.25 * b) > 0.01: fails.append("susuz büyüme %.3f" % e.progress)
+	if not _perform({"x": 9, "z": 3, "tool": "water", "arg": null}): fails.append("sulama 3")
+	if _resolve("water", null, 9, 3) != null: fails.append("dolu toprağa tekrar sulama")
+	_simulate(45.0)
+	if absf(e.progress - 0.75 * b) > 0.01: fails.append("sulu büyüme %.3f" % e.progress)
+	if absf(e.water - 0.5) > 0.01: fails.append("su azalması %.3f" % e.water)
+	_start_weather("drought")
+	_simulate(10.0)
+	if absf(e.water - (0.5 - 30.0 / Data.WATER_DUR)) > 0.01: fails.append("kuraklık %.3f" % e.water)
+	_start_weather("rain")
+	e.water = 0.0
+	_simulate(8.0)
+	if e.water < 0.99: fails.append("yağmur %.3f" % e.water)
+	_start_weather("snow")
+	e.water = 0.0
+	if _resolve("water", null, 9, 3) != null: fails.append("karda sulama")
+	if absf(_grow_rate(e) - 0.6 * b) > 0.001: fails.append("kar hızı")
+	_end_weather()
+	season = 2
+	if not _perform({"x": 8, "z": 3, "tool": "plow", "arg": null}): fails.append("sürme 4")
+	if _resolve("seed", "tomato", 8, 3) != null: fails.append("sonbaharda domates ekildi")
+	if _resolve("seed", "pumpkin", 8, 3) != "plant": fails.append("sonbaharda balkabağı")
+	var tree_e = tiles[key(9, 5)]
+	tree_e.has_fruit = false
+	tree_e.age = 1.0
+	season = 3
+	season_t = 0.999
+	var y0 := year
+	_simulate(1.0)
+	if season != 0 or year != y0 + 1: fails.append("mevsim geçişi %d/%d" % [season, year])
+	if not tree_e.has_fruit: fails.append("mevsim meyvesi")
+	_end_weather()
 
 # ============================================================ ambar, satış, sipariş (Aşama 1)
 func _res_total() -> int:

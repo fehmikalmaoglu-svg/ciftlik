@@ -7,11 +7,11 @@ Kaynak: Farm Together Wiki, *Game Basics* ve *Crops* sayfaları (okundu: 23.11.2
 | Sistem | Wiki'de | Bizde |
 |---|---|---|
 | Para, XP, seviye, kilit açma | ✓ | ✓ |
-| Ekin/ağaç/hayvan zamanlayıcıları, sulama | ✓ | ✓ (sulama tek seferlik) |
+| Ekin/ağaç/hayvan zamanlayıcıları, sulama | ✓ | ✓ (su seviyesi zamanla azalır) |
 | Çevrimdışı büyüme | ✓ | ✓ (6 saate kadar) |
 | Tıklanan yere yürüme | ✓ | ✓ (bu sürümde eklendi) |
 | Kaynak envanteri (sebze, tahıl, meyve, süt, yumurta, kumaş…) | ✓ | ✓ Aşama 1 (ambar, satış, sipariş, madalya) |
-| Mevsimler + hava (yağmur, kuraklık, kar) | ✓ 17 dk'da bir | ✗ |
+| Mevsimler + hava (yağmur, kuraklık, kar) | ✓ 17 dk'da bir | ✓ Aşama 2 (10 dk mevsim, su seviyesi) |
 | Hayvan yemleme, ağıl (bitişik aynı tür yemi paylaşır), hayvan seviyesi | ✓ | ✗ |
 | Çiçekler (sulanınca çok daha fazla kazanç, seviye) | ✓ | ✗ |
 | Göletler / balık | ✓ | ✗ |
@@ -30,7 +30,9 @@ Her aşama kendi içinde oynanabilir biter; sonunda `--selftest` genişletilir v
 - Ambar ekranı: kaynakları gör, sat. İkinci para birimi **madalya** (işlenmiş ürünlerden ve görevlerden).
 - `data.gd`'ye her ekin/hayvan için `resource` alanı.
 
-### 2. Su ve mevsimler
+### 2. Su ve mevsimler ✅ (tamamlandı)
+- Mevsimlik ekinler: buğday her mevsim; havuç ilkbahar/sonbahar/kış; domates ilkbahar/yaz; mısır yaz/sonbahar; ayçiçeği yaz; balkabağı sonbahar. Ekilmiş ekin mevsim dışında da büyümeye devam eder.
+- Zemin mevsime göre renk değiştirir; yağmur/kar parçacıkları, kuraklıkta sıcak ışık.
 - Sulama tek tık yerine **su seviyesi**: zamanla azalır, sulu süre boyunca 2× hız.
 - 4 mevsim, her biri ~10 dk (gün/gece döngüsünden bağımsız). Bazı ekinler yalnız belli mevsimlerde ekilir; ağaçlar mevsim başında ürün verebilir.
 - Mevsim başında küçük ihtimalle hava olayı: **yağmur** (tarlaları yavaşça sular), **kuraklık** (yaz; su 3× hızlı biter), **kar** (kış; sulama bonusu yok). Parçacık efektleri ile.

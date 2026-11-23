@@ -3,12 +3,12 @@ extends RefCounted
 ## Oyun verileri. Süreler saniye (sulanmış tarlada). Susuz tarla yarı hızda büyür.
 
 const CROPS := {
-	"wheat":     {"name": "Buğday",    "icon": "🌾", "cost": 5,  "sell": 12,  "time": 20.0,  "xp": 2,  "level": 1, "color": "#f0c75e"},
-	"carrot":    {"name": "Havuç",     "icon": "🥕", "cost": 10, "sell": 26,  "time": 45.0,  "xp": 4,  "level": 1, "color": "#fb8c00"},
-	"tomato":    {"name": "Domates",   "icon": "🍅", "cost": 20, "sell": 52,  "time": 90.0,  "xp": 7,  "level": 2, "color": "#e53935"},
-	"corn":      {"name": "Mısır",     "icon": "🌽", "cost": 30, "sell": 80,  "time": 150.0, "xp": 10, "level": 3, "color": "#ffd54f"},
-	"sunflower": {"name": "Ayçiçeği",  "icon": "🌻", "cost": 45, "sell": 120, "time": 240.0, "xp": 15, "level": 4, "color": "#fdd835"},
-	"pumpkin":   {"name": "Balkabağı", "icon": "🎃", "cost": 70, "sell": 190, "time": 360.0, "xp": 22, "level": 5, "color": "#fb8c00"},
+	"wheat":     {"name": "Buğday",    "icon": "🌾", "cost": 5,  "sell": 12,  "time": 20.0,  "xp": 2,  "level": 1, "seasons": [0, 1, 2, 3], "color": "#f0c75e"},
+	"carrot":    {"name": "Havuç",     "icon": "🥕", "cost": 10, "sell": 26,  "time": 45.0,  "xp": 4,  "level": 1, "seasons": [0, 2, 3], "color": "#fb8c00"},
+	"tomato":    {"name": "Domates",   "icon": "🍅", "cost": 20, "sell": 52,  "time": 90.0,  "xp": 7,  "level": 2, "seasons": [0, 1], "color": "#e53935"},
+	"corn":      {"name": "Mısır",     "icon": "🌽", "cost": 30, "sell": 80,  "time": 150.0, "xp": 10, "level": 3, "seasons": [1, 2], "color": "#ffd54f"},
+	"sunflower": {"name": "Ayçiçeği",  "icon": "🌻", "cost": 45, "sell": 120, "time": 240.0, "xp": 15, "level": 4, "seasons": [1], "color": "#fdd835"},
+	"pumpkin":   {"name": "Balkabağı", "icon": "🎃", "cost": 70, "sell": 190, "time": 360.0, "xp": 22, "level": 5, "seasons": [2], "color": "#fb8c00"},
 }
 
 const TREES := {
@@ -60,6 +60,45 @@ const YIELD := {
 }
 
 const BARN_CAP := 150
+
+## Mevsimler (Aşama 2). Her biri SEASON_LEN saniye; gün/gece döngüsünden bağımsız.
+const SEASON_LEN := 600.0
+const SEASONS := [
+	{"name": "İlkbahar", "icon": "🌸"},
+	{"name": "Yaz",      "icon": "☀️"},
+	{"name": "Sonbahar", "icon": "🍂"},
+	{"name": "Kış",      "icon": "❄️"},
+]
+
+## Dolu su seviyesinin (1.0) normal havada tamamen kuruma süresi.
+const WATER_DUR := 90.0
+## Sulama/elle sulama bu seviyenin altındaysa yapılabilir.
+const WATER_REFILL := 0.6
+
+const WEATHER := {
+	"rain":    {"name": "Yağmur",   "icon": "🌧️", "msg": "Yağmur başladı: tarlalar kendiliğinden sulanıyor"},
+	"drought": {"name": "Kuraklık", "icon": "🔥", "msg": "Kuraklık! Toprak 3× hızlı kuruyor"},
+	"snow":    {"name": "Kar",      "icon": "🌨️", "msg": "Kar yağıyor: sulamaya gerek yok, ekinler yavaş ama düzenli büyür"},
+}
+## Mevsim başında hava olayı ihtimalleri.
+const WEATHER_CHANCE := [
+	[["rain", 0.4]],
+	[["drought", 0.35], ["rain", 0.15]],
+	[["rain", 0.4]],
+	[["snow", 0.6]],
+]
+
+static func season_names(list: Array) -> String:
+	var out := []
+	for i in list:
+		out.append(SEASONS[i].name)
+	return ", ".join(out)
+
+static func season_icons(list: Array) -> String:
+	var out := ""
+	for i in list:
+		out += SEASONS[i].icon
+	return out
 
 static func xp_for_level(lv: int) -> int:
 	return int(round(40.0 * pow(lv, 1.6)))
