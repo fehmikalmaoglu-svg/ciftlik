@@ -146,6 +146,7 @@ const HELP_PAGES := [
 		["🚚 · 🗑️", "Taşı: nesneye tıkla, sonra yeni yerine tıkla; seçiliyken kendisine tıkla ya da T ile döndür (Esc vazgeçer). Her nesnenin (bina, fener, çit, ağaç, hayvan…) üstünde basılı tut: Döndür / Taşı / Kaldır menüsü; ambar, ev, ağaç, hayvan, çit… hepsi taşınır, bedava. Kaldır: nesneyi siler, yarı fiyatı geri gelir."],
 		["B · J · Esc", "B ambarı, J görev panelini açar; Esc iş kuyruğunu ve pencereleri kapatır."],
 		["🎣", "Balık tutma: gölün batı kıyısındaki 🎣 Balıkçı tezgâhından olta ve yem al. Göle tıkla; ❗ çıkınca tıkla (ya da Boşluk), mini oyunda basılı tutarak yeşil alanı balığın üstünde tut. 6 tür var, yayın balığı geceleri çıkar; tezgâhta balık defterin durur."],
+		["♻️", "Oyun her açılışta ve oynarken 10 dakikada bir kariyerinin yedeğini alır (son 3 yedek). Kayıt bozulursa oyun kendiliğinden yedekten açar; Kariyerler menüsünden ♻️ Yedek ile en yeni yedeğe dönebilirsin."],
 		["Enter · 💬", "Online sohbet: Enter'a bas, yaz, Enter ile gönder. Mesaj sol altta ve karakterinin üstünde balon olarak görünür. Arkadaşının kurduğu şeylerde onun renginde küçük bayrak olur. 🤝 Ortak görevler 2 kat ödül verir; ikiniz de katkı vermelisiniz."],
 		["🤗", "Hayvanın üstünde basılı tut: Sev (günde bir, mutluluk artar) ve isim ver. Mutlu hayvan %25'e kadar hızlı üretir, üzgün olan yavaşlar. Yemlemek de mutlu eder. 🐮 Ahır: çevresindeki koyun, domuz ve ineklerin mutluluğu yavaş düşer."],
 		["🎪", "Mevsim etkinliği: ilkbaharda Çiçek Şenliği, yazın Balık Yarışması, sonbaharda Hasat Festivali, kışın Kardan Adam (pazarın çevresinde kar topla). Bronz, gümüş, altın derece ödülleri; altında kalıcı kupa dekoru."],
@@ -363,6 +364,10 @@ var clock_t := 0.0
 var sim_acc := 0.0
 var lamp_timer := 0.0
 var save_timer := 0.0
+var backup_t := 0.0
+var rest_armed := {}
+const BACKUPS := 3
+const BACKUP_EVERY := 600.0   # sn: oynarken 10 dakikada bir yedek
 var hud_dirty := true
 var shown_coins := 120.0
 var reset_armed := 0.0
@@ -5648,6 +5653,14 @@ func _render_menu(page: String, arg := 0) -> void:
 					var nn := n
 					row.add_child(_small_btn(" Oyna ", func(): _open_slot(nn), true, true))
 					row.add_child(_small_btn(" Sil " if not del_armed.get(n, false) else " Emin misin? ", func(): _delete_slot(nn)))
+				if _good_backup(_slot_path(n)) != "":
+					var rn := n
+					var rb := _small_btn(" ♻️ Yedek " if not rest_armed.get(n, false) else " Geri yüklensin mi? ", func(): _restore_slot(rn))
+					var bi = JSON.parse_string(FileAccess.get_file_as_string(_good_backup(_slot_path(n))))
+					if typeof(bi) == TYPE_DICTIONARY:
+						var bw := Time.get_datetime_string_from_unix_time(int(bi.get("saved_at", 0)) + int(Time.get_time_zone_from_system().bias) * 60, true).substr(0, 16)
+						rb.tooltip_text = "En yeni yedeğe dön: Seviye %d · 🪙 %d · %s\nŞimdiki kayıt .undo olarak saklanır." % [int(bi.get("level", 1)), int(bi.get("coins", 0)), bw]
+					row.add_child(rb)
 				menu_box.add_child(row)
 			menu_box.add_child(_menu_btn("←  Geri", func(): _render_menu("main")))
 		"new":
@@ -5858,10 +5871,67 @@ func _update_hud(dt: float) -> void:
 func _save() -> void:
 	if save_path == "" or not playing:
 		return
-	var f := FileAccess.open(save_path, FileAccess.WRITE)
-	if f:
-		f.store_string(JSON.stringify(_state_dict()))
-		f.close()
+	_write_safe(save_path, JSON.stringify(_state_dict()))
+
+## Önce geçici dosyaya yaz, sonra yerine koy: yazarken kapanırsa eski kayıt bozulmaz.
+static func _write_safe(path: String, txt: String) -> bool:
+	var tmp := path + ".tmp"
+	var f := FileAccess.open(tmp, FileAccess.WRITE)
+	if f == null:
+		return false
+	f.store_string(txt)
+	f.close()
+	var g := ProjectSettings.globalize_path(path)
+	if FileAccess.file_exists(path):
+		DirAccess.remove_absolute(g)
+	return DirAccess.rename_absolute(ProjectSettings.globalize_path(tmp), g) == OK
+
+static func _bak_path(path: String, i: int) -> String:
+	return "%s.bak%d" % [path, i]
+
+## Yedekleri kaydır (bak1 en yeni) ve şimdiki kaydı bak1 yap.
+static func _backup_rotate(path: String) -> bool:
+	if path == "" or not FileAccess.file_exists(path):
+		return false
+	if typeof(JSON.parse_string(FileAccess.get_file_as_string(path))) != TYPE_DICTIONARY:
+		return false   # bozuk kaydı yedekleyip iyi yedeği silme
+	for i in range(BACKUPS, 1, -1):
+		var a := _bak_path(path, i - 1)
+		if FileAccess.file_exists(a):
+			DirAccess.copy_absolute(ProjectSettings.globalize_path(a), ProjectSettings.globalize_path(_bak_path(path, i)))
+	return DirAccess.copy_absolute(ProjectSettings.globalize_path(path), ProjectSettings.globalize_path(_bak_path(path, 1))) == OK
+
+## Okunabilen en yeni yedek (yoksa "").
+static func _good_backup(path: String) -> String:
+	for i in range(1, BACKUPS + 1):
+		var b := _bak_path(path, i)
+		if FileAccess.file_exists(b):
+			var d = JSON.parse_string(FileAccess.get_file_as_string(b))
+			if typeof(d) == TYPE_DICTIONARY and int(d.get("v", 0)) == 1:
+				return b
+	return ""
+
+## Menüden: yuvayı en yeni yedeğe döndür (şimdiki kayıt .undo olarak saklanır).
+func _restore_slot(n: int) -> void:
+	if not rest_armed.get(n, false):
+		rest_armed[n] = true
+		_render_menu("list")
+		return
+	rest_armed.erase(n)
+	var pth := _slot_path(n)
+	var b := _good_backup(pth)
+	if b == "":
+		return
+	if FileAccess.file_exists(pth):
+		DirAccess.copy_absolute(ProjectSettings.globalize_path(pth), ProjectSettings.globalize_path(pth + ".undo"))
+	DirAccess.copy_absolute(ProjectSettings.globalize_path(b), ProjectSettings.globalize_path(pth))
+	if n == slot:
+		save_path = ""   # açık oyun eski hâliyle üstüne yazmasın
+		boot = {"slot": n}
+		get_tree().reload_current_scene()
+		return
+	_toast("♻️ %d. yuva yedekten geri yüklendi." % n, "level")
+	_render_menu("list")
 
 ## Kayıt ve ağ için çiftliğin tüm durumu.
 func _state_dict() -> Dictionary:
@@ -5915,7 +5985,16 @@ func _load() -> bool:
 	if not FileAccess.file_exists(save_path):
 		return false
 	var data = JSON.parse_string(FileAccess.get_file_as_string(save_path))
-	return _load_dict(data, true)
+	if typeof(data) == TYPE_DICTIONARY and _load_dict(data, true):
+		if save_path.begins_with("user://career_"):
+			_backup_rotate(save_path)   # her oturum başında bir yedek
+		return true
+	var b := _good_backup(save_path)
+	if b != "" and _load_dict(JSON.parse_string(FileAccess.get_file_as_string(b)), true):
+		DirAccess.copy_absolute(ProjectSettings.globalize_path(save_path), ProjectSettings.globalize_path(save_path + ".bozuk"))
+		call_deferred("_toast", "⚠️ Kayıt dosyası bozulmuştu: en yeni yedekten açıldı.", "warn")
+		return true
+	return false
 
 func _load_dict(data, offline: bool) -> bool:
 	if typeof(data) != TYPE_DICTIONARY or int(data.get("v", 0)) != 1:
@@ -6180,6 +6259,11 @@ func _process(delta: float) -> void:
 	_update_cursor()
 	_update_hud(dt)
 	save_timer += dt
+	backup_t += dt
+	if backup_t > BACKUP_EVERY:
+		backup_t = 0.0
+		if shot_path == "" and save_path.begins_with("user://career_"):
+			_backup_rotate(save_path)
 	if save_timer > 10.0:
 		save_timer = 0.0
 		if shot_path == "":
@@ -8067,6 +8151,7 @@ func _selftest_build(fails: Array) -> void:
 	_selftest_events(fails)
 	_selftest_pets(fails)
 	_selftest_coop(fails)
+	_selftest_backup(fails)
 	var rb := _refund_of(tiles.get(key(sp.x, sp.y)))
 	var c2 := coins
 	if not _perform({"x": sp.x, "z": sp.y, "tool": "remove", "arg": null}) or _count_buildings("barn") != b0: fails.append("bina kaldırma")
@@ -8077,6 +8162,29 @@ func _selftest_build(fails: Array) -> void:
 	var pe2 = tiles.get(key(ps.x, ps.y))
 	if pe2 != null and pe2.kind == "plot":
 		_remove_entity(pe2)
+
+func _selftest_backup(fails: Array) -> void:
+	var p := "user://bktest.json"
+	var clean := func():
+		for suf in ["", ".tmp", ".bak1", ".bak2", ".bak3", ".bak4"]:
+			if FileAccess.file_exists(p + suf):
+				DirAccess.remove_absolute(ProjectSettings.globalize_path(p + suf))
+	clean.call()
+	for i in 4:
+		if not _write_safe(p, JSON.stringify({"v": 1, "n": i})): fails.append("güvenli yazma")
+		_backup_rotate(p)
+	if FileAccess.file_exists(p + ".tmp"): fails.append("geçici dosya kaldı")
+	var b1 = JSON.parse_string(FileAccess.get_file_as_string(p + ".bak1"))
+	var b3 = JSON.parse_string(FileAccess.get_file_as_string(p + ".bak3"))
+	if typeof(b1) != TYPE_DICTIONARY or int(b1.n) != 3 or typeof(b3) != TYPE_DICTIONARY or int(b3.n) != 1: fails.append("yedek sırası")
+	if FileAccess.file_exists(p + ".bak4"): fails.append("fazla yedek")
+	_write_safe(p, "{bozuk")
+	if _backup_rotate(p): fails.append("bozuk kayıt yedeklendi")
+	if _good_backup(p) != p + ".bak1": fails.append("iyi yedek bulunamadı")
+	clean.call()
+	if menu_box != null:   # kariyer listesi (yalnız okur) hatasız çizilmeli
+		_render_menu("list")
+		if menu_box.get_child_count() < 3: fails.append("kariyer listesi")
 
 func _selftest_coop(fails: Array) -> void:
 	var keep := [quests.duplicate(true), medals, gems]

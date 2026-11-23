@@ -1,5 +1,11 @@
 # Çiftliğim 3D — Sürüm Notları
 
+## v0.13.0 · Erken Erişim
+- ♻️ **Otomatik yedek**: oyun her açılışta ve oynarken 10 dakikada bir kariyerinin yedeğini alır (son 3 yedek saklanır).
+- 🛟 Kayıt dosyası bozulursa oyun kendiliğinden en yeni sağlam yedekten açar.
+- 📂 Kariyerler menüsünde **♻️ Yedek** düğmesi: yuvayı en yeni yedeğe döndürür (şimdiki kayıt ayrıca saklanır). Yanlışlıkla silinen kariyer de buradan geri gelir.
+- 💾 Kayıt artık önce geçici dosyaya yazılıyor: oyun kayıt sırasında kapansa bile eski kayıt bozulmaz.
+
 ## v0.12.0 · Erken Erişim
 - 💬 **Online sohbet**: Enter'a bas, yaz, Enter ile gönder (Esc vazgeçer). Mesajlar sol altta ve karakterin üstünde balon olarak görünür. Üst çubukta 💬 düğmesi de var.
 - 🚩 **Sahiplik işareti**: online oynarken arkadaşının kurduğu bina, ağaç, hayvan ve dekorların köşesinde onun renginde küçük bir bayrak olur. Üstüne gelince "👤 … kurdu" yazar.
