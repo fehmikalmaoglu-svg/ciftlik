@@ -38,6 +38,62 @@ void fragment() {
 	SPECULAR = 0.3;
 }
 """
+## Gökyüzü: dikey renk geçişi, güneş, ay (hilal gölgeli), titreşen yıldızlar.
+const SKY_SHADER := """
+shader_type sky;
+uniform vec3 top_col = vec3(0.3, 0.6, 0.95);
+uniform vec3 hor_col = vec3(0.62, 0.83, 1.0);
+uniform vec3 sun_dir = vec3(0.0, 1.0, 0.0);
+uniform vec3 moon_dir = vec3(0.0, -1.0, 0.0);
+uniform float night = 0.0;
+uniform float cloud = 0.0;
+float hash(vec3 p) {
+	p = fract(p * 0.3183099 + 0.1);
+	p *= 17.0;
+	return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+}
+float vnoise(vec3 x) {
+	vec3 i = floor(x);
+	vec3 f = fract(x);
+	f = f * f * (3.0 - 2.0 * f);
+	return mix(mix(mix(hash(i), hash(i + vec3(1, 0, 0)), f.x), mix(hash(i + vec3(0, 1, 0)), hash(i + vec3(1, 1, 0)), f.x), f.y),
+		mix(mix(hash(i + vec3(0, 0, 1)), hash(i + vec3(1, 0, 1)), f.x), mix(hash(i + vec3(0, 1, 1)), hash(i + vec3(1, 1, 1)), f.x), f.y), f.z);
+}
+void sky() {
+	vec3 d = EYEDIR;
+	float h = clamp(d.y, 0.0, 1.0);
+	vec3 c = mix(hor_col, top_col, pow(h, 0.55));
+	if (d.y < 0.0) { c = hor_col; }
+	float clear = 1.0 - cloud;
+	if (night > 0.01 && d.y > 0.0) {
+		vec3 q = d * 260.0;
+		vec3 id = floor(q);
+		float r = hash(id);
+		if (r > 0.993) {
+			float s = smoothstep(0.42, 0.0, length(fract(q) - 0.5)) * 2.2;
+			float tw = AT_CUBEMAP_PASS ? 0.8 : 0.65 + 0.35 * sin(TIME * (2.0 + r * 3.0) + r * 91.0);
+			vec3 sc = mix(vec3(1.0, 0.85, 0.7), vec3(0.75, 0.85, 1.0), hash(id + 3.0));
+			c += sc * s * tw * night * clear * smoothstep(0.0, 0.25, d.y) * (1.0 + 2.0 * step(0.9993, r));
+		}
+		float band = pow(max(0.0, 1.0 - abs(dot(d, normalize(vec3(0.4, 0.3, 1.0))) * 2.2)), 2.0);
+		float neb = vnoise(d * 7.0) * 0.6 + vnoise(d * 19.0) * 0.4;
+		c += vec3(0.3, 0.32, 0.5) * band * smoothstep(0.35, 0.9, neb) * 0.3 * night * clear;
+	}
+	vec3 md = normalize(moon_dir);
+	float mdot = dot(d, md);
+	float disc = smoothstep(0.99935, 0.99955, mdot);
+	vec3 side = normalize(cross(md, vec3(0.0, 1.0, 0.0)));
+	float shade = smoothstep(0.99935, 0.99955, dot(d, normalize(md + side * 0.022)));
+	float crat = 0.85 + 0.15 * hash(floor(d * 900.0));
+	vec3 moon = vec3(1.0, 0.97, 0.88) * disc * (1.0 - 0.85 * shade) * crat * 1.6;
+	float halo = pow(max(mdot, 0.0), 400.0) * 0.6 + pow(max(mdot, 0.0), 24.0) * 0.07;
+	c += (moon + vec3(0.6, 0.7, 1.0) * halo) * night * (1.0 - cloud * 0.8);
+	vec3 sd = normalize(sun_dir);
+	float sdot = dot(d, sd);
+	c += vec3(1.0, 0.92, 0.75) * (smoothstep(0.9992, 0.9996, sdot) * 3.0 + pow(max(sdot, 0.0), 180.0) * 0.5) * (1.0 - night) * clear;
+	COLOR = c;
+}
+"""
 ## Rüzgârda sallanan çim: kökten uca renk geçişi, mevsim tonu zeminle aynı.
 const GRASS_SHADER := """
 shader_type spatial;
@@ -131,6 +187,9 @@ const TOOLS := [
 	{"id": "remove", "icon": "🗑️", "name": "Kaldır", "shelf": "", "tip": "Nesneyi kaldır (%25 iade)"},
 ]
 const ACT_TXT := {"plant": "🌱 Ek", "water": "💧 Sula", "harvest": "🧺 Topla", "feed": "🌾 Yemle", "flower": "🌼 Çiçek dik", "pond": "🐟 Gölet kur", "coop": "🛖 Kümes kur", "plow": "⛏️ Sür", "tree": "🌳 Dik", "animal": "🐾 Yerleştir", "decor": "🎨 Yerleştir", "remove": "🗑️ Kaldır"}
+const SHELF_COLS := 4
+const SHELF_PER_PAGE := 8
+const SHELF_TITLES := {"seed": "🌱 Tohumlar", "tree": "🌳 Meyve Ağaçları", "animal": "🐔 Hayvanlar", "decor": "🌷 Dekor", "garden": "🌼 Bahçe"}
 const MARKER_COL := {"hand": "#ffffff", "plow": "#a1673f", "seed": "#8bc34a", "water": "#4fc3f7", "tree": "#2e7d32", "animal": "#ffca28", "decor": "#ce93d8", "garden": "#f48fb1", "remove": "#e53935"}
 
 # ------------------------------------------------------------ durum
@@ -239,7 +298,14 @@ var barn_box: VBoxContainer
 var lbl_clock: Label
 var lbl_queue: Label
 var shelf_panel: PanelContainer
-var shelf_box: HBoxContainer
+var shelf_box: GridContainer
+var shelf_title: Label
+var shelf_nav: HBoxContainer
+var shelf_open := false
+var shelf_page := {}
+var entrance_doors := []   # giriş kapısı kanatları
+var sky_mat: ShaderMaterial
+var look_up := 0.0   # yalnız ekran görüntüsü için (--lookup=N)
 var tool_buttons := {}
 var tip_panel: PanelContainer
 var tip_label: Label
@@ -351,6 +417,7 @@ func _ready() -> void:
 	await get_tree().process_frame
 	_build_env()
 	_build_terrain()
+	_build_far_land()
 	_load_step(0.35)
 	await get_tree().process_frame
 	_build_surroundings()
@@ -459,8 +526,18 @@ func _make_font() -> void:
 
 func _build_env() -> void:
 	env = Environment.new()
-	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color("#9fd4ff")
+	var ssh := Shader.new()
+	ssh.code = SKY_SHADER
+	sky_mat = ShaderMaterial.new()
+	sky_mat.shader = ssh
+	var skyr := Sky.new()
+	skyr.sky_material = sky_mat
+	skyr.radiance_size = Sky.RADIANCE_SIZE_64
+	skyr.process_mode = Sky.PROCESS_MODE_INCREMENTAL
+	env.background_mode = Environment.BG_SKY
+	env.sky = skyr
+	env.fog_sky_affect = 0.0
+	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.ambient_light_color = Color("#dff1ff")
 	env.ambient_light_energy = 0.75
@@ -509,7 +586,7 @@ func _build_env() -> void:
 
 	cam = Camera3D.new()
 	cam.fov = 40.0
-	cam.far = 250.0
+	cam.far = 480.0
 	add_child(cam)
 	cam.make_current()
 
@@ -616,6 +693,125 @@ func _build_terrain() -> void:
 		add_child(lp)
 		if i % 2 == 0:
 			add_child(Models.ball(0.07, "#f8bbd0", lp.position.x, -0.04, lp.position.z))
+
+## Uzak arazi: tepeler büyür, ufukta karlı dağlar yükselir.
+func far_height(x: float, z: float) -> float:
+	var r := Vector2(x, z).length()
+	var h := height_at(x, z)
+	var roll := (sin(x * 0.045 + 1.3) + cos(z * 0.05 + 0.4) + sin((x - z) * 0.03)) * 3.2 + 3.0
+	h += maxf(0.0, roll) * smoothstep(62.0, 105.0, r)
+	var ridge := 1.0 - absf(sin(x * 0.028 + cos(z * 0.021) * 2.0) * cos(z * 0.026 - 0.7))
+	h += pow(ridge, 2.0) * 58.0 * smoothstep(125.0, 200.0, r) + smoothstep(160.0, 280.0, r) * 30.0
+	return h
+
+func _build_far_land() -> void:
+	var size := 600.0
+	var seg := 120
+	var step := size / seg
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 21
+	var fy := func(x: float, z: float) -> float:
+		var d := maxf(absf(x), absf(z))
+		return far_height(x, z) - 0.35 * (1.0 - smoothstep(60.0, 68.0, d))
+	for j in seg:
+		for i in seg:
+			var x0 := -size / 2.0 + i * step
+			var z0 := -size / 2.0 + j * step
+			if maxf(absf(x0 + step / 2.0), absf(z0 + step / 2.0)) < 57.0:
+				continue
+			var a := Vector3(x0, fy.call(x0, z0), z0)
+			var b := Vector3(x0 + step, fy.call(x0 + step, z0), z0)
+			var c := Vector3(x0, fy.call(x0, z0 + step), z0 + step)
+			var d := Vector3(x0 + step, fy.call(x0 + step, z0 + step), z0 + step)
+			for tri in [[a, b, c], [b, d, c]]:
+				var hy: float = (tri[0].y + tri[1].y + tri[2].y) / 3.0
+				var nrm: Vector3 = (tri[1] - tri[0]).cross(tri[2] - tri[0]).normalized()
+				var slope := 1.0 - absf(nrm.y)
+				var col := Color("#63ab40").lerp(Color("#3f7f34"), smoothstep(2.0, 14.0, hy))
+				col = col.lerp(Color("#8c8a7e"), clampf(smoothstep(18.0, 30.0, hy) + slope * 1.6 - 0.4, 0.0, 1.0))
+				col = col.lerp(Color("#f1f4f7"), smoothstep(44.0, 52.0, hy + slope * 6.0))
+				var v := rng.randf() * 0.07 - 0.035
+				col = col.lightened(v) if v > 0.0 else col.darkened(-v)
+				_tri(st, tri[0], tri[1], tri[2], col)
+	var land := MeshInstance3D.new()
+	land.mesh = st.commit()
+	land.material_override = ground_mat
+	land.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(land)
+	# uzak orman: iki ağaç biçimi, MultiMesh ile ucuz
+	var shapes := [_far_tree_mesh(true), _far_tree_mesh(false)]
+	for si in 2:
+		var pts := []
+		for k in 1400:
+			var ang := rng.randf() * TAU
+			var r := rng.randf_range(60.0, 170.0)
+			var x := cos(ang) * r
+			var z := sin(ang) * r
+			if maxf(absf(x), absf(z)) < 58.0:
+				continue
+			var hy := far_height(x, z)
+			if hy > (26.0 if si == 0 else 16.0):
+				continue
+			if rng.randf() > 0.55 + 0.45 * smoothstep(2.0, 10.0, hy):
+				continue
+			pts.append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3.ONE * rng.randf_range(1.6, 3.2)), Vector3(x, hy - 0.4, z)))
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.mesh = shapes[si]
+		mm.instance_count = pts.size()
+		for i in pts.size():
+			mm.set_instance_transform(i, pts[i])
+		var mi := MultiMeshInstance3D.new()
+		mi.multimesh = mm
+		mi.material_override = ground_mat
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(mi)
+	# ufuk bulutları
+	for i in 14:
+		var cl := Models.cloud()
+		var ang := rng.randf() * TAU
+		var r := rng.randf_range(150.0, 240.0)
+		cl.position = Vector3(cos(ang) * r, rng.randf_range(32.0, 55.0), sin(ang) * r)
+		cl.scale *= rng.randf_range(2.5, 4.5)
+		add_child(cl)
+
+func _far_tree_mesh(pine: bool) -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var trunk := Color("#6d4c33")
+	var n := 6
+	var ring := func(r: float, y: float) -> Array:
+		var a := []
+		for i in n:
+			var t := TAU * i / n
+			a.append(Vector3(cos(t) * r, y, sin(t) * r))
+		return a
+	var tb: Array = ring.call(0.12, 0.0)
+	var tt: Array = ring.call(0.1, 0.6)
+	for i in n:
+		var j := (i + 1) % n
+		_tri(st, tb[i], tt[i], tb[j], trunk)
+		_tri(st, tb[j], tt[i], tt[j], trunk)
+	if pine:
+		for lay in [[0.75, 0.5, 1.6, "#2f6d3a"], [0.55, 1.3, 2.3, "#3a7d41"]]:
+			var base: Array = ring.call(lay[0], lay[1])
+			var tip := Vector3(0, lay[2], 0)
+			for i in n:
+				var j := (i + 1) % n
+				_tri(st, base[i], tip, base[j], Color(lay[3]))
+				_tri(st, base[j], Vector3(0, lay[1], 0), base[i], Color(lay[3]).darkened(0.2))
+	else:
+		var col := Color("#4f9a3e")
+		var mid: Array = ring.call(0.8, 1.25)
+		var top := Vector3(0, 2.0, 0)
+		var bot := Vector3(0, 0.55, 0)
+		for i in n:
+			var j := (i + 1) % n
+			_tri(st, mid[i], top, mid[j], col)
+			_tri(st, mid[j], bot, mid[i], col.darkened(0.25))
+	return st.commit()
 
 func _tri(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, col: Color) -> void:
 	var nrm := (b - a).cross(c - a).normalized()
@@ -856,6 +1052,21 @@ func _refresh_parcels() -> void:
 	for x in [-1.15, 1.15]:
 		frame_root.add_child(Models.box(0.22, 2.0, 0.22, "#8d5f3a", x, 1.0, gate_z + 0.5))
 	frame_root.add_child(Models.box(2.9, 0.5, 0.1, "#c79a6a", 0, 1.85, gate_z + 0.5))
+	entrance_doors.clear()
+	for sx in [-1.0, 1.0]:
+		var hinge := Models.node(sx * 1.03, 0, gate_z + 0.5)
+		var leaf := Models.node(-sx * 0.5, 0, 0)
+		for y in [0.25, 0.55, 0.85]:
+			leaf.add_child(Models.box(0.98, 0.09, 0.05, "#d9ae7a", 0, y, 0))
+		for x in [-0.42, 0.42]:
+			leaf.add_child(Models.box(0.08, 1.0, 0.06, "#8d5f3a", x, 0.52, 0))
+		var br := Models.box(1.05, 0.07, 0.05, "#c79a6a", 0, 0.55, 0.01)
+		br.rotation.z = 0.55 * sx
+		leaf.add_child(br)
+		hinge.add_child(leaf)
+		hinge.set_meta("sx", sx)
+		frame_root.add_child(hinge)
+		entrance_doors.append(hinge)
 	var sign := Label3D.new()
 	sign.text = farm_name.to_upper()
 	sign.font = font
@@ -1787,7 +1998,7 @@ func _update_camera(dt: float) -> void:
 		cam_target = cam_target.lerp(farmer.position, 1.0 - exp(-dt * 4.0))
 	var cp := cos(cam_pitch)
 	cam.position = cam_target + Vector3(sin(cam_yaw) * cp * cam_dist, sin(cam_pitch) * cam_dist, cos(cam_yaw) * cp * cam_dist)
-	cam.look_at(cam_target + Vector3(0, 0.5, 0), Vector3.UP)
+	cam.look_at(cam_target + Vector3(0, 0.5 + look_up, 0), Vector3.UP)
 
 # ============================================================ girdi
 func _pick(mp: Vector2):
@@ -2040,6 +2251,10 @@ func _unhandled_input(ev: InputEvent) -> void:
 	if ev is InputEventMouseButton and ev.pressed:
 		match ev.button_index:
 			MOUSE_BUTTON_LEFT:
+				if shelf_open:
+					shelf_open = false
+					_render_shelf()
+					return
 				painting = true
 				drag_moved = false
 				hover = _pick(ev.position)
@@ -2071,8 +2286,12 @@ func _unhandled_input(ev: InputEvent) -> void:
 	elif ev is InputEventKey and ev.pressed and not ev.echo:
 		var k: int = ev.physical_keycode
 		if k >= KEY_1 and k <= KEY_9 and k - KEY_1 < TOOLS.size():
-			_set_tool(TOOLS[k - KEY_1].id)
+			_set_tool(TOOLS[k - KEY_1].id, TOOLS[k - KEY_1].id != "hand")
 		elif k == KEY_ESCAPE:
+			if shelf_open:
+				shelf_open = false
+				_render_shelf()
+				return
 			_clear_queue()
 			land_dlg.visible = false
 			help.visible = false
@@ -2398,17 +2617,28 @@ func _update_day(dt: float) -> void:
 	snow_fx.global_position = ep
 	rain_fx.emitting = weather == "rain"
 	snow_fx.emitting = weather == "snow"
-	env.background_color = sky
+	var top := Color("#03061a").lerp(Color("#4c9ce6"), day_f).lerp(Color("#6a74b8"), set_f * 0.35)
+	top = top.lerp(grey.darkened(0.15).lerp(Color("#0c1019"), night_f), wx_f * 0.75)
+	sky = sky.lerp(Color("#121c3d"), night_f * 0.5)
 	env.fog_light_color = sky
+	sky_mat.set_shader_parameter("hor_col", Vector3(sky.r, sky.g, sky.b))
+	sky_mat.set_shader_parameter("top_col", Vector3(top.r, top.g, top.b))
+	sky_mat.set_shader_parameter("sun_dir", Vector3(cos(ang) * 30.0, sin(ang) * 35.0, 12.0).normalized())
+	sky_mat.set_shader_parameter("moon_dir", Vector3(-cos(ang) * 30.0, -sin(ang) * 35.0, 16.0).normalized())
+	sky_mat.set_shader_parameter("night", night_f)
+	sky_mat.set_shader_parameter("cloud", wx_f)
 	env.ambient_light_color = Color("#6d82c9").lerp(Color("#dff1ff"), day_f)
 	env.ambient_light_energy = 0.3 + 0.2 * day_f
-	var qang := ang
+	# gündüz güneş, gece ay ışık verir; ufukta geçişte gölge yumuşakça kaybolur
+	var qang := ang if elev >= 0.0 else ang + PI
 	var s_elev := maxf(sin(qang), 0.15)
-	var off := Vector3(cos(qang) * 30.0, s_elev * 35.0, 12.0)
+	var off := Vector3(cos(qang) * 30.0, s_elev * 35.0, 12.0 if elev >= 0.0 else 16.0)
 	sun.look_at_from_position(off, Vector3.ZERO, Vector3.UP)
-	sun.light_energy = (1.15 * day_f + 0.12) * (1.0 - 0.5 * wx_f)
+	sun.shadow_opacity = smoothstep(0.02, 0.14, absf(elev)) * (1.0 - 0.6 * wx_f)
+	sun.light_energy = (1.15 * day_f + 0.26 * night_f + 0.05) * (1.0 - 0.5 * wx_f)
 	sun.light_color = Color("#9fb4ff") if night_f > 0.5 else Color("#ffb37a").lerp(Color("#fff3d6"), smoothstep(0.0, 0.5, elev)).lerp(Color("#ffcf86"), dr_f * 0.5)
 	Models.glow().emission_energy_multiplier = night_f * 3.0
+	Models.emissive("#ffffff", "#ffffff", 0.35).emission_energy_multiplier = 0.35 * day_f + 0.02
 	var hh := int(day_time * 24.0)
 	var mm := int(day_time * 24.0 * 60.0) % 60
 	var icon := "🌙" if night_f > 0.6 else ("🌅" if set_f > 0.4 else "☀️")
@@ -2431,6 +2661,47 @@ func _update_lamps(dt: float) -> void:
 			l.position = Vector3(list[i].x + 0.5, 1.5, list[i].z + 0.5) if i < list.size() else Vector3(0, -50, 0)
 	for l in lamp_lights:
 		l.light_energy = night_f * 1.4
+
+func _find_door(n: Node) -> Node3D:
+	if n.has_meta("door"):
+		return n
+	for c in n.get_children():
+		var f := _find_door(c)
+		if f != null:
+			return f
+	return null
+
+## Çiftçi yaklaşınca kapılar ondan uzağa doğru açılır, uzaklaşınca kapanır.
+func _update_gates(dt: float) -> void:
+	var fp := farmer.global_position
+	var k := 1.0 - exp(-dt * 7.0)
+	for e in entities:
+		if e.get("type", "") != "gate":
+			continue
+		if not e.has("door") or not is_instance_valid(e.door):
+			e.door = _find_door(e.group)
+			if e.door == null:
+				continue
+		var dr: Node3D = e.door
+		var par: Node3D = dr.get_parent()
+		var near := Vector2(fp.x - par.global_position.x, fp.z - par.global_position.z).length() < 1.5
+		var target := 0.0
+		if near:
+			if absf(dr.rotation.y) < 0.05:
+				dr.set_meta("side", -1.0 if par.to_local(fp).z < 0.0 else 1.0)
+			target = 1.75 * float(dr.get_meta("side", 1.0))
+		dr.rotation.y = lerpf(dr.rotation.y, target, k)
+	for h in entrance_doors:
+		if not is_instance_valid(h):
+			continue
+		var hd: Node3D = h
+		var near := Vector2(fp.x, fp.z - hd.global_position.z).length() < 2.6
+		var target := 0.0
+		if near:
+			if absf(hd.rotation.y) < 0.05:
+				hd.set_meta("side", -1.0 if fp.z < hd.global_position.z else 1.0)
+			target = 1.6 * float(hd.get_meta("side", 1.0)) * float(hd.get_meta("sx"))
+		hd.rotation.y = lerpf(hd.rotation.y, target, k)
 
 func _animate_world(dt: float) -> void:
 	clock_t += dt
@@ -2644,12 +2915,33 @@ func _build_ui() -> void:
 	lbl_queue.add_theme_constant_override("outline_size", 4)
 	bottom.add_child(lbl_queue)
 
-	shelf_panel = _panel(8)
+	shelf_panel = _panel(14)
 	shelf_panel.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	bottom.add_child(shelf_panel)
-	shelf_box = HBoxContainer.new()
-	shelf_box.add_theme_constant_override("separation", 6)
-	shelf_panel.add_child(shelf_box)
+	var sv := VBoxContainer.new()
+	sv.add_theme_constant_override("separation", 10)
+	shelf_panel.add_child(sv)
+	var shd := HBoxContainer.new()
+	sv.add_child(shd)
+	shelf_title = Label.new()
+	shelf_title.add_theme_font_size_override("font_size", 19)
+	shelf_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	shd.add_child(shelf_title)
+	var sx_btn := _small_btn("✕", func():
+		shelf_open = false
+		_render_shelf())
+	sx_btn.custom_minimum_size = Vector2(32, 30)
+	sx_btn.tooltip_text = "Kapat  [Esc]"
+	shd.add_child(sx_btn)
+	shelf_box = GridContainer.new()
+	shelf_box.columns = SHELF_COLS
+	shelf_box.add_theme_constant_override("h_separation", 8)
+	shelf_box.add_theme_constant_override("v_separation", 8)
+	sv.add_child(shelf_box)
+	shelf_nav = HBoxContainer.new()
+	shelf_nav.alignment = BoxContainer.ALIGNMENT_CENTER
+	shelf_nav.add_theme_constant_override("separation", 14)
+	sv.add_child(shelf_nav)
 
 	var tb := _panel(6)
 	tb.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
@@ -2666,7 +2958,12 @@ func _build_ui() -> void:
 		b.focus_mode = Control.FOCUS_NONE
 		b.add_theme_font_size_override("font_size", 14)
 		var id: String = t.id
-		b.pressed.connect(func(): _set_tool(id))
+		b.pressed.connect(func():
+			if tool == id and shelf_open:
+				shelf_open = false
+				_render_shelf()
+			else:
+				_set_tool(id, id != "hand"))
 		th_box.add_child(b)
 		tool_buttons[id] = b
 
@@ -2906,6 +3203,13 @@ func _start_play(show_help := false) -> void:
 	if slot > 0:
 		_set_last(slot)
 	_save()
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--pitch="):
+			cam_pitch = float(a.substr(8))
+		elif a.begins_with("--lookup="):
+			look_up = float(a.substr(9))
+		elif a.begins_with("--yaw="):
+			cam_yaw = float(a.substr(6))
 	if (show_help and shot_path == "") or OS.get_cmdline_user_args().has("--showhelp"):
 		help.visible = true
 
@@ -3053,8 +3357,9 @@ func _delete_slot(n: int) -> void:
 		save_path = ""
 	_render_menu("list")
 
-func _set_tool(id: String) -> void:
+func _set_tool(id: String, open := false) -> void:
 	tool = id
+	shelf_open = open and _shelf_key_of(id) != ""
 	for k in tool_buttons:
 		var b: Button = tool_buttons[k]
 		var on: bool = k == id
@@ -3067,6 +3372,29 @@ func _set_tool(id: String) -> void:
 	grid.visible = id != "hand"
 	_render_shelf()
 
+func _shelf_key_of(id: String) -> String:
+	for t in TOOLS:
+		if t.id == id:
+			return t.shelf
+	return ""
+
+func _shelf_list(cat: String) -> Dictionary:
+	return {"seed": Data.CROPS, "tree": Data.TREES, "animal": Data.animal_shop(), "decor": Data.DECOR, "garden": Data.garden()}[cat]
+
+## Alet düğmeleri seçili eşyanın simgesini de gösterir (ör. 🌱🥗 Tohum).
+func _update_tool_labels() -> void:
+	for t in TOOLS:
+		if not tool_buttons.has(t.id):
+			continue
+		var b: Button = tool_buttons[t.id]
+		var extra := ""
+		if t.shelf != "":
+			var list := _shelf_list(t.shelf)
+			var k = sel[t.shelf]
+			if list.has(k):
+				extra = list[k].icon
+		b.text = "%s%s\n%s" % [t.icon, extra, t.name]
+
 func _shelf_key() -> String:
 	for t in TOOLS:
 		if t.id == tool:
@@ -3075,14 +3403,39 @@ func _shelf_key() -> String:
 
 func _render_shelf() -> void:
 	var cat := _shelf_key()
-	if cat == "":
+	_update_tool_labels()
+	if cat == "" or not shelf_open:
 		shelf_panel.visible = false
 		return
 	shelf_panel.visible = true
 	for c in shelf_box.get_children():
+		shelf_box.remove_child(c)
 		c.queue_free()
-	var list = {"seed": Data.CROPS, "tree": Data.TREES, "animal": Data.animal_shop(), "decor": Data.DECOR, "garden": Data.garden()}[cat]
-	for k in list:
+	for c in shelf_nav.get_children():
+		c.queue_free()
+	var list = _shelf_list(cat)
+	var keys: Array = list.keys()
+	var pages := maxi(1, ceili(keys.size() / float(SHELF_PER_PAGE)))
+	var pg := clampi(int(shelf_page.get(cat, 0)), 0, pages - 1)
+	shelf_page[cat] = pg
+	shelf_title.text = SHELF_TITLES.get(cat, "")
+	if pages > 1:
+		var prev := _small_btn("  ◀  ", func():
+			shelf_page[cat] = pg - 1
+			_render_shelf())
+		prev.disabled = pg == 0
+		shelf_nav.add_child(prev)
+		var pl := Label.new()
+		pl.text = "%d / %d" % [pg + 1, pages]
+		pl.add_theme_font_size_override("font_size", 16)
+		shelf_nav.add_child(pl)
+		var nxt := _small_btn("  ▶  ", func():
+			shelf_page[cat] = pg + 1
+			_render_shelf())
+		nxt.disabled = pg >= pages - 1
+		shelf_nav.add_child(nxt)
+	shelf_nav.visible = pages > 1
+	for k in keys.slice(pg * SHELF_PER_PAGE, (pg + 1) * SHELF_PER_PAGE):
 		var it = list[k]
 		var locked: bool = it.level > level
 		var meta := ""
@@ -3098,8 +3451,8 @@ func _render_shelf() -> void:
 					meta = "⏱%s → %d🪙 💧×3" % [fmt_time(it.time), int(round(it.sell * Data.flower_mult(_flower_lv(k).lv)))]
 		var b := Button.new()
 		b.focus_mode = Control.FOCUS_NONE
-		b.custom_minimum_size = Vector2(98, 92)
-		b.add_theme_font_size_override("font_size", 12)
+		b.custom_minimum_size = Vector2(124, 100)
+		b.add_theme_font_size_override("font_size", 13)
 		b.text = "%s\n%s\n🪙 %d\n%s" % [it.icon, it.name, it.cost, ("🔒 Sv %d" % it.level) if locked else meta]
 		b.tooltip_text = it.get("info", it.name)
 		if cat == "garden" and k != "pond":
@@ -3117,6 +3470,7 @@ func _render_shelf() -> void:
 				_toast("🔒 Seviye %d gerekli" % it.level, "warn")
 				return
 			sel[cat] = kk
+			shelf_open = false
 			_render_shelf())
 		shelf_box.add_child(b)
 	_update_afford()
@@ -3373,6 +3727,7 @@ func _process(delta: float) -> void:
 		_simulate(sim_acc)
 		sim_acc = 0.0
 	_update_farmer(dt)
+	_update_gates(dt)
 	_update_camera(dt)
 	_update_day(dt)
 	_update_lamps(dt)
@@ -3396,6 +3751,10 @@ func _process(delta: float) -> void:
 			get_tree().quit()
 	if shot_path != "":
 		shot_t += delta
+		if shot_t > 3.0 and shot_t - delta <= 3.0:
+			for a in OS.get_cmdline_user_args():
+				if a.begins_with("--tool="):
+					_set_tool(a.substr(7), true)
 		if shot_t > 4.0:
 			get_viewport().get_texture().get_image().save_png(shot_path)
 			get_tree().quit()
@@ -3464,6 +3823,7 @@ func _selftest() -> void:
 	_selftest_garden(fails)
 	_selftest_quests(fails)
 	_selftest_paths(fails)
+	_selftest_gates(fails)
 	_selftest_parcels(fails)
 	var n_before := entities.size()
 	_save()
@@ -3551,6 +3911,26 @@ func _open_land(pc: Vector2i) -> void:
 	row.add_child(_small_btn("  Vazgeç  ", func(): land_dlg.visible = false))
 	land_box.add_child(row)
 	land_dlg.visible = true
+
+func _selftest_gates(fails: Array) -> void:
+	var gate = tiles.get(key(-3, 4))
+	if gate == null or gate.get("type", "") != "gate":
+		fails.append("ağıl kapısı yok")
+		return
+	var keep := farmer.position
+	farmer.position = Vector3(-2.0, 0, 4.5)
+	for i in 30:
+		_update_gates(0.05)
+	if gate.get("door") == null or absf(gate.door.rotation.y) < 1.0: fails.append("kapı açılmadı")
+	farmer.position = Vector3(5, 0, 8)
+	for i in 60:
+		_update_gates(0.05)
+	if absf(gate.door.rotation.y) > 0.1: fails.append("kapı kapanmadı")
+	farmer.position = keep
+	_set_tool("seed", true)
+	if not shelf_panel.visible: fails.append("tohum penceresi açılmadı")
+	_set_tool("hand")
+	if shelf_panel.visible: fails.append("el seçilince pencere açık kaldı")
 
 func _selftest_parcels(fails: Array) -> void:
 	parcels = []

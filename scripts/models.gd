@@ -6,7 +6,27 @@ extends RefCounted
 static var _meshes := {}
 static var _mats := {}
 static var _glow: StandardMaterial3D
-static var _water: StandardMaterial3D
+static var _water: ShaderMaterial
+const WATER_SHADER := """
+shader_type spatial;
+render_mode blend_mix, cull_back, depth_draw_opaque;
+uniform vec4 shallow : source_color = vec4(0.36, 0.74, 0.88, 1.0);
+uniform vec4 deep : source_color = vec4(0.10, 0.36, 0.55, 1.0);
+void fragment() {
+	vec3 wp = (INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	vec2 p = wp.xz;
+	float t = TIME;
+	vec2 g = vec2(cos(p.x * 1.7 + t * 1.3) + 0.7 * cos(p.x * 0.9 + p.y * 1.3 + t * 0.9) + 0.4 * cos(p.y * 3.1 + t * 2.1),
+		sin(p.y * 1.9 - t * 1.1) + 0.7 * sin(p.y * 0.7 - p.x * 1.1 + t * 0.8) + 0.4 * sin(p.x * 2.9 - t * 1.7)) * 0.05;
+	NORMAL = normalize((VIEW_MATRIX * vec4(normalize(vec3(g.x, 1.0, g.y)), 0.0)).xyz);
+	float fr = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 4.0);
+	ALBEDO = mix(deep.rgb, shallow.rgb, 0.45) * (1.0 - fr * 0.6);
+	ALPHA = mix(0.8, 0.97, fr);
+	METALLIC = 0.0;
+	ROUGHNESS = 0.03;
+	SPECULAR = 0.5 + 0.5 * fr;
+}
+"""
 
 # ------------------------------------------------------------ malzemeler
 static func mat(c: String) -> StandardMaterial3D:
@@ -38,13 +58,12 @@ static func glow() -> StandardMaterial3D:
 		_glow.emission_energy_multiplier = 0.0
 	return _glow
 
-static func water() -> StandardMaterial3D:
+static func water() -> ShaderMaterial:
 	if _water == null:
-		_water = StandardMaterial3D.new()
-		_water.albedo_color = Color(0.31, 0.71, 0.91, 0.85)
-		_water.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		_water.roughness = 0.15
-		_water.metallic = 0.1
+		var sh := Shader.new()
+		sh.code = WATER_SHADER
+		_water = ShaderMaterial.new()
+		_water.shader = sh
 	return _water
 
 # ------------------------------------------------------------ geometri
@@ -849,12 +868,15 @@ static func gate(along_x: bool) -> Node3D:
 	for x in [-0.44, 0.44]:
 		add(inner, box(0.15, 0.78, 0.15, P, x, 0.39, 0))
 		add(inner, box(0.19, 0.05, 0.19, "#6d4527", x, 0.8, 0))
+	var door := node(-0.37, 0, 0)
+	door.set_meta("door", true)
 	for y in [0.2, 0.42, 0.62]:
-		add(inner, box(0.74, 0.08, 0.05, D, 0, y, 0))
-	var br := box(0.8, 0.06, 0.05, D, 0, 0.41, 0.01)
+		add(door, box(0.74, 0.08, 0.05, D, 0.37, y, 0))
+	var br := box(0.8, 0.06, 0.05, D, 0.37, 0.41, 0.01)
 	br.rotation.z = 0.5
-	add(inner, br)
-	add(inner, box(0.05, 0.05, 0.06, "#424242", 0.3, 0.42, 0.03))
+	add(door, br)
+	add(door, box(0.05, 0.05, 0.06, "#424242", 0.67, 0.42, 0.03))
+	add(inner, door)
 	if not along_x:
 		inner.rotation.y = PI / 2.0
 	add(g, inner)
