@@ -329,7 +329,39 @@ static func farmer() -> Node3D:
 	add(tool, scyl(0.025, 0.025, 0.06, "#9e9e9e", 0, 0, 0.62))
 	add(tool, box(0.17, 0.03, 0.12, "#b0bec5", 0, -0.05, 0.66))
 	add(arms[1], tool)
-	g.set_meta("parts", {"leg_l": legs[0], "leg_r": legs[1], "arm_l": arms[0], "arm_r": arms[1], "body": body, "head": head})
+	# sulama kovası (ağzı +z yönünde)
+	var can := node(0, -0.36, 0.08)
+	add(can, scyl(0.085, 0.095, 0.17, "#4fa36b", 0, -0.02, 0.0))
+	add(can, scyl(0.09, 0.09, 0.025, "#3d8457", 0, 0.065, 0.0))
+	var spout := scyl(0.018, 0.026, 0.24, "#4fa36b", 0, 0.02, 0.15)
+	spout.rotation.x = 1.0
+	add(can, spout)
+	var rose := scyl(0.04, 0.02, 0.04, "#3d8457", 0, 0.09, 0.26)
+	rose.rotation.x = 1.0
+	add(can, rose)
+	var handle := scyl(0.012, 0.012, 0.16, "#3d8457", 0, 0.12, -0.02)
+	handle.rotation.z = PI / 2.0
+	add(can, handle)
+	var spout_tip := node(0, 0.1, 0.3)
+	add(can, spout_tip)
+	add(arms[1], can)
+	# tohum/yem kesesi
+	var bag := node(0, -0.38, 0.05)
+	add(bag, scl(sball(0.075, "#c9a46a"), 1.0, 1.15, 1.0))
+	add(bag, scyl(0.03, 0.045, 0.05, "#a8834c", 0, 0.08, 0))
+	add(arms[1], bag)
+	# hasat sepeti (sol el)
+	var basket := node(0.02, -0.4, 0.1)
+	add(basket, scyl(0.13, 0.1, 0.12, "#c48a4a", 0, 0, 0))
+	add(basket, scyl(0.125, 0.125, 0.02, "#a8703a", 0, 0.06, 0))
+	var bh := scyl(0.01, 0.01, 0.24, "#a8703a", 0, 0.12, 0)
+	bh.rotation.z = PI / 2.0
+	add(basket, bh)
+	for k in 3:
+		add(basket, sball(0.045, ["#e53935", "#ff9800", "#8bc34a"][k], -0.05 + k * 0.05, 0.07, 0.02))
+	add(arms[0], basket)
+	g.set_meta("parts", {"leg_l": legs[0], "leg_r": legs[1], "arm_l": arms[0], "arm_r": arms[1], "body": body, "head": head,
+		"hoe": tool, "can": can, "spout": spout_tip, "bag": bag, "basket": basket})
 	return g
 
 # ------------------------------------------------------------ tarla ve ekinler

@@ -19,6 +19,9 @@ const POND_R := 4.2
 const OFFLINE_CAP := 6.0 * 3600.0
 const QUEST_SLOTS := 4
 ## Çiftçinin geçemediği dekorlar.
+## İş animasyonu süreleri (sn); çiftçi bu sürede yerinde kalır.
+const ACT_DUR := {"plow": 0.55, "remove": 0.55, "water": 0.85, "plant": 0.55, "flower": 0.55, "tree": 0.6,
+	"harvest": 0.5, "feed": 0.8, "coop": 0.4, "pond": 0.4, "animal": 0.4, "decor": 0.35}
 const WALK_LIM := 56     # çiftçinin gezebileceği alan (±), görünen arazinin içi
 const BLOCK_DECOR := ["fence", "rock", "lantern", "hay", "scarecrow", "bush", "flowers"]
 const QUEST_SKIP_COOLDOWN := 24.0 * 3600.0
@@ -309,6 +312,10 @@ var move_target = null   # Vector3: tıklanan yere yürü
 var walk_path: Array = []  # move_target'a giden ara noktalar
 var move_marker: MeshInstance3D
 var act_t := 0.0
+var act_kind := ""          # oynanan iş animasyonu
+var act_dur := 0.22
+var act_pos := Vector3.ZERO
+var act_fx := 0.0           # parçacık zamanlayıcısı
 var night_f := 0.0
 var day_f_last := 1.0
 var fps_t := 0.0
@@ -1728,6 +1735,8 @@ func _perform(item: Dictionary) -> bool:
 		return false
 	var e = tiles.get(key(x, z))
 	var pos := tile_center(x, z)
+	if act != "remove":
+		_act_anim(act, pos)
 	match act:
 		"plow":
 			_add_entity({"kind": "plot", "x": x, "z": z, "crop": null, "progress": 0.0, "water": 0.0})
@@ -1872,9 +1881,11 @@ func _perform(item: Dictionary) -> bool:
 				_burst(pos + Vector3(0, 0.3, 0), "#8d6e63" if dd[4] else "#7cb342", 12, 2.5)
 				_gain(dd[2], dd[3], pos, "🪓")
 				_quest_event("clear", e.type, 1)
+				_act_anim("remove", pos)
 				_sfx("remove")
 				return true
 			_remove_entity(e)
+			_act_anim("remove", pos)
 			_burst(pos + Vector3(0, 0.3, 0), "#9e9e9e", 10, 2.5)
 			if def != null and def.cost >= 8:
 				var back := int(def.cost * 0.25)
@@ -1998,14 +2009,12 @@ func _update_farmer(dt: float) -> void:
 				_perform(q)
 				q.marker.queue_free()
 				queue.pop_front()
-				act_t = 0.22
 				hud_dirty = true
 			else:
 				var nxt = null if q.path == null else _path_next(q.path)
 				if nxt == null:
 					if dist <= 1.6:
 						_perform(q)
-						act_t = 0.22
 					else:
 						_toast("🚧 Oraya ulaşılamıyor. Çite 🚪 kapı ekle (Dekor).", "warn")
 					q.marker.queue_free()
@@ -2045,11 +2054,103 @@ func _update_farmer(dt: float) -> void:
 	fparts.leg_r.rotation.x = lerpf(fparts.leg_r.rotation.x, -sw, 0.3)
 	fparts.arm_l.rotation.x = lerpf(fparts.arm_l.rotation.x, -sw * 0.8, 0.3)
 	fparts.body.position.y = absf(sin(walk_phase)) * 0.05 if moving else 0.0
-	if act_t > 0.0:
-		act_t -= dt
-		fparts.arm_r.rotation.x = -1.6 * sin((1.0 - act_t / 0.22) * PI)
-	else:
-		fparts.arm_r.rotation.x = lerpf(fparts.arm_r.rotation.x, sw * 0.8, 0.3)
+	_animate_action(dt, sw)
+
+## İş başlarken çağrılır: tür, süre ve hedef konum.
+func _act_anim(kind: String, pos: Vector3) -> void:
+	act_kind = kind
+	act_dur = ACT_DUR.get(kind, 0.3)
+	act_t = act_dur
+	act_pos = pos
+	act_fx = 0.0
+	move_target = null
+
+## Eldeki eşya seçili alete göre; iş sırasında işe göre.
+func _hold_prop() -> String:
+	var k := act_kind if act_t > 0.0 else ""
+	match k:
+		"plow", "remove": return "hoe"
+		"water": return "can"
+		"plant", "flower", "tree", "feed": return "bag"
+		"harvest": return "basket"
+	match tool:
+		"plow", "remove": return "hoe"
+		"water": return "can"
+		"seed", "garden", "tree": return "bag"
+	return ""
+
+func _animate_action(dt: float, sw: float) -> void:
+	var fp: Dictionary = fparts
+	var hold := _hold_prop()
+	for pr in ["hoe", "can", "bag", "basket"]:
+		if fp.has(pr):
+			fp[pr].visible = pr == hold
+	var body: Node3D = fp.body
+	var ar: Node3D = fp.arm_r
+	var al: Node3D = fp.arm_l
+	if act_t <= 0.0:
+		ar.rotation.x = lerpf(ar.rotation.x, sw * 0.8, 0.3)
+		body.rotation.x = lerpf(body.rotation.x, 0.0, 0.25)
+		if fp.has("can"):
+			fp.can.rotation.x = lerpf(fp.can.rotation.x, 0.0, 0.25)
+		return
+	act_t = maxf(0.0, act_t - dt)
+	var k := 1.0 - act_t / act_dur
+	var bump := sin(k * PI)
+	act_fx -= dt
+	match act_kind:
+		"plow", "remove":
+			# iki çapa vuruşu, her vuruşta toprak sıçrar
+			var sw2 := absf(sin(k * TAU))
+			ar.rotation.x = -2.2 * sw2
+			body.rotation.x = 0.22 * sw2
+			if (k > 0.5 and k - dt / act_dur <= 0.5) or act_t == 0.0:
+				_burst(act_pos + Vector3(0, 0.12, 0), "#8b5a3c" if act_kind == "plow" else "#9e9e9e", 5, 1.6)
+		"water":
+			# kovayı kaldır, eğ, damlalar tarlaya aksın
+			ar.rotation.x = -1.15 * minf(1.0, k * 4.0) * (1.0 if k < 0.85 else (1.0 - k) / 0.15)
+			fp.can.rotation.x = 0.9 * smoothstep(0.15, 0.35, k) * (1.0 - smoothstep(0.8, 0.95, k))
+			body.rotation.x = 0.1 * bump
+			if k > 0.25 and k < 0.82 and act_fx <= 0.0:
+				act_fx = 0.03
+				var sp: Vector3 = fp.spout.global_position
+				_drop(sp, Vector3(randf_range(-0.3, 0.3), -0.5, randf_range(-0.3, 0.3)) + (act_pos - sp).normalized() * 1.2, "#7fd3ff", 0.05)
+			if act_t == 0.0:
+				_burst(act_pos + Vector3(0, 0.12, 0), "#7fd3ff", 6, 1.2)
+		"plant", "flower", "tree":
+			# çömel, tohumu serp
+			body.position.y = -0.16 * bump
+			body.rotation.x = 0.35 * bump
+			ar.rotation.x = -0.9 * bump
+			if k > 0.35 and k < 0.7 and act_fx <= 0.0:
+				act_fx = 0.06
+				var hp: Vector3 = fp.bag.global_position
+				_drop(hp, Vector3(randf_range(-0.6, 0.6), 0.6, randf_range(-0.6, 0.6)), "#6d4c33", 0.035)
+		"harvest":
+			body.rotation.x = 0.4 * bump
+			ar.rotation.x = -1.3 * bump
+			al.rotation.x = -0.9 * bump
+		"feed":
+			# avuçla yem saç: kol öne savrulur, taneler hayvanlara uçar
+			var th := sin(k * PI * 2.0)
+			ar.rotation.x = -1.6 * absf(th)
+			body.rotation.x = 0.12 * bump
+			if k > 0.15 and k < 0.75 and act_fx <= 0.0:
+				act_fx = 0.035
+				var hp: Vector3 = fp.bag.global_position
+				var to := (act_pos - hp)
+				to.y = 0.0
+				_drop(hp, to * 1.4 + Vector3(randf_range(-0.5, 0.5), 2.0, randf_range(-0.5, 0.5)), "#f0c75e", 0.04)
+		_:
+			ar.rotation.x = -1.4 * bump
+
+## Tek parçacık (damla, tohum, tane): verilen hızla fırlar, yerçekimiyle düşer.
+func _drop(pos: Vector3, vel: Vector3, color: String, size: float) -> void:
+	var m := Models.box(size, size, size, Models.mat(color))
+	m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	m.position = pos
+	add_child(m)
+	parts.append({"m": m, "v": vel, "t": 0.25})
 
 ## Oyun tuşu basılı mı? Menüdeyken, yardım açıkken ya da bir yazı kutusuna yazılırken hayır.
 func _key(k: Key) -> bool:
@@ -2856,6 +2957,11 @@ func _animate_world(dt: float) -> void:
 				m.position.y = absf(sin(clock_t * 12.0)) * 0.03
 		m.position.x = w.x
 		m.position.z = w.z
+		if e.get("hop_t", 0.0) > 0.0:
+			e.hop_t -= dt
+			m.position.y = absf(sin(e.hop_t * 11.0)) * 0.22 * minf(1.0, e.hop_t)
+			if head != null:
+				head.rotation.x = maxf(0.0, sin(clock_t * 14.0)) * 0.7
 		if e.ready:
 			e.icon.position.y = 1.35 + sin(clock_t * 3.0 + w.phase) * 0.08
 			e.icon.rotation.y += dt * 1.5
@@ -4069,6 +4175,10 @@ func _process(delta: float) -> void:
 					_set_tool(a.substr(7), true)
 				elif a == "--wheel":
 					_open_wheel(Vector2(640, 380))
+		for a in OS.get_cmdline_user_args():
+			if a.begins_with("--act=") and shot_t > 3.45 and shot_t - delta <= 3.45:
+				farmer.rotation.y = 0.0
+				_act_anim(a.substr(6), farmer.position + Vector3(0, 0, 0.9))
 		if shot_t > 4.0:
 			get_viewport().get_texture().get_image().save_png(shot_path)
 			get_tree().quit()
@@ -4791,6 +4901,7 @@ func _feed_pen(e: Dictionary) -> void:
 	_float_text(pos, ("-%d 🌾" % sp.x) if sp.x > 0 else ("-%d 🪙" % sp.y), Color("#ffe2a8"))
 	for a in _pen(e):
 		a.food = 1.0
+		a.hop_t = 1.0 + randf() * 0.3
 		_update_hungry(a)
 		_burst(tile_center(a.x, a.z) + Vector3(0, 0.3, 0), "#f0c75e", 6, 2.0)
 	_sfx("plant")
