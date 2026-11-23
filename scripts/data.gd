@@ -18,10 +18,10 @@ const TREES := {
 }
 
 const ANIMALS := {
-	"chicken": {"name": "Tavuk", "icon": "🐔", "product": "Yumurta", "picon": "🥚", "cost": 80,  "time": 60.0,  "sell": 18,  "xp": 4,  "level": 1, "color": "#fff8e1"},
-	"sheep":   {"name": "Koyun", "icon": "🐑", "product": "Yün",     "picon": "🧶", "cost": 250, "time": 120.0, "sell": 45,  "xp": 9,  "level": 3, "color": "#ffffff"},
-	"pig":     {"name": "Domuz", "icon": "🐷", "product": "Mantar",  "picon": "🍄", "cost": 400, "time": 180.0, "sell": 75,  "xp": 13, "level": 5, "color": "#8d6e63"},
-	"cow":     {"name": "İnek",  "icon": "🐄", "product": "Süt",     "picon": "🥛", "cost": 600, "time": 240.0, "sell": 110, "xp": 18, "level": 6, "color": "#ffffff"},
+	"chicken": {"name": "Tavuk", "icon": "🐔", "product": "Yumurta", "picon": "🥚", "cost": 80,  "time": 60.0,  "sell": 18,  "xp": 4,  "level": 1, "feed": 1, "color": "#fff8e1"},
+	"sheep":   {"name": "Koyun", "icon": "🐑", "product": "Yün",     "picon": "🧶", "cost": 250, "time": 120.0, "sell": 45,  "xp": 9,  "level": 3, "feed": 2, "color": "#ffffff"},
+	"pig":     {"name": "Domuz", "icon": "🐷", "product": "Mantar",  "picon": "🍄", "cost": 400, "time": 180.0, "sell": 75,  "xp": 13, "level": 5, "feed": 3, "color": "#8d6e63"},
+	"cow":     {"name": "İnek",  "icon": "🐄", "product": "Süt",     "picon": "🥛", "cost": 600, "time": 240.0, "sell": 110, "xp": 18, "level": 6, "feed": 4, "color": "#ffffff"},
 }
 
 const DECOR := {
@@ -87,6 +87,21 @@ const WEATHER_CHANCE := [
 	[["rain", 0.4]],
 	[["snow", 0.6]],
 ]
+
+## Hayvanlar (Aşama 3). Bir tam yem, FEED_CYCLES ürün süresi yeter; yem yoksa üretim durur.
+## Yem tahıl ister ("feed" alanı); ambarda tahıl yoksa her eksik tahıl FEED_COIN altın.
+const FEED_CYCLES := 3.0
+const FEED_REFILL := 0.5
+const FEED_COIN := 6
+## Hayvan seviyesi: her seviyede HARVESTS_PER_LV × seviye toplama gerekir.
+const ANIMAL_MAX_LV := 5
+const HARVESTS_PER_LV := 4
+
+static func animal_sell_mult(lv: int) -> float:
+	return 1.0 + 0.15 * (lv - 1)
+
+static func animal_extra_yield(lv: int) -> int:
+	return (lv - 1) / 2
 
 static func season_names(list: Array) -> String:
 	var out := []

@@ -37,7 +37,7 @@ const TOOLS := [
 	{"id": "decor", "icon": "🌷", "name": "Dekor", "shelf": "decor", "tip": "Çit, yol, çiçek…"},
 	{"id": "remove", "icon": "🗑️", "name": "Kaldır", "shelf": "", "tip": "Nesneyi kaldır (%25 iade)"},
 ]
-const ACT_TXT := {"plant": "🌱 Ek", "water": "💧 Sula", "harvest": "🧺 Topla", "plow": "⛏️ Sür", "tree": "🌳 Dik", "animal": "🐾 Yerleştir", "decor": "🎨 Yerleştir", "remove": "🗑️ Kaldır"}
+const ACT_TXT := {"plant": "🌱 Ek", "water": "💧 Sula", "harvest": "🧺 Topla", "feed": "🌾 Yemle", "plow": "⛏️ Sür", "tree": "🌳 Dik", "animal": "🐾 Yerleştir", "decor": "🎨 Yerleştir", "remove": "🗑️ Kaldır"}
 const MARKER_COL := {"hand": "#ffffff", "plow": "#a1673f", "seed": "#8bc34a", "water": "#4fc3f7", "tree": "#2e7d32", "animal": "#ffca28", "decor": "#ce93d8", "remove": "#e53935"}
 
 # ------------------------------------------------------------ durum
@@ -556,6 +556,12 @@ func _add_entity(d: Dictionary) -> Dictionary:
 			e.t = 0.0
 		if not e.has("ready"):
 			e.ready = false
+		if not e.has("food"):
+			e.food = 1.0
+		if not e.has("lv"):
+			e.lv = 1
+		if not e.has("hv"):
+			e.hv = 0
 	if e.kind == "plot":
 		if e.has("watered"):
 			e.water = 1.0 if e.watered else 0.0
@@ -630,6 +636,19 @@ func _refresh(e: Dictionary) -> void:
 			e.icon.position.y = 1.35
 			e.icon.visible = e.ready
 			g.add_child(e.icon)
+			var hl := Label3D.new()
+			hl.text = "🌾❔"
+			hl.font = font
+			hl.font_size = 64
+			hl.pixel_size = 0.01
+			hl.no_depth_test = true
+			hl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+			hl.outline_size = 12
+			hl.outline_modulate = Color(0.15, 0.1, 0.05, 0.6)
+			hl.position.y = 1.0
+			g.add_child(hl)
+			e.hungry_lbl = hl
+			_update_hungry(e)
 		"decor":
 			g.add_child(Visuals.decor(e.type, {"n": _is_fence(e.x, e.z - 1), "s": _is_fence(e.x, e.z + 1), "e": _is_fence(e.x + 1, e.z), "w": _is_fence(e.x - 1, e.z)}))
 		"building":
@@ -692,12 +711,17 @@ func _simulate(dt: float) -> void:
 						e.fruit_t = 0.0
 						_refresh(e)
 			"animal":
-				if not e.ready:
-					e.t += dt / Data.ANIMALS[e.type].time
+				if not e.ready and e.food > 0.0:
+					var at: float = Data.ANIMALS[e.type].time
+					var step := minf(dt, e.food * at * Data.FEED_CYCLES)
+					e.food = maxf(0.0, e.food - step / (at * Data.FEED_CYCLES))
+					e.t += step / at
 					if e.t >= 1.0:
 						e.t = 0.0
 						e.ready = true
 						e.icon.visible = true
+					if e.food <= 0.0 or e.ready:
+						_update_hungry(e)
 
 # ============================================================ ekonomi
 func _spend(n: int) -> void:
@@ -756,8 +780,11 @@ func _resolve(t: String, arg, x: int, z: int):
 				return null
 			if e.kind == "tree" and e.has_fruit:
 				return "harvest"
-			if e.kind == "animal" and e.ready:
-				return "harvest"
+			if e.kind == "animal":
+				if e.ready:
+					return "harvest"
+				if e.food < Data.FEED_REFILL and _can_feed(e):
+					return "feed"
 			return null
 		"plow":
 			return "plow" if e == null else null
@@ -831,9 +858,13 @@ func _perform(item: Dictionary) -> bool:
 				e.t = 0.0
 				e.icon.visible = false
 				_burst(pos + Vector3(0, 1.0, 0), a.color, 10, 3.0)
-				_gain(a.sell, a.xp, pos, a.picon)
-				_store(e.type, pos)
+				_gain(int(round(a.sell * Data.animal_sell_mult(e.lv))), a.xp, pos, a.picon)
+				_store(e.type, pos, Data.animal_extra_yield(e.lv))
+				_animal_harvested(e, pos)
+				_update_hungry(e)
 			_sfx("harvest")
+		"feed":
+			_feed_pen(e)
 		"tree":
 			var t = Data.TREES[arg]
 			_spend(t.cost)
@@ -919,6 +950,10 @@ func _explain_fail(arg, x: int, z: int) -> void:
 	if def != null and seedish and not _in_season(def) and e != null and e.kind == "plot" and e.crop == null:
 		_sfx("error")
 		_toast("%s %s bu mevsim ekilmez (%s)" % [Data.SEASONS[season].icon, def.name, Data.season_names(def.seasons)], "warn")
+		return
+	if (tool == "hand") and e != null and e.kind == "animal" and not e.ready and e.food < Data.FEED_REFILL and not _can_feed(e):
+		_sfx("error")
+		_toast("🌾 Yem için ambarda tahıl ya da yeterli altın yok", "warn")
 		return
 	if tool == "water" and weather == "snow":
 		_toast("🌨️ Kar yağarken sulamaya gerek yok", "hint")
@@ -1180,8 +1215,18 @@ func _describe(e, act, arg, x: int, z: int) -> String:
 					s += "meyve " + bar(e.fruit_t)
 			"animal":
 				var a = Data.ANIMALS[e.type]
-				s = "%s %s\n" % [a.icon, a.name]
+				s = "%s %s · ⭐ Sv %d" % [a.icon, a.name, e.lv]
+				if e.lv < Data.ANIMAL_MAX_LV:
+					s += " (%d/%d)" % [e.hv, e.lv * Data.HARVESTS_PER_LV]
+				var pen := _pen(e)
+				if pen.size() > 1:
+					s += " · ağıl: %d" % pen.size()
+				s += "\n"
 				s += ("✅ %s %s hazır!" % [a.picon, a.product]) if e.ready else ("%s %s" % [a.picon, bar(e.t)])
+				if e.food <= 0.0 and not e.ready:
+					s += "\n🍽️ Aç! Üretim durdu"
+				else:
+					s += "\n🌾 yem " + bar(e.food)
 			"decor":
 				s = "%s %s" % [Data.DECOR[e.type].icon, Data.DECOR[e.type].name]
 			"building":
@@ -1190,6 +1235,7 @@ func _describe(e, act, arg, x: int, z: int) -> String:
 		var extra := ""
 		match act:
 			"plant": extra = " %s %s  -%d🪙" % [Data.CROPS[arg].icon, Data.CROPS[arg].name, Data.CROPS[arg].cost]
+			"feed": extra = " " + _feed_cost_text(e)
 			"tree": extra = " %s  -%d🪙" % [Data.TREES[arg].icon, Data.TREES[arg].cost]
 			"animal": extra = " %s  -%d🪙" % [Data.ANIMALS[arg].icon, Data.ANIMALS[arg].cost]
 			"decor": extra = " %s  -%d🪙" % [Data.DECOR[arg].icon, Data.DECOR[arg].cost]
@@ -1439,6 +1485,8 @@ func _animate_world(dt: float) -> void:
 		if e.ready:
 			e.icon.position.y = 1.35 + sin(clock_t * 3.0 + w.phase) * 0.08
 			e.icon.rotation.y += dt * 1.5
+		elif e.hungry_lbl.visible:
+			e.hungry_lbl.position.y = 1.0 + absf(sin(clock_t * 2.5 + w.phase)) * 0.12
 
 func _animal_anim(m: Node3D, walking: bool) -> void:
 	if not m.has_meta("anim"):
@@ -1669,7 +1717,7 @@ func _build_ui() -> void:
 	var body := Label.new()
 	body.custom_minimum_size = Vector2(520, 0)
 	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	body.text = "Toprağı sür, tohum ek, sula, hasat et; altınla ağaç, hayvan ve dekor al. Seviye atladıkça yeni ekinler açılır.\n\n• Sol tık / sürükle — seçili aleti karelere uygula (çiftçi sırayla yapar)\n• Sağ tık sürükle veya Q / E — kamerayı döndür · Tekerlek — yakınlaştır\n• Boş yere tıkla — çiftçi oraya yürür · WASD / oklar — yürüt\n• 1–8 — alet seç · B — 📦 Ambar (kaynak sat, sipariş teslim et) · Esc — iptal\n• ✋ El akıllıdır: boş tarlaya seçili tohumu eker, susuzu sular, hazırı toplar.\n• 💧 Sulanan toprak bir süre ıslak kalır (2× hız), sonra kurur · 🧑‍🌾 Korkuluk çevresine +%25 hız verir.\n• 🌸 Dört mevsim (10'ar dk): bazı tohumlar yalnız kendi mevsiminde ekilir. 🌧️ Yağmur sular, 🔥 kuraklıkta su çabuk biter, 🌨️ karda sulamaya gerek yok.\n• Oyun otomatik kaydedilir; sen yokken de çiftlik büyür."
+	body.text = "Toprağı sür, tohum ek, sula, hasat et; altınla ağaç, hayvan ve dekor al. Seviye atladıkça yeni ekinler açılır.\n\n• Sol tık / sürükle — seçili aleti karelere uygula (çiftçi sırayla yapar)\n• Sağ tık sürükle veya Q / E — kamerayı döndür · Tekerlek — yakınlaştır\n• Boş yere tıkla — çiftçi oraya yürür · WASD / oklar — yürüt\n• 1–8 — alet seç · B — 📦 Ambar (kaynak sat, sipariş teslim et) · Esc — iptal\n• ✋ El akıllıdır: boş tarlaya seçili tohumu eker, susuzu sular, hazırı toplar.\n• 💧 Sulanan toprak bir süre ıslak kalır (2× hız), sonra kurur · 🧑‍🌾 Korkuluk çevresine +%25 hız verir.\n• 🐔 Hayvanlar yem ister (tahıl; yoksa altın). Aç hayvan üretmez; ✋ ile yemle. Yan yana aynı tür hayvanlar ağıl olur, biri yemlenince hepsi yer. Topladıkça seviye atlar, daha çok kazandırır.\n• 🌸 Dört mevsim (10'ar dk): bazı tohumlar yalnız kendi mevsiminde ekilir. 🌧️ Yağmur sular, 🔥 kuraklıkta su çabuk biter, 🌨️ karda sulamaya gerek yok.\n• Oyun otomatik kaydedilir; sen yokken de çiftlik büyür."
 	hv.add_child(body)
 	var go := Button.new()
 	go.text = "Başlayalım!"
@@ -1810,6 +1858,9 @@ func _save() -> void:
 			"animal":
 				s.at = e.t
 				s.rd = e.ready
+				s.fd = snappedf(e.food, 0.001)
+				s.lv = e.lv
+				s.hv = e.hv
 		ents.append(s)
 	var data := {"v": 1, "season": season, "season_t": season_t, "year": year, "weather": weather, "weather_t": weather_t, "medals": medals, "res": res, "order": order, "coins": coins, "xp": xp, "level": level, "day_time": day_time, "day": day, "sel": sel, "muted": muted,
 		"saved_at": Time.get_unix_time_from_system(), "ents": ents, "fx": farmer.position.x, "fz": farmer.position.z}
@@ -1870,6 +1921,9 @@ func _load() -> bool:
 			"animal":
 				base.t = float(s.get("at", 0.0))
 				base.ready = bool(s.get("rd", false))
+				base.food = float(s.get("fd", 1.0))
+				base.lv = int(s.get("lv", 1))
+				base.hv = int(s.get("hv", 0))
 		_add_entity(base)
 	_recompute_boosts()
 	if order.is_empty():
@@ -1904,7 +1958,7 @@ func _new_game() -> void:
 			i += 1
 	_add_entity({"kind": "animal", "type": "chicken", "x": -6, "z": 2})
 	_add_entity({"kind": "animal", "type": "chicken", "x": -5, "z": 3, "ready": true, "t": 0.0})
-	_add_entity({"kind": "animal", "type": "chicken", "x": -7, "z": 3, "t": 0.5})
+	_add_entity({"kind": "animal", "type": "chicken", "x": -7, "z": 3, "t": 0.5, "food": 0.0})
 	for x in range(-9, -2):
 		_add_entity({"kind": "decor", "type": "fence", "x": x, "z": 1})
 		_add_entity({"kind": "decor", "type": "fence", "x": x, "z": 5})
@@ -2006,6 +2060,7 @@ func _selftest() -> void:
 	if _res_total() != Data.BARN_CAP: fails.append("ambar kapasitesi %d" % _res_total())
 	res = {}
 	_selftest_seasons(fails)
+	_selftest_animals(fails)
 	var n_before := entities.size()
 	_save()
 	var data = JSON.parse_string(FileAccess.get_file_as_string(SAVE_PATH))
@@ -2036,6 +2091,109 @@ func _demo() -> void:
 	farmer.position = Vector3(6.5, 0, 1.5)
 	cam_target = farmer.position
 	cam_dist = 11.0
+
+# ============================================================ hayvan yemi, ağıl, seviye (Aşama 3)
+## Bitişik (4 yön) aynı tür hayvanlar bir ağıldır.
+func _pen(e: Dictionary) -> Array:
+	var out := [e]
+	var seen := {key(e.x, e.z): true}
+	var i := 0
+	while i < out.size():
+		var c = out[i]
+		i += 1
+		for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+			var k := key(c.x + d.x, c.z + d.y)
+			if seen.has(k):
+				continue
+			var n = tiles.get(k)
+			if n != null and n.kind == "animal" and n.type == e.type:
+				seen[k] = true
+				out.append(n)
+	return out
+
+## Ağıldaki eksik yem için gereken tahıl.
+func _feed_need(e: Dictionary) -> int:
+	var need := 0.0
+	for a in _pen(e):
+		need += Data.ANIMALS[a.type].feed * (1.0 - a.food)
+	return ceili(need - 0.001)
+
+func _feed_split(e: Dictionary) -> Vector2i:
+	var need := _feed_need(e)
+	var from_res := mini(need, res.get("cereal", 0))
+	return Vector2i(from_res, (need - from_res) * Data.FEED_COIN)
+
+func _can_feed(e: Dictionary) -> bool:
+	return _feed_split(e).y <= coins
+
+func _feed_cost_text(e: Dictionary) -> String:
+	var sp := _feed_split(e)
+	var parts := []
+	if sp.x > 0:
+		parts.append("-%d🌾" % sp.x)
+	if sp.y > 0:
+		parts.append("-%d🪙" % sp.y)
+	var n := _pen(e).size()
+	return ("(ağıl %d) " % n if n > 1 else "") + " ".join(parts)
+
+func _feed_pen(e: Dictionary) -> void:
+	var sp := _feed_split(e)
+	if sp.x > 0:
+		res.cereal -= sp.x
+	if sp.y > 0:
+		_spend(sp.y)
+	var pos := tile_center(e.x, e.z)
+	_float_text(pos, ("-%d 🌾" % sp.x) if sp.x > 0 else ("-%d 🪙" % sp.y), Color("#ffe2a8"))
+	for a in _pen(e):
+		a.food = 1.0
+		_update_hungry(a)
+		_burst(tile_center(a.x, a.z) + Vector3(0, 0.3, 0), "#f0c75e", 6, 2.0)
+	_sfx("plant")
+	if barn.visible:
+		_render_barn()
+
+func _update_hungry(e: Dictionary) -> void:
+	if e.has("hungry_lbl"):
+		e.hungry_lbl.visible = e.food <= 0.0 and not e.ready
+
+func _animal_harvested(e: Dictionary, pos: Vector3) -> void:
+	if e.lv >= Data.ANIMAL_MAX_LV:
+		return
+	e.hv += 1
+	if e.hv >= e.lv * Data.HARVESTS_PER_LV:
+		e.hv = 0
+		e.lv += 1
+		var a = Data.ANIMALS[e.type]
+		_float_text(pos + Vector3(0, 0.7, 0), "⭐ Sv %d" % e.lv, Color("#ffd54f"))
+		_toast("%s %s seviye %d oldu! Kazancı +%%%d" % [a.icon, a.name, e.lv, int(round((Data.animal_sell_mult(e.lv) - 1.0) * 100.0))], "level")
+		_burst(pos + Vector3(0, 1.0, 0), "#ffd54f", 14, 4.0)
+
+func _selftest_animals(fails: Array) -> void:
+	coins = 100
+	level = 6
+	res = {"cereal": 1}
+	var a := _add_entity({"kind": "animal", "type": "chicken", "x": 10, "z": 7, "food": 0.0})
+	var b := _add_entity({"kind": "animal", "type": "chicken", "x": 11, "z": 7, "food": 0.0})
+	if _pen(a).size() != 2: fails.append("ağıl boyutu %d" % _pen(a).size())
+	_simulate(30.0)
+	if a.t != 0.0: fails.append("aç hayvan üretti")
+	if _resolve("hand", "wheat", 10, 7) != "feed": fails.append("yemle eylemi yok")
+	if not _perform({"x": 10, "z": 7, "tool": "hand", "arg": "wheat"}): fails.append("yemleme")
+	if a.food != 1.0 or b.food != 1.0: fails.append("ağıl yemi paylaşmadı")
+	if res.cereal != 0 or coins != 100 - Data.FEED_COIN: fails.append("yem bedeli %d/%d" % [res.cereal, coins])
+	_simulate(60.0)
+	if not a.ready: fails.append("yemli hayvan üretmedi")
+	if absf(a.food - (1.0 - 1.0 / Data.FEED_CYCLES)) > 0.01: fails.append("yem azalması %.3f" % a.food)
+	a.hv = Data.HARVESTS_PER_LV - 1
+	if not _perform({"x": 10, "z": 7, "tool": "hand", "arg": "wheat"}): fails.append("hayvan hasadı")
+	if a.lv != 2: fails.append("hayvan seviyesi %d" % a.lv)
+	a.ready = true
+	var c0 := coins
+	res = {}
+	_perform({"x": 10, "z": 7, "tool": "hand", "arg": "wheat"})
+	if coins != c0 + int(round(Data.ANIMALS.chicken.sell * Data.animal_sell_mult(2))): fails.append("seviye bonusu %d" % (coins - c0))
+	if res.get("egg", 0) != Data.YIELD.chicken[1] + Data.animal_extra_yield(2): fails.append("seviye yumurta %s" % res)
+	res = {}
 
 # ============================================================ mevsim ve hava (Aşama 2)
 func _on_season_start() -> void:
@@ -2148,11 +2306,11 @@ func _res_total() -> int:
 	return t
 
 ## Hasadın kaynağını ambara koyar; yer yoksa sığdığı kadarını.
-func _store(src: String, pos: Vector3) -> void:
+func _store(src: String, pos: Vector3, extra := 0) -> void:
 	if not Data.YIELD.has(src):
 		return
 	var r: String = Data.YIELD[src][0]
-	var amt: int = Data.YIELD[src][1]
+	var amt: int = Data.YIELD[src][1] + extra
 	var add := mini(amt, Data.BARN_CAP - _res_total())
 	if add > 0:
 		res[r] = res.get(r, 0) + add

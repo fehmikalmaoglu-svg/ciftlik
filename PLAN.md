@@ -12,7 +12,7 @@ Kaynak: Farm Together Wiki, *Game Basics* ve *Crops* sayfaları (okundu: 23.11.2
 | Tıklanan yere yürüme | ✓ | ✓ (bu sürümde eklendi) |
 | Kaynak envanteri (sebze, tahıl, meyve, süt, yumurta, kumaş…) | ✓ | ✓ Aşama 1 (ambar, satış, sipariş, madalya) |
 | Mevsimler + hava (yağmur, kuraklık, kar) | ✓ 17 dk'da bir | ✓ Aşama 2 (10 dk mevsim, su seviyesi) |
-| Hayvan yemleme, ağıl (bitişik aynı tür yemi paylaşır), hayvan seviyesi | ✓ | ✗ |
+| Hayvan yemleme, ağıl (bitişik aynı tür yemi paylaşır), hayvan seviyesi | ✓ | ✓ Aşama 3 |
 | Çiçekler (sulanınca çok daha fazla kazanç, seviye) | ✓ | ✗ |
 | Göletler / balık | ✓ | ✗ |
 | Görevler (aynı anda 4, madalya/elmas/XP ödülü) | ✓ | ✗ |
@@ -37,7 +37,10 @@ Her aşama kendi içinde oynanabilir biter; sonunda `--selftest` genişletilir v
 - 4 mevsim, her biri ~10 dk (gün/gece döngüsünden bağımsız). Bazı ekinler yalnız belli mevsimlerde ekilir; ağaçlar mevsim başında ürün verebilir.
 - Mevsim başında küçük ihtimalle hava olayı: **yağmur** (tarlaları yavaşça sular), **kuraklık** (yaz; su 3× hızlı biter), **kar** (kış; sulama bonusu yok). Parçacık efektleri ile.
 
-### 3. Hayvanlar: yem ve ağıl
+### 3. Hayvanlar: yem ve ağıl ✅ (tamamlandı)
+- Bir tam yem 3 ürün süresi yeter. Yem: tavuk 1, koyun 2, domuz 3, inek 4 tahıl; ambarda tahıl yoksa tahıl başına 6 altın.
+- Seviye: Sv n → n+1 için 4·n toplama; her seviye +%15 altın, her 2 seviyede +1 kaynak (en fazla Sv 5).
+- Sonra: ağıl içinde hayvanlar komşu karelere de gezinsin; yem teknesi modeli.
 - Hayvanların yem deposu var; biterse üretim durur. ✋ ile yemle (altın/tahıl harcar).
 - Bitişik aynı tür hayvan kareleri **ağıl** olur, yemi paylaşır, tek tıkla hepsi yemlenir.
 - Her N toplamada hayvan seviye atlar, kazancı biraz artar.

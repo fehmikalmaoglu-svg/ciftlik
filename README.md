@@ -17,6 +17,8 @@ Web sürümüyle aynı: ⛏️ Çapa ile sür, 🌱 ek, 💧 sula (2× hız), �
 
 **Su ve mevsimler:** sulanan toprak ~90 sn ıslak kalır (2× hız), sonra kurur; elle ya da 💧 ile yeniden sula. 10'ar dakikalık 4 mevsim var, her tohum yalnız kendi mevsiminde ekilir (rafta 🚫 ile gösterilir). Mevsim başında ağaçlar meyve verir (kış hariç) ve hava olayı gelebilir: 🌧️ yağmur tarlaları sular, 🔥 kuraklıkta su 3× hızlı biter, 🌨️ karda sulamaya gerek yok.
 
+**Hayvanlar:** yem ister (tahıl, yoksa altın); aç hayvanın üstünde 🌾❔ çıkar ve üretmez. ✋ ile yemle. Yan yana aynı tür hayvanlar ağıl olur: birini yemlemek hepsini doyurur. Her hayvan topladıkça seviye atlar (Sv 5'e kadar), daha çok altın ve ürün verir.
+
 **Ambar (B):** hasat, altının yanında kaynak da verir (tahıl, sebze, meyve, yumurta, süt…). Ambarda sat ya da pazar siparişini teslim edip 🏅 madalya kazan. Ambara/siloya tıklamak da açar.
 
 **Kontroller:** boş yere tıkla = oraya yürü · sol tık/sürükle = alet · sağ tık sürükle veya Q/E = kamera · tekerlek = yakınlaştır · WASD = yürü · 1–8 = alet · Esc = iş sırasını iptal.
