@@ -103,3 +103,10 @@ Her aşama kendi içinde oynanabilir biter; sonunda `--selftest` genişletilir v
 - İş animasyonları: sulama kovası ve damlalar, tohum serpme, yem saçma (hayvanlar zıplar), çapa vuruşu, hasat sepeti.
 - Online (Aşama 7'nin ilk parçası): ev sahibi yetkili ENet; avatarlar, iş istek/yayın, 3 sn'de tam senkron. Sonra: sohbet, misafirin ambar kullanması, internet için aracı sunucu.
 
+
+### Geri bildirim turu 4 (23.11.2026) ✅ — v0.1.0 Erken Erişim
+- Godot mağazası incelendi: Stylized Nature MegaKit (CC0) alındı; Sky3D ve Sunshine Clouds şimdilik alınmadı (kendi gökyüzü shader'ımız var, bulutlar ağır).
+- Doğa: MegaKit dokulu ağaç/çalı/çiçek/ot/taş; sonbaharda yapraklar kızarır, kışın solar. Uzak süsler gölgesiz, küçük süsler 70 m'den sonra çizilmez.
+- Genişleme: kare parsel tabelaları yerine 6 temalı bölge (hafif sis, tek giriş tabelası, bölge bonusu). Kayıt biçimi aynı.
+- Uygulama: `tools/build.sh` ile Windows klasörü + zip, menüde sürüm etiketi, `ciftlik/update_url` ile güncelleme duyurusu altyapısı.
+- Sonra: dışa aktarma şablonlarıyla özel simgeli exe, güncelleme JSON'unu barındıracak adres (ör. GitHub Releases), kurulum sihirbazı.

@@ -1,0 +1,8 @@
+Çiftliğim 3D — kullanılan hazır içerikler
+
+- Godot Engine 4.7 — MIT lisansı — https://godotengine.org/license
+- Kenney Nature Kit — CC0 1.0 — https://kenney.nl
+- Quaternius Stylized Nature MegaKit (Standard) — CC0 1.0 — https://quaternius.com
+- Quaternius LowPoly Crops ve Farm Animals — CC0 1.0 — https://quaternius.com
+
+Oyunun kodu, çiftçi, bina ve arayüz modelleri bu proje için yazıldı.

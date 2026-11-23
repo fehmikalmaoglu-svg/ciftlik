@@ -495,7 +495,11 @@ static func _pc_of_str(st: String) -> Vector2i:
 static func _pc_center(pc: Vector2i) -> Vector3:
 	return Vector3(WORLD_MIN + pc.x * PARCEL + PARCEL / 2.0, 0, WORLD_MIN + pc.y * PARCEL + PARCEL / 2.0)
 
-var _reg_map := {}   # Vector2i parsel → bölge sözlüğü
+var _reg_map := {}
+## Sürüm: project.godot application/config/version. Güncelleme duyurusu için ciftlik/update_url
+## şu JSON'u döndüren bir adrese ayarlanır: {"version": "0.2.0", "url": "https://…", "notes": "…"}
+const CHANNEL := "Erken Erişim"
+var update_info := {}   # Vector2i parsel → bölge sözlüğü
 
 func _region_of_pc(pc: Vector2i) -> Dictionary:
 	if _reg_map.is_empty():
@@ -624,6 +628,7 @@ func _ready() -> void:
 	_build_sounds()
 	_build_ui()
 	_build_menu()
+	_check_update()
 	_load_step(0.8)
 	await get_tree().process_frame
 
@@ -3719,6 +3724,12 @@ func _build_loading() -> void:
 	t.add_theme_color_override("font_outline_color", Color("#4a7a2a"))
 	t.add_theme_constant_override("outline_size", 12)
 	v.add_child(t)
+	var lv := Label.new()
+	lv.text = "v%s · %s" % [_version(), CHANNEL]
+	lv.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lv.add_theme_font_size_override("font_size", 16)
+	lv.add_theme_color_override("font_color", Color(1, 1, 1, 0.85))
+	v.add_child(lv)
 	load_bar = ProgressBar.new()
 	load_bar.custom_minimum_size = Vector2(380, 16)
 	load_bar.show_percentage = false
@@ -4295,6 +4306,41 @@ func _show_menu() -> void:
 	menu_layer.visible = true
 	_render_menu("main")
 
+static func _version() -> String:
+	return str(ProjectSettings.get_setting("application/config/version", "0.0.0"))
+
+## a, b'den yeni mi? ("0.10.0" > "0.9.3")
+static func _ver_newer(a: String, b: String) -> bool:
+	var pa := a.split(".")
+	var pb := b.split(".")
+	for i in maxi(pa.size(), pb.size()):
+		var x := int(pa[i]) if i < pa.size() else 0
+		var y := int(pb[i]) if i < pb.size() else 0
+		if x != y:
+			return x > y
+	return false
+
+## Açılışta bir kez: adres ayarlıysa son sürümü sorar, yeniyse menüde duyurur. Adres boşsa ağa çıkmaz.
+func _check_update() -> void:
+	var url := str(ProjectSettings.get_setting("ciftlik/update_url", ""))
+	var args := OS.get_cmdline_user_args()
+	if url == "" or args.has("--selftest") or args.has("--fresh"):
+		return
+	var req := HTTPRequest.new()
+	req.timeout = 8.0
+	add_child(req)
+	req.request_completed.connect(func(result: int, code: int, _h: PackedStringArray, body: PackedByteArray):
+		req.queue_free()
+		if result != HTTPRequest.RESULT_SUCCESS or code != 200:
+			return
+		var d = JSON.parse_string(body.get_string_from_utf8())
+		if d is Dictionary and _ver_newer(str(d.get("version", "")), _version()):
+			update_info = d
+			if menu_layer.visible:
+				_render_menu("main"))
+	if req.request(url) != OK:
+		req.queue_free()
+
 func _build_menu() -> void:
 	menu_layer = CanvasLayer.new()
 	menu_layer.layer = 10
@@ -4330,6 +4376,24 @@ func _render_menu(page: String, arg := 0) -> void:
 	t.text = "🌾 Çiftliğim 3D"
 	t.add_theme_font_size_override("font_size", 36)
 	menu_box.add_child(t)
+	var ver := Label.new()
+	ver.text = "v%s · %s" % [_version(), CHANNEL]
+	ver.add_theme_font_size_override("font_size", 13)
+	ver.add_theme_color_override("font_color", Color("#a08a70"))
+	menu_box.add_child(ver)
+	if page == "main" and not update_info.is_empty():
+		var up := PanelContainer.new()
+		up.add_theme_stylebox_override("panel", _sb(Color("#fff3c4"), 12, Color("#f0c75e"), 2, 10))
+		var uv := VBoxContainer.new()
+		up.add_child(uv)
+		var ul := Label.new()
+		ul.text = "🔔 Yeni sürüm var: v%s\n%s" % [update_info.get("version", ""), update_info.get("notes", "")]
+		ul.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		uv.add_child(ul)
+		var link := str(update_info.get("url", ""))
+		if link.begins_with("https://"):
+			uv.add_child(_small_btn("  İndirme sayfasını aç  ", func(): OS.shell_open(link), true, true))
+		menu_box.add_child(up)
 	match page:
 		"main":
 			var cur := _slot_info(slot) if slot > 0 else {}
@@ -4984,6 +5048,9 @@ func _selftest() -> void:
 	_selftest_net(fails)
 	_selftest_story(fails)
 	_selftest_parcels(fails)
+	if not _ver_newer("0.10.0", "0.9.3") or _ver_newer("0.1.0", "0.1.0") or not _ver_newer("1.0", "0.9.9") or _ver_newer("0.1.0", "0.2"):
+		fails.append("sürüm karşılaştırma")
+	if _version() == "0.0.0": fails.append("sürüm numarası yok")
 	var n_before := entities.size()
 	_save()
 	var data = JSON.parse_string(FileAccess.get_file_as_string(save_path))

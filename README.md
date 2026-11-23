@@ -33,7 +33,7 @@ Web sürümüyle aynı: ⛏️ Çapa ile sür, 🌱 ek, 💧 sula (2× hız), �
 
 **Kontroller:** Tab ya da sağ alttaki 🎒 çark menüyü açar; 1–9 aleti doğrudan seçer.
 
-**Arazi:** başlangıçta ortadaki 24×24 alan açık. Çevresindeki 8×8 parsellere tıklayıp seviye ve altınla satın alırsın; her parsel bir öncekinden pahalı. Kilitli parseller çalı, kaya, kütük, çiçek ve mantarla dolu yabani arazidir; satın alınca temizlenir. Çiftlik dışında orman, çiçek tarlaları, kamp alanı ve gölette kano var.
+**Arazi:** başlangıçta ortadaki 24×24 alan açık. Çevresi 6 temalı bölge: 🌲 Orman Kenarı (ağaçlar %30 hızlı), 🍎 Meyve Tepesi (+1 meyve), 🐄 Mera (hayvanlar %30 hızlı), 🐟 Göl Kıyısı (gölet %50 hızlı, +1 balık), 🌼 Çiçek Vadisi (çiçek %30 hızlı), ☀️ Güneş Bayırı (ekin %20 hızlı). Kilitli bölge hafif sisli ve temasına göre yabani bitkilerle dolu; girişinde tek bir ahşap tabela var. Bölgeye tıklayıp seviye ve altınla açarsın; çit kendiliğinden genişler, her yeni bölge pahalanır. Kayıtta açılan parseller tutulur, eski kayıtlarda yarım kalan bölge indirimli tamamlanır. Çiftlik dışında orman, çiçek tarlaları, kamp alanı ve gölette kano var.
 
 **Hayvanlar ve çitler:** çiftçi çitlerden, kayalardan, ağaçlardan ve binalardan geçmez, etrafından dolaşır; ağıla 🚪 çit kapısından girer. 🛖 Kümes (Hayvan rafı): çevresindeki 6 karedeki tavuklar yumurtayı kümese bırakır, kümese tıklayınca hepsi toplanır.
 
@@ -58,14 +58,17 @@ Web sürümüyle aynı: ⛏️ Çapa ile sür, 🌱 ek, 💧 sula (2× hız), �
 & "<godot_console.exe>" --headless --path D:\klonlama\ciftlik-godot -- --fresh --selftest
 ```
 
-## Dışa aktarma (exe / Android / Web)
+## Windows sürümü (Erken Erişim)
 
-Editörde *Proje → Dışa Aktar*. İlk seferde Godot "dışa aktarma şablonlarını" indirmeyi önerir (Editör → Dışa Aktarma Şablonlarını Yönet).
+`bash tools/build.sh` → `../surumler/Ciftligim3D/` klasörü (Ciftligim3D.exe + Ciftligim3D.pck + sürüm notları + lisanslar) ve `../surumler/Ciftligim3D-v<sürüm>-windows.zip`. Şablon gerekmez: Godot çalıştırıcısı yanındaki aynı adlı `.pck`'yi açar. Şablonlar kurulursa (Editör → Dışa Aktarma Şablonlarını Yönet) `export_presets.cfg` ile tam dışa aktarma da yapılabilir (özel simge, küçük exe).
+
+Yeni sürüm çıkarırken: `project.godot` içinde `config/version`'ı artır, `CHANGELOG.md`'ye not ekle, `build.sh`'yi çalıştır. Menüde "v0.1.0 · Erken Erişim" yazar. Güncelleme duyurusu: `ciftlik/update_url` bir JSON adresine (`{"version": "0.2.0", "url": "https://…", "notes": "…"}`) ayarlanırsa oyun açılışta bakar ve yeni sürüm varsa menüde 🔔 gösterir; boşken ağa hiç çıkmaz.
 
 ## Asset'ler (hepsi CC0 1.0, atıf zorunlu değil)
 
-- [Kenney Nature Kit](https://kenney.nl/assets/nature-kit) — ağaç, kaya, çalı (`assets/nature`)
+- [Kenney Nature Kit](https://kenney.nl/assets/nature-kit) — kütük, odun, çit süsleri, kamp (`assets/nature`)
+- [Quaternius Stylized Nature MegaKit](https://quaternius.com) (Standard, CC0) — dokulu ağaç, çalı, çiçek, ot, taş (`assets/megakit`, dokular 512 px'e küçültüldü)
 - [Quaternius LowPoly Crops](https://opengameart.org/node/126983) — ekinler ve meyve ağaçları (`assets/crops`)
 - [Quaternius Farm Animals](https://opengameart.org/content/lowpoly-animated-farm-animal-pack) — inek, domuz, koyun (`assets/animals`)
 
-Geliştirici araçları: `tools/career_test.gd` (kariyer akışı testi: `--headless --script res://tools/career_test.gd`), `tools/probe.gd` (model boyut/animasyon listesi), `tools/preview.gd` (modelleri tek karede önizle). Ek bayraklar: `--demo` (her türden örnek), `--barn` (ambarı açık başlat), `--season=0..3` (mevsim seç), `--weather=rain|drought|snow` (hava olayı başlat), `--story` (hikâyeli başlangıç), `--nethost` / `--netjoin=IP --nettest` (iki süreçli ağ denemesi), `--act=water|feed|plant|plow` (iş animasyonu), `--wheel` (çark menü açık), `--night`, `--tool=seed` (eşya penceresi açık), `--pitch=`/`--yaw=`/`--lookup=` (kamera açısı).
+Geliştirici araçları: `tools/career_test.gd` (kariyer akışı testi: `--headless --script res://tools/career_test.gd`), `tools/probe.gd` (model boyut/animasyon listesi), `tools/preview.gd` (modelleri tek karede önizle). Ek bayraklar: `--demo` (her türden örnek), `--barn` (ambarı açık başlat), `--season=0..3` (mevsim seç), `--weather=rain|drought|snow` (hava olayı başlat), `--story` (hikâyeli başlangıç), `--nethost` / `--netjoin=IP --nettest` (iki süreçli ağ denemesi), `--act=water|feed|plant|plow` (iş animasyonu), `--wheel` (çark menü açık), `--night`, `--tool=seed` (eşya penceresi açık), `--pitch=`/`--yaw=`/`--lookup=` (kamera açısı), `--at=x,z` (çiftçiyi oraya koy), `--land=forest|orchard|pasture|lake|flower|sunny` (bölge penceresi açık).
