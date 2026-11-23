@@ -126,6 +126,41 @@ static func ball(r: float, c, x := 0.0, y := 0.0, z := 0.0, detail := 0) -> Mesh
 		_meshes[k] = _flat(m)
 	return _mi(_meshes[k], c, x, y, z)
 
+## Yumuşak gölgeli (facet'siz) ilkel şekiller: karakter ve yapraklı ekinler için.
+static func sball(r: float, c, x := 0.0, y := 0.0, z := 0.0) -> MeshInstance3D:
+	var k := "S%s" % r
+	if not _meshes.has(k):
+		var m := SphereMesh.new()
+		m.radius = r
+		m.height = r * 2.0
+		m.radial_segments = 16
+		m.rings = 8
+		_meshes[k] = m
+	return _mi(_meshes[k], c, x, y, z)
+
+static func scyl(rt: float, rb: float, h: float, c, x := 0.0, y := 0.0, z := 0.0) -> MeshInstance3D:
+	var k := "C%s|%s|%s" % [rt, rb, h]
+	if not _meshes.has(k):
+		var m := CylinderMesh.new()
+		m.top_radius = rt
+		m.bottom_radius = rb
+		m.height = h
+		m.radial_segments = 16
+		m.rings = 1
+		_meshes[k] = m
+	return _mi(_meshes[k], c, x, y, z)
+
+static func scap(r: float, h: float, c, x := 0.0, y := 0.0, z := 0.0) -> MeshInstance3D:
+	var k := "K%s|%s" % [r, h]
+	if not _meshes.has(k):
+		var m := CapsuleMesh.new()
+		m.radius = r
+		m.height = h
+		m.radial_segments = 14
+		m.rings = 4
+		_meshes[k] = m
+	return _mi(_meshes[k], c, x, y, z)
+
 static func dodec(r: float, c, x := 0.0, y := 0.0, z := 0.0) -> MeshInstance3D:
 	var k := "d%s" % r
 	if not _meshes.has(k):
@@ -196,60 +231,106 @@ static func _eyes(g: Node3D, x: float, y: float, z: float, c := "#212121") -> vo
 
 # ------------------------------------------------------------ çiftçi
 static func farmer() -> Node3D:
-	const SKIN := "#f1c27d"
-	const SHIRT := "#e2483d"
-	const OVER := "#2f7fd6"
-	const BOOT := "#4e342e"
-	const HAT := "#e8c66a"
+	const SKIN := "#f3c69b"
+	const SHIRT := "#e8574a"
+	const SHIRT2 := "#c43d32"
+	const OVER := "#3d7cc9"
+	const OVER2 := "#2f63a3"
+	const BOOT := "#5a3a26"
+	const HAIR := "#7a4a26"
+	const HAT := "#ecc66a"
 	var g := node()
+	# bacaklar (dönme noktası kalçada)
 	var legs := []
-	for x in [-0.1, 0.1]:
+	for x in [-0.095, 0.095]:
 		var p := node(x, 0.45, 0)
-		add(p, box(0.14, 0.36, 0.16, OVER, 0, -0.2, 0))
-		add(p, box(0.16, 0.1, 0.22, BOOT, 0, -0.4, 0.03))
+		add(p, scap(0.078, 0.42, OVER, 0, -0.17, 0))
+		add(p, scyl(0.088, 0.088, 0.06, OVER2, 0, -0.34, 0))
+		add(p, scl(sball(0.085, BOOT, 0, -0.4, 0.035), 1.0, 0.65, 1.45))
+		add(p, box(0.15, 0.03, 0.25, "#3b2416", 0, -0.445, 0.035))
 		add(g, p)
 		legs.append(p)
 	var body := node()
 	add(g, body)
-	add(body, box(0.4, 0.42, 0.25, SHIRT, 0, 0.68, 0))
-	add(body, box(0.41, 0.16, 0.26, OVER, 0, 0.53, 0))
-	add(body, box(0.28, 0.22, 0.03, OVER, 0, 0.68, 0.13))
-	for s in [-1.0, 1.0]:
-		add(body, box(0.05, 0.2, 0.03, OVER, s * 0.12, 0.8, 0.13))
-		add(body, box(0.04, 0.04, 0.03, "#ffd54f", s * 0.1, 0.76, 0.15))
-	var head := node(0, 1.05, 0)
+	# gövde: gömlek + tulum
+	add(body, scyl(0.165, 0.19, 0.36, SHIRT, 0, 0.71, 0))
+	for y in [0.62, 0.72, 0.82]:
+		add(body, scyl(0.172 - (y - 0.62) * 0.1, 0.178 - (y - 0.62) * 0.1, 0.018, SHIRT2, 0, y, 0))
+	add(body, scyl(0.2, 0.19, 0.17, OVER, 0, 0.53, 0))
+	add(body, box(0.25, 0.21, 0.05, OVER, 0, 0.68, 0.16))
+	add(body, box(0.11, 0.07, 0.012, OVER2, 0, 0.69, 0.19))
+	for sx in [-1.0, 1.0]:
+		var st := box(0.045, 0.3, 0.03, OVER, sx * 0.1, 0.8, 0.15)
+		st.rotation.z = sx * 0.12
+		add(body, st)
+		add(body, box(0.045, 0.3, 0.03, OVER, sx * 0.1, 0.78, -0.16))
+		add(body, sball(0.022, "#ffd54f", sx * 0.1, 0.76, 0.19))
+	add(body, scyl(0.11, 0.14, 0.05, SHIRT2, 0, 0.9, 0))
+	var scarf := cone(0.07, 0.1, 3, "#f2c94c", 0, 0.86, 0.12)
+	scarf.rotation.x = PI
+	add(body, scarf)
+	# baş
+	var head := node(0, 1.06, 0)
 	add(body, head)
-	add(head, box(0.3, 0.3, 0.3, SKIN))
-	add(head, box(0.05, 0.06, 0.02, "#3e2723", -0.07, 0.02, 0.151))
-	add(head, box(0.05, 0.06, 0.02, "#3e2723", 0.07, 0.02, 0.151))
-	add(head, box(0.06, 0.06, 0.05, "#e0a86a", 0, -0.04, 0.17))
-	add(head, box(0.12, 0.03, 0.02, "#b5651d", 0, -0.1, 0.151))
-	add(head, box(0.32, 0.08, 0.32, "#6d4c41", 0, 0.12, -0.01))
-	add(head, cyl(0.34, 0.34, 0.03, 12, HAT, 0, 0.17, 0))
-	add(head, cyl(0.17, 0.19, 0.16, 10, HAT, 0, 0.26, 0))
-	add(head, cyl(0.195, 0.195, 0.04, 10, "#c62828", 0, 0.2, 0))
+	add(head, scl(sball(0.2, SKIN), 1.0, 0.95, 0.95))
+	for sx in [-1.0, 1.0]:
+		add(head, sball(0.05, SKIN, sx * 0.195, -0.01, 0))
+		add(head, scl(sball(0.045, "#ffffff", sx * 0.075, 0.0, 0.168), 0.8, 1.0, 0.45))
+		add(head, sball(0.028, "#3b2a20", sx * 0.075, -0.004, 0.186))
+		add(head, sball(0.009, "#ffffff", sx * 0.066, 0.01, 0.2))
+		add(head, box(0.06, 0.016, 0.012, HAIR, sx * 0.075, 0.068, 0.182))
+		add(head, scl(sball(0.035, "#f4a1a1", sx * 0.12, -0.065, 0.15), 1.0, 0.6, 0.35))
+	add(head, sball(0.032, "#eab184", 0, -0.04, 0.192))
+	add(head, box(0.055, 0.012, 0.01, "#8a3b2a", 0, -0.1, 0.18))
+	add(head, scl(sball(0.205, HAIR, 0, 0.06, -0.035), 1.03, 0.78, 1.02))
+	for bx in [-0.09, 0.0, 0.09]:
+		add(head, scl(sball(0.065, HAIR, bx, 0.12, 0.13), 1.0, 0.7, 0.8))
+	for sx in [-1.0, 1.0]:
+		add(head, scl(sball(0.06, HAIR, sx * 0.17, 0.02, -0.02), 0.6, 1.2, 1.0))
+	# hasır şapka
+	var hat := node(0, 0.0, -0.01)
+	hat.rotation.x = -0.12
+	add(hat, scyl(0.33, 0.33, 0.022, HAT, 0, 0.15, 0))
+	add(hat, scyl(0.16, 0.185, 0.15, HAT, 0, 0.23, 0))
+	add(hat, scl(sball(0.16, HAT, 0, 0.3, 0), 1.0, 0.35, 1.0))
+	add(hat, scyl(0.19, 0.19, 0.035, "#d84a3a", 0, 0.18, 0))
+	add(head, hat)
+	# kollar (dönme noktası omuzda)
 	var arms := []
-	for x in [-0.26, 0.26]:
-		var p := node(x, 0.86, 0)
-		add(p, box(0.11, 0.34, 0.12, SHIRT, 0, -0.15, 0))
-		add(p, box(0.1, 0.1, 0.1, SKIN, 0, -0.36, 0))
+	for sx in [-1.0, 1.0]:
+		var p := node(sx * 0.235, 0.86, 0)
+		p.rotation.z = sx * 0.1
+		add(p, scap(0.066, 0.22, SHIRT, 0, -0.07, 0))
+		add(p, scap(0.055, 0.2, SKIN, 0, -0.23, 0))
+		add(p, sball(0.06, SKIN, 0, -0.34, 0.01))
 		add(body, p)
 		arms.append(p)
-	var tool := node(0, -0.38, 0.05)
-	add(tool, rot(cyl(0.02, 0.02, 0.75, 5, "#8d6e63", 0, 0, 0.25), PI / 2.0))
-	add(tool, box(0.16, 0.04, 0.12, "#9e9e9e", 0, -0.05, 0.6))
+	var tool := node(0, -0.35, 0.04)
+	add(tool, rot(scyl(0.018, 0.018, 0.8, "#9c6b3f", 0, 0, 0.25), PI / 2.0))
+	add(tool, scyl(0.025, 0.025, 0.06, "#9e9e9e", 0, 0, 0.62))
+	add(tool, box(0.17, 0.03, 0.12, "#b0bec5", 0, -0.05, 0.66))
 	add(arms[1], tool)
 	g.set_meta("parts", {"leg_l": legs[0], "leg_r": legs[1], "arm_l": arms[0], "arm_r": arms[1], "body": body, "head": head})
 	return g
 
 # ------------------------------------------------------------ tarla ve ekinler
-static func soil(wet := false) -> Node3D:
+static func soil(wet := false, seed := 0) -> Node3D:
 	var base := "#5b3a27" if wet else "#8b5a3c"
-	var groove := "#4a2e1f" if wet else "#744a31"
+	var ridge := "#53351f" if wet else "#9a6744"
+	var clod := ["#4a2e1f", "#62402a"] if wet else ["#a8744d", "#7d4f33"]
 	var g := node()
-	add(g, box(0.94, 0.1, 0.94, base, 0, 0.05, 0))
-	for z in [-0.28, 0.0, 0.28]:
-		add(g, box(0.86, 0.035, 0.1, groove, 0, 0.11, z))
+	add(g, box(0.96, 0.09, 0.96, base, 0, 0.045, 0))
+	for z in [-0.3, 0.0, 0.3]:
+		var r := cyl(0.07, 0.07, 0.9, 6, ridge, 0, 0.09, z)
+		r.rotation.z = PI / 2.0
+		r.scale = Vector3(1.0, 1.0, 0.75)
+		add(g, r)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed
+	for i in 7:
+		var c := dodec(0.025 + rng.randf() * 0.025, clod[i % 2], rng.randf_range(-0.42, 0.42), 0.1 + rng.randf() * 0.04, rng.randf_range(-0.42, 0.42))
+		c.rotation = Vector3(rng.randf() * 3.0, rng.randf() * 3.0, 0)
+		add(g, c)
 	return g
 
 ## Kalıcı çiçek tarhı: yuvarlak toprak, 5 bitki. stage 0..3.
@@ -318,12 +399,45 @@ static func crop(type: String, stage: int) -> Node3D:
 		"tomato": inner = _tomato(stage)
 		"corn": inner = _corn(stage)
 		"sunflower": inner = _sunflower(stage)
+		"lettuce": inner = _leafy(stage, ["#9ccc65", "#7cb342", "#c5e1a5"], 0.13, false)
+		"cabbage": inner = _leafy(stage, ["#8fc79a", "#6fa86b", "#b3d9a0"], 0.17, true)
 		_: inner = _pumpkin(stage)
 	if stage == 1:
 		inner.scale = Vector3.ONE * 0.5
 	elif stage == 2:
 		inner.scale = Vector3.ONE * 0.78
 	add(g, inner)
+	return g
+
+## Yapraklı baş (marul/lahana): ortada top, çevresinde dışa açılan yumuşak yapraklar.
+static func _leafy(stage: int, cols: Array, r: float, round_head: bool) -> Node3D:
+	var g := node()
+	var spots := [[-0.22, -0.22], [0.22, -0.22], [-0.22, 0.22], [0.22, 0.22]]
+	for si in spots.size():
+		var sp = spots[si]
+		var pl := node(sp[0], 0, sp[1])
+		pl.rotation.y = si * 1.3
+		var n := 7 if stage == 3 else 5
+		for k in n:
+			var a := TAU * k / n
+			var lf := node(cos(a) * r * 0.55, r * 0.35, sin(a) * r * 0.55)
+			lf.rotation = Vector3(0, -a, 0)
+			var leaf := scl(sball(r * 0.75, cols[k % 2], r * 0.35, 0, 0), 1.0, 0.32, 0.75)
+			leaf.rotation.z = 0.75 - (0.25 if stage == 3 else 0.0)
+			add(lf, leaf)
+			add(pl, lf)
+		if stage >= 2:
+			var hr := r * (0.85 if round_head else 0.7)
+			var hd := sball(hr, cols[2], 0, r * 0.65, 0)
+			if not round_head:
+				hd.scale = Vector3(1.0, 0.8, 1.0)
+			add(pl, hd)
+			if round_head:
+				for k in 3:
+					var vein := scl(sball(hr * 0.9, cols[0], 0, r * 0.65, 0), 1.03, 1.03, 0.2)
+					vein.rotation.y = k * PI / 3.0
+					add(pl, vein)
+		add(g, pl)
 	return g
 
 static func _wheat(stage: int) -> Node3D:

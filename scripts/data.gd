@@ -5,7 +5,9 @@ extends RefCounted
 const CROPS := {
 	"wheat":     {"name": "Buğday",    "icon": "🌾", "cost": 5,  "sell": 12,  "time": 60.0,  "xp": 2,  "level": 1, "seasons": [0, 1, 2, 3], "color": "#f0c75e"},
 	"carrot":    {"name": "Havuç",     "icon": "🥕", "cost": 10, "sell": 26,  "time": 135.0,  "xp": 4,  "level": 1, "seasons": [0, 2, 3], "color": "#fb8c00"},
+	"lettuce":   {"name": "Marul",     "icon": "🥗", "cost": 8,  "sell": 20,  "time": 100.0, "xp": 3,  "level": 1, "seasons": [0, 2], "color": "#8bc34a"},
 	"tomato":    {"name": "Domates",   "icon": "🍅", "cost": 20, "sell": 52,  "time": 270.0,  "xp": 7,  "level": 2, "seasons": [0, 1], "color": "#e53935"},
+	"cabbage":   {"name": "Lahana",    "icon": "🥬", "cost": 25, "sell": 70,  "time": 380.0, "xp": 9,  "level": 3, "seasons": [2, 3], "color": "#9ccc65"},
 	"corn":      {"name": "Mısır",     "icon": "🌽", "cost": 30, "sell": 80,  "time": 450.0, "xp": 10, "level": 3, "seasons": [1, 2], "color": "#ffd54f"},
 	"sunflower": {"name": "Ayçiçeği",  "icon": "🌻", "cost": 45, "sell": 120, "time": 720.0, "xp": 15, "level": 4, "seasons": [1], "color": "#fdd835"},
 	"pumpkin":   {"name": "Balkabağı", "icon": "🎃", "cost": 70, "sell": 190, "time": 1080.0, "xp": 22, "level": 5, "seasons": [2], "color": "#fb8c00"},
@@ -90,7 +92,7 @@ const RESOURCES := {
 ## Hangi hasat hangi kaynaktan kaç tane verir.
 const YIELD := {
 	"wheat": ["cereal", 2], "carrot": ["veg", 2], "tomato": ["veg", 3], "corn": ["cereal", 4],
-	"sunflower": ["nut", 3], "pumpkin": ["veg", 6],
+	"sunflower": ["nut", 3], "pumpkin": ["veg", 6], "lettuce": ["veg", 2], "cabbage": ["veg", 4],
 	"apple": ["fruit", 3], "orange": ["fruit", 4], "cherry": ["fruit", 5],
 	"chicken": ["egg", 2], "sheep": ["wool", 2], "pig": ["mushroom", 2], "cow": ["milk", 3],
 	"daisy": ["flower", 2], "tulip": ["flower", 3], "rose": ["flower", 4], "lavender": ["flower", 5],

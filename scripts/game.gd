@@ -38,6 +38,31 @@ void fragment() {
 	SPECULAR = 0.3;
 }
 """
+## Rüzgârda sallanan çim: kökten uca renk geçişi, mevsim tonu zeminle aynı.
+const GRASS_SHADER := """
+shader_type spatial;
+render_mode cull_disabled;
+uniform vec4 root_col : source_color = vec4(0.30, 0.55, 0.18, 1.0);
+uniform vec4 tip_col : source_color = vec4(0.62, 0.85, 0.35, 1.0);
+uniform vec4 tint : source_color = vec4(1.0);
+uniform float amt = 0.0;
+varying float h;
+void vertex() {
+	h = UV.y;
+	vec3 wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	float w = sin(TIME * 1.7 + wp.x * 0.55 + wp.z * 0.35) + 0.5 * sin(TIME * 3.1 + wp.x * 1.3);
+	VERTEX.x += w * 0.045 * h * h;
+	VERTEX.z += w * 0.025 * h * h;
+}
+void fragment() {
+	vec3 c = mix(root_col.rgb, tip_col.rgb, h) * COLOR.rgb;
+	float lum = dot(c, vec3(0.3, 0.59, 0.11));
+	ALBEDO = mix(c, tint.rgb * (0.8 + 1.2 * lum), amt);
+	ROUGHNESS = 0.9;
+	SPECULAR = 0.2;
+	BACKLIGHT = vec3(0.25, 0.35, 0.1);
+}
+"""
 const SEASON_TINT := [["#7ccf4a", 0.0], ["#b8bf45", 0.3], ["#d0902e", 0.5], ["#eef3f8", 0.7]]
 
 const TOOLS := [
@@ -99,6 +124,10 @@ var windmill: Node3D
 var clouds: Array = []
 var lamp_lights: Array = []
 var frame_root: Node3D
+var grass_mat: ShaderMaterial
+var grass_mesh: ArrayMesh
+var grass_chunks := {}     # parsel -> MultiMeshInstance3D
+var grass_dirty := {}      # yeniden kurulacak parseller
 var parcel_root: Node3D
 var land_dlg: Control
 var land_box: VBoxContainer
@@ -229,6 +258,7 @@ func _buy_parcel(pc: Vector2i) -> bool:
 	_toast("🗺️ Yeni arazi açıldı! (%d. parsel)" % parcels.size(), "level")
 	_sfx("level")
 	_refresh_parcels()
+	grass_dirty[pc] = true
 	return true
 
 static func tile_center(x: int, z: int) -> Vector3:
@@ -270,6 +300,7 @@ func _ready() -> void:
 	await get_tree().process_frame
 	_build_surroundings()
 	_build_farm_frame()
+	_build_grass()
 	_build_cursor()
 	farmer = Models.farmer()
 	fparts = farmer.get_meta("parts")
@@ -334,6 +365,9 @@ func _ready() -> void:
 		order = {"need": {"veg": 10, "cereal": 30}, "medals": 3, "xp": 41, "coins": 240}
 		_open_barn()
 	_refresh_parcels()
+	for pc in grass_dirty.keys():
+		_build_grass_chunk(pc)
+	grass_dirty.clear()
 	_render_quests()
 	_set_tool(tool)
 	hud_dirty = true
@@ -672,6 +706,89 @@ func _refresh_parcels() -> void:
 			l.position = c + Vector3(0, 2.4, 0)
 			parcel_root.add_child(l)
 
+func _build_grass() -> void:
+	var sh := Shader.new()
+	sh.code = GRASS_SHADER
+	grass_mat = ShaderMaterial.new()
+	grass_mat.shader = sh
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 5
+	for b in 7:
+		var a := rng.randf() * TAU
+		var r := rng.randf() * 0.1
+		var base := Vector3(cos(a) * r, 0, sin(a) * r)
+		var yaw := rng.randf() * TAU
+		var side := Vector3(cos(yaw), 0, sin(yaw)) * 0.022
+		var lean := Vector3(cos(a), 0, sin(a)) * rng.randf_range(0.02, 0.08)
+		var hgt := rng.randf_range(0.16, 0.3)
+		var top := base + lean + Vector3(0, hgt, 0)
+		var mid_l := base - side * 0.8 + lean * 0.5 + Vector3(0, hgt * 0.5, 0)
+		var mid_r := base + side * 0.8 + lean * 0.5 + Vector3(0, hgt * 0.5, 0)
+		var n := side.cross(Vector3.UP).normalized()
+		for tri in [[base - side, base + side, mid_r], [base - side, mid_r, mid_l], [mid_l, mid_r, top]]:
+			for v in tri:
+				st.set_normal(n.lerp(Vector3.UP, 0.6).normalized())
+				st.set_uv(Vector2(0, v.y / hgt))
+				st.add_vertex(v)
+	grass_mesh = st.commit()
+	for px in 5:
+		for pz in 5:
+			grass_dirty[Vector2i(px, pz)] = true
+
+func _grass_mark(x: int, z: int) -> void:
+	if grass_mesh != null and x >= WORLD_MIN and x <= WORLD_MAX and z >= WORLD_MIN and z <= WORLD_MAX:
+		grass_dirty[_parcel_of(x, z)] = true
+
+## Parseldeki boş karelere çim öbekleri dizer (dolu karelerde çim yok).
+func _build_grass_chunk(pc: Vector2i) -> void:
+	if grass_chunks.has(pc):
+		grass_chunks[pc].queue_free()
+	var pts := []
+	var rng := RandomNumberGenerator.new()
+	rng.seed = pc.x * 977 + pc.y * 131 + 7
+	var wild := not _parcel_open(pc)
+	for i in PARCEL:
+		for j in PARCEL:
+			var x := WORLD_MIN + pc.x * PARCEL + i
+			var z := WORLD_MIN + pc.y * PARCEL + j
+			var t = tiles.get(key(x, z))
+			var skip: bool = t != null and not (t.kind == "decor" and (t.type == "fence" or t.type == "gate" or t.type == "lantern"))
+			for k in 3:
+				var ox := rng.randf_range(0.12, 0.88)
+				var oz := rng.randf_range(0.12, 0.88)
+				var sc := rng.randf_range(0.75, 1.25) * (1.35 if wild else 1.0)
+				var yaw := rng.randf() * TAU
+				var shade := rng.randf_range(0.85, 1.1)
+				if not skip:
+					pts.append([Vector3(x + ox, 0.0, z + oz), sc, yaw, shade])
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_colors = true
+	mm.mesh = grass_mesh
+	mm.instance_count = pts.size()
+	for i in pts.size():
+		var q = pts[i]
+		var b := Basis(Vector3.UP, q[2]).scaled(Vector3(q[1], q[1], q[1]))
+		mm.set_instance_transform(i, Transform3D(b, q[0]))
+		mm.set_instance_color(i, Color(q[3], q[3], q[3] * 0.95))
+	var mi := MultiMeshInstance3D.new()
+	mi.multimesh = mm
+	mi.material_override = grass_mat
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(mi)
+	grass_chunks[pc] = mi
+
+func _update_grass() -> void:
+	var n := 0
+	for pc in grass_dirty.keys():
+		_build_grass_chunk(pc)
+		grass_dirty.erase(pc)
+		n += 1
+		if n >= 3 and ready_done:
+			break
+
 func _build_farm_frame() -> void:
 	frame_root = Node3D.new()
 	add_child(frame_root)
@@ -756,6 +873,9 @@ func _add_entity(d: Dictionary) -> Dictionary:
 	g.rotation.y = e.rot
 	add_child(g)
 	entities.append(e)
+	_grass_mark(e.x, e.z)
+	if e.has("w"):
+		_grass_mark(e.x + e.w - 1, e.z + e.d - 1)
 	if e.kind == "animal":
 		e.wander = {"x": 0.0, "z": 0.0, "tx": 0.0, "tz": 0.0, "wait": randf() * 3.0, "phase": randf() * 6.0}
 		if not e.has("t"):
@@ -797,6 +917,9 @@ func _add_entity(d: Dictionary) -> Dictionary:
 
 func _remove_entity(e: Dictionary) -> void:
 	e.group.queue_free()
+	_grass_mark(e.x, e.z)
+	if e.has("w"):
+		_grass_mark(e.x + e.w - 1, e.z + e.d - 1)
 	entities.erase(e)
 	if e.has("w"):
 		for i in int(e.w):
@@ -844,10 +967,12 @@ func _refresh(e: Dictionary) -> void:
 	match e.kind:
 		"plot":
 			e.wet_shown = _wet(e)
-			g.add_child(Models.soil(e.wet_shown))
+			g.add_child(Models.soil(e.wet_shown, e.x * 7919 + e.z * 104729))
 			if e.crop != null:
 				e.stage = crop_stage(e)
 				g.add_child(Visuals.crop(e.crop, e.stage))
+			e.mark = _make_mark(g, 1.65 if e.crop == "corn" or e.crop == "sunflower" else 0.95)
+			_update_mark(e)
 		"tree":
 			g.add_child(Visuals.tree(e.type, e.age >= 1.0, e.has_fruit))
 		"animal":
@@ -875,6 +1000,8 @@ func _refresh(e: Dictionary) -> void:
 			e.wet_shown = _wet(e)
 			e.stage = 3 if e.ready else mini(2, int(e.t * 3.0))
 			g.add_child(Models.flower_bed(f.color, f.center, e.stage, e.wet_shown))
+			e.mark = _make_mark(g, 0.75)
+			_update_mark(e)
 		"coop":
 			g.add_child(Models.coop())
 			var el := Label3D.new()
@@ -2951,6 +3078,8 @@ func _new_game() -> void:
 func _process(delta: float) -> void:
 	if not ready_done:
 		return
+	if not grass_dirty.is_empty():
+		_update_grass()
 	var dt := minf(0.1, delta)
 	if shot_path != "" and not playing:
 		shot_t += delta
@@ -3089,7 +3218,7 @@ func _selftest() -> void:
 func _demo() -> void:
 	coins = 5000
 	level = 6
-	var crops := ["wheat", "carrot", "tomato", "corn", "sunflower", "pumpkin"]
+	var crops := ["wheat", "carrot", "lettuce", "tomato", "cabbage", "corn", "sunflower", "pumpkin"]
 	for i in crops.size():
 		for st in 4:
 			var x := 2 + st
@@ -3691,29 +3820,74 @@ func _on_season_start() -> void:
 	if shelf_box != null:
 		_render_shelf()
 
+## Tarla/tarh üstünde küçük simge: 🧺 hazır, 💧 susuz büyüyor.
+func _make_mark(g: Node3D, y: float) -> Label3D:
+	var l := Label3D.new()
+	l.font = font
+	l.font_size = 52
+	l.pixel_size = 0.0065
+	l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	l.outline_size = 10
+	l.outline_modulate = Color(0.1, 0.15, 0.25, 0.6)
+	l.position.y = y
+	l.rotation.y = 0.0
+	g.add_child(l)
+	return l
+
+func _update_mark(e: Dictionary) -> void:
+	if not e.has("mark") or e.mark == null or not is_instance_valid(e.mark):
+		return
+	var ready := false
+	var growing := false
+	if e.kind == "plot":
+		ready = e.crop != null and e.progress >= 1.0
+		growing = e.crop != null and e.progress < 1.0
+	elif e.kind == "flower":
+		ready = e.ready
+		growing = not e.ready
+	if ready:
+		e.mark.text = "🧺"
+		e.mark.modulate = Color.WHITE
+		e.mark.visible = true
+	elif growing and not _wet(e) and weather != "snow":
+		e.mark.text = "💧"
+		e.mark.modulate = Color(1, 1, 1, 0.85)
+		e.mark.visible = true
+	else:
+		e.mark.visible = false
+
+func _refresh_marks() -> void:
+	for e in entities:
+		if e.kind == "plot" or e.kind == "flower":
+			_update_mark(e)
+
 func _start_weather(w: String) -> void:
 	if not Data.WEATHER.has(w):
 		return
 	weather = w
 	weather_t = randf_range(150.0, 300.0)
 	_toast("%s %s" % [Data.WEATHER[w].icon, Data.WEATHER[w].msg], "warn" if w == "drought" else "")
+	_refresh_marks()
 
 func _end_weather() -> void:
 	if weather != "":
 		_toast("🌤️ Hava açıldı")
 	weather = ""
 	weather_t = 0.0
+	_refresh_marks()
 
 func _apply_season_visual(instant: bool) -> void:
 	var t = SEASON_TINT[season]
 	var col := Color(t[0])
 	if instant:
-		ground_mat.set_shader_parameter("tint", col)
-		ground_mat.set_shader_parameter("amt", t[1])
+		for m in [ground_mat, grass_mat]:
+			m.set_shader_parameter("tint", col)
+			m.set_shader_parameter("amt", t[1])
 		return
 	var tw := create_tween().set_parallel()
-	tw.tween_property(ground_mat, "shader_parameter/tint", col, 6.0)
-	tw.tween_property(ground_mat, "shader_parameter/amt", t[1], 6.0)
+	for m in [ground_mat, grass_mat]:
+		tw.tween_property(m, "shader_parameter/tint", col, 6.0)
+		tw.tween_property(m, "shader_parameter/amt", t[1], 6.0)
 
 func _selftest_seasons(fails: Array) -> void:
 	season = 0

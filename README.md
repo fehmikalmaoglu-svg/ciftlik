@@ -13,7 +13,7 @@ Web sürümündeki (`../ciftlik`) low-poly çiftlik oyununun Godot 4.7 karşıl�
 
 ## Oynanış
 
-Web sürümüyle aynı: ⛏️ Çapa ile sür, 🌱 ek, 💧 sula (2× hız), ✋ El ile topla. Sürükleyerek çok kareye iş ver; çiftçi sırayla yapar. Altınla meyve ağaçları, hayvanlar ve dekor al; seviye atladıkça yeni ekinler açılır. 🧑‍🌾 Korkuluk çevresini %25 hızlandırır. 15 dakikalık gün (gece kısa); fenerler geceleri yanar. Otomatik kayıt (`user://save.json`), sen yokken 6 saate kadar büyüme.
+Web sürümüyle aynı: ⛏️ Çapa ile sür, 🌱 ek, 💧 sula (2× hız), ✋ El ile topla. Sürükleyerek çok kareye iş ver; çiftçi sırayla yapar. Tarla üstündeki 🧺 hasada hazır, 💧 su istiyor demektir. Altınla meyve ağaçları, hayvanlar ve dekor al; seviye atladıkça yeni ekinler açılır. 🧑‍🌾 Korkuluk çevresini %25 hızlandırır. 15 dakikalık gün (gece kısa); fenerler geceleri yanar. Otomatik kayıt (`user://save.json`), sen yokken 6 saate kadar büyüme.
 
 **Su ve mevsimler:** sulanan toprak ~90 sn ıslak kalır (2× hız), sonra kurur; elle ya da 💧 ile yeniden sula. 10'ar dakikalık 4 mevsim var, her tohum yalnız kendi mevsiminde ekilir (rafta 🚫 ile gösterilir). Mevsim başında ağaçlar meyve verir (kış hariç) ve hava olayı gelebilir: 🌧️ yağmur tarlaları sular, 🔥 kuraklıkta su 3× hızlı biter, 🌨️ karda sulamaya gerek yok.
 

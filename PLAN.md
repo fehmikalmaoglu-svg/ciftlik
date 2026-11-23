@@ -81,7 +81,7 @@ Her aşama kendi içinde oynanabilir biter; sonunda `--selftest` genişletilir v
 
 ### Geri bildirim turu (23.11.2026) ✅
 - Çarpışma + A* yol bulma, çit kapısı, tavuk kümesi; serbest kamera; ana menü, yükleme ekranı, 3 kariyer yuvası (sıfırlama kaldırıldı); üretim ~3× yavaş, 15 dk gün, 30 dk mevsim; güneş adımsız (gölge titremesi).
-- Sırada: modellerin elden geçirilmesi (karakter, ekinler, çim), ekran görüntüsündeki kalitede ama kendi tasarımımızla.
+- ✅ Modeller elden geçti: yumuşak gölgeli yeni çiftçi (hasır şapka, tulum, yüz), 🥗 Marul (Sv1, ilkbahar/sonbahar) ve 🥬 Lahana (Sv3, sonbahar/kış), sırtlı ve topaklı toprak, rüzgârda sallanan ve mevsimle renk değiştiren çim (parsel başına MultiMesh), tarla/tarh üstünde 🧺 hazır ve 💧 susuz simgeleri.
 
 ### Sonraya
 - Çok oyunculu ziyaret, bonus sayacı, izinler — ağ altyapısı gerektirir.
