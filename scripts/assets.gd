@@ -6,6 +6,8 @@ extends RefCounted
 static var enabled := true
 static var _scenes := {}
 static var _fixed := {}
+## Mevsimle renklenen yaprak/ot malzemeleri (MegaKit "Leaves*", "Leaf*", "Grass", "Flowers" hariç).
+static var leaf_mats: Array[BaseMaterial3D] = []
 ## Kenney paletini (nane yeşili/şeftali) oyunun sıcak paletine çevir.
 const PALETTE := {
 	"leafsGreen": "#4caf50", "leafsDark": "#2e7d32", "grass": "#66bb6a",
@@ -47,6 +49,8 @@ static func _fix(n: Node) -> void:
 					c.roughness = 0.9
 					if PALETTE.has(m.resource_name):
 						c.albedo_color = Color(PALETTE[m.resource_name])
+					if m.resource_name.begins_with("Lea"):
+						leaf_mats.append(c)
 					_fixed[m] = c
 				mi.set_surface_override_material(i, _fixed[m])
 	for c in n.get_children():

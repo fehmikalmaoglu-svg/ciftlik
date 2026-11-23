@@ -171,16 +171,23 @@ const HELP_PAGES := [
 
 ## Doğa süsleri (Kenney Nature Kit, CC0): assets/nature
 const NAT := "res://assets/nature/"
-const WILD_TREES := ["tree_small.glb", "tree_thin.glb", "tree_simple.glb", "tree_tall.glb", "tree_pineSmallA.glb", "tree_plateau.glb"]
-const WILD_BUSH := ["plant_bushSmall.glb", "plant_bushDetailed.glb", "plant_bushLargeTriangle.glb", "plant_bush.glb", "plant_flatTall.glb"]
-const WILD_ROCK := ["rock_smallB.glb", "rock_smallFlatA.glb", "stone_smallC.glb", "rock_smallA.glb", "rock_largeD.glb"]
+## Stilize doku modelleri (Quaternius Stylized Nature MegaKit, CC0): assets/megakit, .gltf uzantılı.
+const MK := "res://assets/megakit/"
+## MegaKit modelleri Kenney'den çok daha büyük: önek başına taban ölçek.
+const MK_BASE := {"CommonTree": 0.22, "Pine": 0.22, "TwistedTree": 0.12, "DeadTree": 0.18, "Bush": 0.3, "Fern": 0.35,
+	"Flower": 0.24, "Grass": 0.22, "Mushroom": 0.55, "Plant_1": 0.3, "Plant_7": 0.6, "Clover": 0.3,
+	"Pebble": 1.3, "Rock_Medium": 0.16, "RockPath": 0.9}
+const WILD_TREES := ["CommonTree_1.gltf", "CommonTree_2.gltf", "CommonTree_3.gltf", "CommonTree_5.gltf", "Pine_3.gltf", "Pine_1.gltf"]
+const WILD_BUSH := ["Bush_Common.gltf", "Bush_Common_Flowers.gltf", "Fern_1.gltf", "Plant_1_Big.gltf", "Bush_Common.gltf", "Plant_1.gltf"]
+const WILD_ROCK := ["Rock_Medium_1.gltf", "Rock_Medium_2.gltf", "Rock_Medium_3.gltf", "Pebble_Round_1.gltf", "Pebble_Round_3.gltf"]
 const WILD_WOOD := ["stump_old.glb", "stump_roundDetailed.glb", "log_large.glb", "log.glb", "stump_round.glb"]
-const WILD_FLOWER := ["flower_purpleA.glb", "flower_purpleB.glb", "flower_purpleC.glb", "flower_redA.glb", "flower_redB.glb", "flower_redC.glb", "flower_yellowA.glb", "flower_yellowB.glb", "flower_yellowC.glb"]
-const WILD_MUSH := ["mushroom_red.glb", "mushroom_tanGroup.glb", "mushroom_redTall.glb", "mushroom_redGroup.glb"]
-const WILD_GRASS := ["grass_leafsLarge.glb", "grass_leafs.glb", "grass_large.glb"]
+const WILD_FLOWER := ["Flower_3_Single.gltf", "Flower_4_Single.gltf", "Flower_3_Group.gltf", "Flower_4_Group.gltf", "flower_purpleA.glb", "flower_yellowB.glb"]
+const WILD_MUSH := ["Mushroom_Common.gltf", "Mushroom_Laetiporus.gltf", "Mushroom_Common.gltf"]
+const WILD_GRASS := ["Grass_Common_Short.gltf", "Grass_Common_Tall.gltf", "Grass_Wispy_Short.gltf", "Grass_Wispy_Tall.gltf", "Clover_1.gltf", "Clover_2.gltf", "Plant_7.gltf"]
 ## Kenney küçük süsleri bu sahnede ufak kalıyor: önek başına ölçek çarpanı.
 const PROP_BOOST := {"flower_": 2.1, "mushroom_": 1.7, "grass_": 1.5, "plant_": 1.4, "rock_small": 1.4, "stone_small": 1.4, "lily_": 1.4}
-const BIG_TREES := ["tree_detailed_dark.glb", "tree_pineRoundA.glb", "tree_pineRoundC.glb", "tree_pineTallA_detailed.glb", "tree_cone_dark.glb", "tree_tall.glb", "tree_plateau.glb"]
+const BIG_TREES := ["CommonTree_1.gltf", "CommonTree_2.gltf", "CommonTree_3.gltf", "CommonTree_4.gltf", "CommonTree_5.gltf",
+	"Pine_1.gltf", "Pine_2.gltf", "Pine_4.gltf", "Pine_5.gltf", "TwistedTree_1.gltf", "TwistedTree_2.gltf", "DeadTree_1.gltf"]
 
 const SEASON_TINT := [["#7ccf4a", 0.0], ["#b8bf45", 0.3], ["#d0902e", 0.5], ["#eef3f8", 0.7]]
 
@@ -198,8 +205,8 @@ const TOOLS := [
 const ACT_TXT := {"plant": "🌱 Ek", "water": "💧 Sula", "harvest": "🧺 Topla", "feed": "🌾 Yemle", "flower": "🌼 Çiçek dik", "pond": "🐟 Gölet kur", "coop": "🛖 Kümes kur", "plow": "⛏️ Sür", "tree": "🌳 Dik", "animal": "🐾 Yerleştir", "decor": "🎨 Yerleştir", "remove": "🗑️ Kaldır"}
 ## Yeni kariyerin başında temizlenecek yabani şeyler: [modeller, ölçek, altın, XP, yolu kapatır mı]
 const DEBRIS := {
-	"weed": [["grass_leafsLarge.glb", "plant_bushSmall.glb", "plant_flatTall.glb"], 1.7, 2, 1, false],
-	"stone": [["rock_smallB.glb", "rock_largeD.glb", "stone_smallC.glb"], 1.3, 4, 1, true],
+	"weed": [["Grass_Wispy_Tall.gltf", "Fern_1.gltf", "Plant_1_Big.gltf"], 1.5, 2, 1, false],
+	"stone": [["Rock_Medium_1.gltf", "Rock_Medium_2.gltf", "Rock_Medium_3.gltf"], 1.4, 4, 1, true],
 	"stump": [["stump_old.glb", "stump_roundDetailed.glb"], 1.5, 5, 2, true],
 	"log": [["log_large.glb"], 1.3, 6, 2, true],
 }
@@ -951,6 +958,8 @@ func _build_surroundings() -> void:
 			t = Visuals.scenery(2, 0.8 + r.randf() * 0.6, r.randf())
 		t.position = Vector3(x, height_at(x, z) - 0.05, z)
 		t.rotation.y = r.randf() * TAU
+		if maxf(absf(x), absf(z)) > 34.0:
+			_no_shadow(t)
 		add_child(t)
 	for i in 160:
 		var x := (r.randf() - 0.5) * 70.0
@@ -974,24 +983,40 @@ func _build_surroundings() -> void:
 
 ## Doğa modeli yerleştirir; küçük süsler gölge düşürmez.
 func _prop(parent: Node3D, file: String, sc: float, x: float, z: float, yaw: float, shadow := true) -> Node3D:
-	for pre in PROP_BOOST:
-		if file.begins_with(pre):
-			sc *= PROP_BOOST[pre]
-			break
-	var n := Assets.inst(NAT + file, sc, yaw)
+	var n := _nat_inst(file, sc, yaw)
 	if n == null:
 		return null
 	n.position = Vector3(x, height_at(x, z) - 0.02, z)
 	if not shadow:
+		_no_shadow(n, 70.0)
+	elif maxf(absf(x), absf(z)) > 34.0:
 		_no_shadow(n)
 	parent.add_child(n)
 	return n
 
-func _no_shadow(n: Node) -> void:
+## Kenney (.glb) ya da MegaKit (.gltf) modelini ölçek düzeltmesiyle örnekler.
+func _nat_inst(file: String, sc: float, yaw := 0.0) -> Node3D:
+	var path := NAT + file
+	var boost: Dictionary = PROP_BOOST
+	if file.ends_with(".gltf"):
+		path = MK + file
+		boost = MK_BASE
+	for pre in boost:
+		if file.begins_with(pre):
+			sc *= boost[pre]
+			break
+	return Assets.inst(path, sc, yaw)
+
+## Gölgeyi kapatır; vis > 0 ise o mesafeden ötede çizmez (küçük süsler).
+func _no_shadow(n: Node, vis := 0.0) -> void:
 	if n is GeometryInstance3D:
 		n.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		if vis > 0.0:
+			n.visibility_range_end = vis
+			n.visibility_range_end_margin = 6.0
+			n.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
 	for c in n.get_children():
-		_no_shadow(c)
+		_no_shadow(c, vis)
 
 func _pick_of(r: RandomNumberGenerator, list: Array) -> String:
 	return list[r.randi() % list.size()]
@@ -1491,7 +1516,7 @@ func _refresh(e: Dictionary) -> void:
 			var dd: Array = DEBRIS.get(e.type, DEBRIS.weed)
 			var files: Array = dd[0]
 			var h := absi(e.x * 31 + e.z * 17)
-			var m := Assets.inst(NAT + files[h % files.size()], dd[1] * (0.9 + (h % 5) * 0.06))
+			var m := _nat_inst(files[h % files.size()], dd[1] * (0.9 + (h % 5) * 0.06))
 			if m != null:
 				g.add_child(m)
 				if e.type == "weed":
@@ -5578,12 +5603,18 @@ func _end_weather() -> void:
 func _apply_season_visual(instant: bool) -> void:
 	var t = SEASON_TINT[season]
 	var col := Color(t[0])
+	# MegaKit yaprakları: sonbaharda kızıl, kışın soluk
+	var leaf: Color = [Color.WHITE, Color("#fff0b0"), Color("#ffa060"), Color("#e6efe6")][season]
 	if instant:
 		for m in [ground_mat, grass_mat]:
 			m.set_shader_parameter("tint", col)
 			m.set_shader_parameter("amt", t[1])
+		for lm in Assets.leaf_mats:
+			lm.albedo_color = leaf
 		return
 	var tw := create_tween().set_parallel()
+	for lm in Assets.leaf_mats:
+		tw.tween_property(lm, "albedo_color", leaf, 6.0)
 	for m in [ground_mat, grass_mat]:
 		tw.tween_property(m, "shader_parameter/tint", col, 6.0)
 		tw.tween_property(m, "shader_parameter/amt", t[1], 6.0)

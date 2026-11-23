@@ -83,15 +83,16 @@ static func decor(type: String, conn: Dictionary) -> Node3D:
 				return n
 	return Models.decor(type, conn)
 
-const ROUND_TREES := ["tree_default.glb", "tree_oak.glb", "tree_detailed.glb", "tree_fat.glb", "tree_default_dark.glb", "tree_oak_dark.glb"]
-const PINES := ["tree_pineDefaultA.glb", "tree_cone.glb"]
-const ROCKS := ["rock_largeC.glb", "rock_tallA.glb", "rock_largeA.glb"]
+const MK := "res://assets/megakit/"
+const ROUND_TREES := ["CommonTree_1.gltf", "CommonTree_2.gltf", "CommonTree_3.gltf", "CommonTree_4.gltf", "CommonTree_5.gltf"]
+const PINES := ["Pine_1.gltf", "Pine_2.gltf", "Pine_3.gltf", "Pine_4.gltf", "Pine_5.gltf"]
+const ROCKS := ["Rock_Medium_1.gltf", "Rock_Medium_2.gltf", "Rock_Medium_3.gltf"]
 
 ## Çevre süsü: kind 0 = çam, 1 = yuvarlak ağaç, 2 = kaya. r = 0..1 rastgele.
 static func scenery(kind: int, s: float, r: float) -> Node3D:
 	var list: Array = PINES if kind == 0 else ROUND_TREES if kind == 1 else ROCKS
-	var path: String = N + list[int(r * list.size()) % list.size()]
-	var scale := s * (1.7 if kind == 0 else 1.9 if kind == 1 else 1.3)
+	var path: String = MK + list[int(r * list.size()) % list.size()]
+	var scale := s * (0.4 if kind == 0 else 0.42 if kind == 1 else 0.3)
 	var n := Assets.inst(path, scale)
 	if n != null:
 		return n
