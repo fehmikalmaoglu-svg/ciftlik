@@ -3,7 +3,7 @@ extends Node3D
 
 const FARM_MIN := -12
 const FARM_MAX := 11
-const DAY_LEN := 300.0
+const DAY_LEN := 900.0   # gündüz ~%70, gece ~%30
 const SAVE_PATH := "user://save.json"
 const POND_X := 21.0
 const POND_Z := 6.0
@@ -109,6 +109,9 @@ var move_target = null   # Vector3: tıklanan yere yürü
 var move_marker: MeshInstance3D
 var act_t := 0.0
 var night_f := 0.0
+var day_f_last := 1.0
+var fps_t := 0.0
+var fps_n := 0
 var clock_t := 0.0
 var sim_acc := 0.0
 var lamp_timer := 0.0
@@ -1557,7 +1560,7 @@ func _sfx(kind: String) -> void:
 
 # ============================================================ gün/gece
 func _update_day(dt: float) -> void:
-	day_time += dt / DAY_LEN
+	day_time += dt / DAY_LEN * lerpf(1.8, 0.7, day_f_last)
 	if day_time >= 1.0:
 		day_time -= 1.0
 		day += 1
@@ -1566,6 +1569,7 @@ func _update_day(dt: float) -> void:
 	var elev := sin(ang)
 	var day_f := smoothstep(-0.12, 0.3, elev)
 	night_f = 1.0 - smoothstep(-0.15, 0.1, elev)
+	day_f_last = smoothstep(-0.05, 0.05, elev)
 	var set_f := maxf(0.0, 1.0 - absf(elev) / 0.32) * (1.0 if elev > -0.3 else 0.0)
 	var sky := Color("#0d1633").lerp(Color("#9fd4ff"), day_f).lerp(Color("#ffa66b"), set_f * 0.55)
 	wx_f = move_toward(wx_f, 1.0 if weather == "rain" or weather == "snow" else 0.0, dt * 0.3)
@@ -1583,7 +1587,7 @@ func _update_day(dt: float) -> void:
 	env.fog_light_color = sky
 	env.ambient_light_color = Color("#6d82c9").lerp(Color("#dff1ff"), day_f)
 	env.ambient_light_energy = 0.3 + 0.2 * day_f
-	var qang := snappedf(ang, TAU / 720.0)
+	var qang := ang
 	var s_elev := maxf(sin(qang), 0.15)
 	var off := Vector3(cos(qang) * 30.0, s_elev * 35.0, 12.0)
 	sun.look_at_from_position(off, Vector3.ZERO, Vector3.UP)
@@ -2210,6 +2214,13 @@ func _process(delta: float) -> void:
 		save_timer = 0.0
 		if shot_path == "":
 			_save()
+	if OS.get_cmdline_user_args().has("--fps"):
+		fps_t += delta
+		if fps_t > 3.0:
+			fps_n += 1
+		if fps_t > 8.0:
+			print("FPS ortalama: %.1f" % (fps_n / (fps_t - 3.0)))
+			get_tree().quit()
 	if shot_path != "":
 		shot_t += delta
 		if shot_t > 4.0:
@@ -2219,6 +2230,7 @@ func _process(delta: float) -> void:
 # ============================================================ öz test (--selftest)
 func _selftest() -> void:
 	var fails := []
+	quests = []
 	season = 0
 	season_t = 0.0
 	weather = ""
@@ -2240,7 +2252,7 @@ func _selftest() -> void:
 	if not tiles[key(9, 2)].boost: fails.append("korkuluk bonusu")
 	if not _perform({"x": 10, "z": 5, "tool": "remove", "arg": null}): fails.append("kaldır")
 	if not _perform({"x": 9, "z": 2, "tool": "water", "arg": null}): fails.append("sulama 2")
-	_simulate(17.0)
+	_simulate(Data.CROPS.wheat.time * 0.85)
 	if tiles[key(9, 2)].progress < 1.0: fails.append("büyüme %.2f" % tiles[key(9, 2)].progress)
 	# tıklanan yere yürüme + bina engeli
 	farmer.position = Vector3(0.5, 0, 9)
@@ -2616,7 +2628,7 @@ func _selftest_garden(fails: Array) -> void:
 	if not _perform({"x": 10, "z": 11, "tool": "garden", "arg": "daisy"}): fails.append("çiçek dikme")
 	var f = tiles[key(10, 11)]
 	if not _perform({"x": 10, "z": 11, "tool": "water", "arg": null}): fails.append("çiçek sulama")
-	_simulate(60.0)
+	_simulate(Data.FLOWERS.daisy.time)
 	if not f.ready: fails.append("çiçek açmadı %.3f" % f.t)
 	var c0 := coins
 	if not _perform({"x": 10, "z": 11, "tool": "hand", "arg": "wheat"}): fails.append("çiçek hasadı")
@@ -2624,13 +2636,13 @@ func _selftest_garden(fails: Array) -> void:
 	if res.get("flower", 0) != 4: fails.append("çiçek kaynağı %s" % res)
 	if f.ready or f.t != 0.0 or not tiles.has(key(10, 11)): fails.append("çiçek yeniden açmıyor")
 	f.water = 0.0
-	_simulate(60.0)
+	_simulate(Data.FLOWERS.daisy.time)
 	c0 = coins
 	_perform({"x": 10, "z": 11, "tool": "hand", "arg": "wheat"})
 	if coins - c0 != 10: fails.append("kuru çiçek kazancı %d" % (coins - c0))
 	flv.daisy.n = Data.FLOWER_HARVESTS_PER_LV - 1
 	f.water = 0.0
-	_simulate(60.0)
+	_simulate(Data.FLOWERS.daisy.time)
 	_perform({"x": 10, "z": 11, "tool": "hand", "arg": "wheat"})
 	if flv.daisy.lv != 2: fails.append("çiçek seviyesi %s" % flv.daisy)
 	# gölet
@@ -2738,7 +2750,7 @@ func _selftest_animals(fails: Array) -> void:
 	if not _perform({"x": 10, "z": 7, "tool": "hand", "arg": "wheat"}): fails.append("yemleme")
 	if a.food != 1.0 or b.food != 1.0: fails.append("ağıl yemi paylaşmadı")
 	if res.cereal != 0 or coins != 100 - Data.FEED_COIN: fails.append("yem bedeli %d/%d" % [res.cereal, coins])
-	_simulate(60.0)
+	_simulate(Data.ANIMALS.chicken.time)
 	if not a.ready: fails.append("yemli hayvan üretmedi")
 	if absf(a.food - (1.0 - 1.0 / Data.FEED_CYCLES)) > 0.01: fails.append("yem azalması %.3f" % a.food)
 	a.hv = Data.HARVESTS_PER_LV - 1
@@ -2821,16 +2833,17 @@ func _selftest_seasons(fails: Array) -> void:
 	if not _perform({"x": 9, "z": 3, "tool": "seed", "arg": "tomato"}): fails.append("ilkbaharda domates")
 	var e = tiles[key(9, 3)]
 	var b := 1.25 if e.boost else 1.0
-	_simulate(45.0)
+	var w_exp := 1.0 - Data.CROPS.tomato.time / 2.0 / Data.WATER_DUR
+	_simulate(Data.CROPS.tomato.time / 2.0)
 	if absf(e.progress - 0.25 * b) > 0.01: fails.append("susuz büyüme %.3f" % e.progress)
 	if not _perform({"x": 9, "z": 3, "tool": "water", "arg": null}): fails.append("sulama 3")
 	if _resolve("water", null, 9, 3) != null: fails.append("dolu toprağa tekrar sulama")
-	_simulate(45.0)
+	_simulate(Data.CROPS.tomato.time / 2.0)
 	if absf(e.progress - 0.75 * b) > 0.01: fails.append("sulu büyüme %.3f" % e.progress)
-	if absf(e.water - 0.5) > 0.01: fails.append("su azalması %.3f" % e.water)
+	if absf(e.water - w_exp) > 0.01: fails.append("su azalması %.3f" % e.water)
 	_start_weather("drought")
 	_simulate(10.0)
-	if absf(e.water - (0.5 - 30.0 / Data.WATER_DUR)) > 0.01: fails.append("kuraklık %.3f" % e.water)
+	if absf(e.water - (w_exp - 30.0 / Data.WATER_DUR)) > 0.01: fails.append("kuraklık %.3f" % e.water)
 	_start_weather("rain")
 	e.water = 0.0
 	_simulate(8.0)
@@ -2848,7 +2861,7 @@ func _selftest_seasons(fails: Array) -> void:
 	tree_e.has_fruit = false
 	tree_e.age = 1.0
 	season = 3
-	season_t = 0.999
+	season_t = 1.0 - 0.5 / Data.SEASON_LEN
 	var y0 := year
 	_simulate(1.0)
 	if season != 0 or year != y0 + 1: fails.append("mevsim geçişi %d/%d" % [season, year])

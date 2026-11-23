@@ -3,25 +3,25 @@ extends RefCounted
 ## Oyun verileri. Süreler saniye (sulanmış tarlada). Susuz tarla yarı hızda büyür.
 
 const CROPS := {
-	"wheat":     {"name": "Buğday",    "icon": "🌾", "cost": 5,  "sell": 12,  "time": 20.0,  "xp": 2,  "level": 1, "seasons": [0, 1, 2, 3], "color": "#f0c75e"},
-	"carrot":    {"name": "Havuç",     "icon": "🥕", "cost": 10, "sell": 26,  "time": 45.0,  "xp": 4,  "level": 1, "seasons": [0, 2, 3], "color": "#fb8c00"},
-	"tomato":    {"name": "Domates",   "icon": "🍅", "cost": 20, "sell": 52,  "time": 90.0,  "xp": 7,  "level": 2, "seasons": [0, 1], "color": "#e53935"},
-	"corn":      {"name": "Mısır",     "icon": "🌽", "cost": 30, "sell": 80,  "time": 150.0, "xp": 10, "level": 3, "seasons": [1, 2], "color": "#ffd54f"},
-	"sunflower": {"name": "Ayçiçeği",  "icon": "🌻", "cost": 45, "sell": 120, "time": 240.0, "xp": 15, "level": 4, "seasons": [1], "color": "#fdd835"},
-	"pumpkin":   {"name": "Balkabağı", "icon": "🎃", "cost": 70, "sell": 190, "time": 360.0, "xp": 22, "level": 5, "seasons": [2], "color": "#fb8c00"},
+	"wheat":     {"name": "Buğday",    "icon": "🌾", "cost": 5,  "sell": 12,  "time": 60.0,  "xp": 2,  "level": 1, "seasons": [0, 1, 2, 3], "color": "#f0c75e"},
+	"carrot":    {"name": "Havuç",     "icon": "🥕", "cost": 10, "sell": 26,  "time": 135.0,  "xp": 4,  "level": 1, "seasons": [0, 2, 3], "color": "#fb8c00"},
+	"tomato":    {"name": "Domates",   "icon": "🍅", "cost": 20, "sell": 52,  "time": 270.0,  "xp": 7,  "level": 2, "seasons": [0, 1], "color": "#e53935"},
+	"corn":      {"name": "Mısır",     "icon": "🌽", "cost": 30, "sell": 80,  "time": 450.0, "xp": 10, "level": 3, "seasons": [1, 2], "color": "#ffd54f"},
+	"sunflower": {"name": "Ayçiçeği",  "icon": "🌻", "cost": 45, "sell": 120, "time": 720.0, "xp": 15, "level": 4, "seasons": [1], "color": "#fdd835"},
+	"pumpkin":   {"name": "Balkabağı", "icon": "🎃", "cost": 70, "sell": 190, "time": 1080.0, "xp": 22, "level": 5, "seasons": [2], "color": "#fb8c00"},
 }
 
 const TREES := {
-	"apple":  {"name": "Elma Ağacı",     "icon": "🍎", "cost": 150, "grow": 120.0, "regrow": 90.0,  "sell": 35, "xp": 8,  "level": 2, "fruit": "#e53935"},
-	"orange": {"name": "Portakal Ağacı", "icon": "🍊", "cost": 300, "grow": 200.0, "regrow": 140.0, "sell": 60, "xp": 12, "level": 4, "fruit": "#fb8c00"},
-	"cherry": {"name": "Kiraz Ağacı",    "icon": "🍒", "cost": 500, "grow": 300.0, "regrow": 200.0, "sell": 95, "xp": 18, "level": 6, "fruit": "#b71c1c"},
+	"apple":  {"name": "Elma Ağacı",     "icon": "🍎", "cost": 150, "grow": 360.0, "regrow": 270.0,  "sell": 35, "xp": 8,  "level": 2, "fruit": "#e53935"},
+	"orange": {"name": "Portakal Ağacı", "icon": "🍊", "cost": 300, "grow": 600.0, "regrow": 420.0, "sell": 60, "xp": 12, "level": 4, "fruit": "#fb8c00"},
+	"cherry": {"name": "Kiraz Ağacı",    "icon": "🍒", "cost": 500, "grow": 900.0, "regrow": 600.0, "sell": 95, "xp": 18, "level": 6, "fruit": "#b71c1c"},
 }
 
 const ANIMALS := {
-	"chicken": {"name": "Tavuk", "icon": "🐔", "product": "Yumurta", "picon": "🥚", "cost": 80,  "time": 60.0,  "sell": 18,  "xp": 4,  "level": 1, "feed": 1, "color": "#fff8e1"},
-	"sheep":   {"name": "Koyun", "icon": "🐑", "product": "Yün",     "picon": "🧶", "cost": 250, "time": 120.0, "sell": 45,  "xp": 9,  "level": 3, "feed": 2, "color": "#ffffff"},
-	"pig":     {"name": "Domuz", "icon": "🐷", "product": "Mantar",  "picon": "🍄", "cost": 400, "time": 180.0, "sell": 75,  "xp": 13, "level": 5, "feed": 3, "color": "#8d6e63"},
-	"cow":     {"name": "İnek",  "icon": "🐄", "product": "Süt",     "picon": "🥛", "cost": 600, "time": 240.0, "sell": 110, "xp": 18, "level": 6, "feed": 4, "color": "#ffffff"},
+	"chicken": {"name": "Tavuk", "icon": "🐔", "product": "Yumurta", "picon": "🥚", "cost": 80,  "time": 180.0,  "sell": 18,  "xp": 4,  "level": 1, "feed": 1, "color": "#fff8e1"},
+	"sheep":   {"name": "Koyun", "icon": "🐑", "product": "Yün",     "picon": "🧶", "cost": 250, "time": 360.0, "sell": 45,  "xp": 9,  "level": 3, "feed": 2, "color": "#ffffff"},
+	"pig":     {"name": "Domuz", "icon": "🐷", "product": "Mantar",  "picon": "🍄", "cost": 400, "time": 540.0, "sell": 75,  "xp": 13, "level": 5, "feed": 3, "color": "#8d6e63"},
+	"cow":     {"name": "İnek",  "icon": "🐄", "product": "Süt",     "picon": "🥛", "cost": 600, "time": 720.0, "sell": 110, "xp": 18, "level": 6, "feed": 4, "color": "#ffffff"},
 }
 
 const DECOR := {
@@ -38,17 +38,17 @@ const DECOR := {
 ## Çiçekler (Aşama 4): kalıcı tarh, sabit büyüme süresi; hasattan sonra yeniden açar.
 ## Büyürken ıslak geçen süre oranı kazancı en fazla 3 katına çıkarır.
 const FLOWERS := {
-	"daisy":    {"name": "Papatya", "icon": "🌼", "cost": 25,  "time": 60.0,  "sell": 10, "xp": 3,  "level": 1, "color": "#ffffff", "center": "#fdd835"},
-	"tulip":    {"name": "Lale",    "icon": "🌷", "cost": 45,  "time": 120.0, "sell": 22, "xp": 6,  "level": 2, "color": "#ec407a", "center": "#ffd54f"},
-	"rose":     {"name": "Gül",     "icon": "🌹", "cost": 90,  "time": 200.0, "sell": 40, "xp": 10, "level": 4, "color": "#d32f2f", "center": "#8e0000"},
-	"lavender": {"name": "Lavanta", "icon": "💜", "cost": 130, "time": 300.0, "sell": 62, "xp": 15, "level": 5, "color": "#9575cd", "center": "#673ab7"},
+	"daisy":    {"name": "Papatya", "icon": "🌼", "cost": 25,  "time": 180.0,  "sell": 10, "xp": 3,  "level": 1, "color": "#ffffff", "center": "#fdd835"},
+	"tulip":    {"name": "Lale",    "icon": "🌷", "cost": 45,  "time": 360.0, "sell": 22, "xp": 6,  "level": 2, "color": "#ec407a", "center": "#ffd54f"},
+	"rose":     {"name": "Gül",     "icon": "🌹", "cost": 90,  "time": 600.0, "sell": 40, "xp": 10, "level": 4, "color": "#d32f2f", "center": "#8e0000"},
+	"lavender": {"name": "Lavanta", "icon": "💜", "cost": 130, "time": 900.0, "sell": 62, "xp": 15, "level": 5, "color": "#9575cd", "center": "#673ab7"},
 }
 const FLOWER_WET_BONUS := 2.0   # tamamen sulu: ×(1 + 2)
 const FLOWER_MAX_LV := 5
 const FLOWER_HARVESTS_PER_LV := 5
 
 ## Balık göleti (Aşama 4): 2×2 kare, yem istemez.
-const POND := {"name": "Balık Göleti", "icon": "🐟", "cost": 350, "time": 150.0, "sell": 40, "xp": 10, "level": 3, "info": "2×2 kare. Kendiliğinden balık üretir."}
+const POND := {"name": "Balık Göleti", "icon": "🐟", "cost": 350, "time": 450.0, "sell": 40, "xp": 10, "level": 3, "info": "2×2 kare. Kendiliğinden balık üretir."}
 
 static func garden() -> Dictionary:
 	var d := FLOWERS.duplicate()
@@ -89,7 +89,7 @@ const YIELD := {
 const BARN_CAP := 150
 
 ## Mevsimler (Aşama 2). Her biri SEASON_LEN saniye; gün/gece döngüsünden bağımsız.
-const SEASON_LEN := 600.0
+const SEASON_LEN := 1800.0
 const SEASONS := [
 	{"name": "İlkbahar", "icon": "🌸"},
 	{"name": "Yaz",      "icon": "☀️"},
@@ -98,7 +98,7 @@ const SEASONS := [
 ]
 
 ## Dolu su seviyesinin (1.0) normal havada tamamen kuruma süresi.
-const WATER_DUR := 90.0
+const WATER_DUR := 240.0
 ## Sulama/elle sulama bu seviyenin altındaysa yapılabilir.
 const WATER_REFILL := 0.6
 
