@@ -1,5 +1,12 @@
 # Çiftliğim 3D — Sürüm Notları
 
+## v0.4.0 · Erken Erişim
+- 🚚 Taşı aleti (- tuşu): bir nesneye tıkla, sonra yeni yerine tıkla. Ambar, ev, silo, kuyu, ağaç, hayvan, kümes, çit, yol… hepsi bedava taşınır; Esc vazgeçer.
+- 🔄 Döndürme: Taşı aletiyle seçili nesneye tekrar tıkla ya da T'ye bas, 90° döner.
+- Binanın üstünde sol tuşu basılı tut: 🔄 Döndür · 🚚 Taşı · 🗑️ Kaldır menüsü açılır. Kısa tıklama eskisi gibi (ambarı açar).
+- 🗑️ Kaldır artık satın alma fiyatının yarısını geri veriyor (önce %25'ti). İmleç üstünde ne kadar geri geleceği yazar.
+- Online: paylaşım penceresi Hamachi ve Tailscale adreslerini işaretliyor; bağlanamayınca Güvenlik Duvarı ipucu çıkıyor.
+
 ## v0.3.1 · Erken Erişim
 - Online görevler ortak: arkadaşın da çiftliğin hikâye adımını ve günlük görevlerini görür. Onun yaptığı işler (sürme, ekme, hasat…) aynı görevlere sayılır.
   - Görev tamamlanınca duyuru iki oyuncuda da çıkar. Madalya ve elmas sayısı da eşitlenir.

@@ -22,7 +22,7 @@ const OFFLINE_CAP := 6.0 * 3600.0
 const QUEST_SLOTS := 4
 ## Çiftçinin geçemediği dekorlar.
 ## İş animasyonu süreleri (sn); çiftçi bu sürede yerinde kalır.
-const ACT_DUR := {"plow": 0.55, "remove": 0.55, "water": 0.85, "plant": 0.55, "flower": 0.55, "tree": 0.6,
+const ACT_DUR := {"plow": 0.55, "remove": 0.55, "move": 0.5, "water": 0.85, "plant": 0.55, "flower": 0.55, "tree": 0.6,
 	"harvest": 0.5, "feed": 0.8, "coop": 0.4, "pond": 0.4, "animal": 0.4, "decor": 0.35, "build": 0.6}
 const NET_PORT := 24565
 ## Geliştirici: --netport=N ile başka port (oyun açıkken test için).
@@ -142,7 +142,8 @@ const HELP_PAGES := [
 		["Orta sürükle", "Haritada gezersin. Ok tuşları da kamerayı kaydırır; Boşluk çiftçiye geri döner."],
 		["Tekerlek", "Yakınlaştır / uzaklaştır."],
 		["Tab · 🎒", "Çark menüyü açar: aletler imlecin çevresinde dizilir, birine tıkla. Sağ alttaki 🎒 düğmesi de açar."],
-		["1 – 9", "Aleti doğrudan seç: El, Çapa, Tohum, Sula, Ağaç, Hayvan, Dekor, Bahçe, Kaldır."],
+		["1 – 9 · 0 · -", "Aleti doğrudan seç: El, Çapa, Tohum, Sula, Ağaç, Hayvan, Dekor, Bahçe, Kaldır; 0 Yapı, - Taşı."],
+		["🚚 · 🗑️", "Taşı: nesneye tıkla, sonra yeni yerine tıkla; seçiliyken kendisine tıkla ya da T ile döndür (Esc vazgeçer). Binanın üstünde basılı tut: Döndür / Taşı / Kaldır menüsü; ambar, ev, ağaç, hayvan, çit… hepsi taşınır, bedava. Kaldır: nesneyi siler, yarı fiyatı geri gelir."],
 		["B · J · Esc", "B ambarı, J görev panelini açar; Esc iş kuyruğunu ve pencereleri kapatır."],
 	]],
 	["🌱  Tarım", [
@@ -212,9 +213,10 @@ const TOOLS := [
 	{"id": "decor", "icon": "🌷", "name": "Dekor", "shelf": "decor", "tip": "Çit, yol, çiçek…"},
 	{"id": "garden", "icon": "🌼", "name": "Bahçe", "shelf": "garden", "tip": "Çiçek tarhı ve balık göleti"},
 	{"id": "build", "icon": "🏗️", "name": "Yapı", "shelf": "build", "tip": "Ambar, kuyu, silo, ev kur"},
-	{"id": "remove", "icon": "🗑️", "name": "Kaldır", "shelf": "", "tip": "Nesneyi kaldır (%25 iade)"},
+	{"id": "remove", "icon": "🗑️", "name": "Kaldır", "shelf": "", "tip": "Nesneyi kaldır (yarı fiyatı geri gelir)"},
+	{"id": "move", "icon": "🚚", "name": "Taşı", "shelf": "", "tip": "Nesneye tıkla, sonra yeni yerine tıkla  [-]"},
 ]
-const ACT_TXT := {"plant": "🌱 Ek", "water": "💧 Sula", "harvest": "🧺 Topla", "feed": "🌾 Yemle", "flower": "🌼 Çiçek dik", "pond": "🐟 Gölet kur", "build": "🏗️ Kur", "coop": "🛖 Kümes kur", "plow": "⛏️ Sür", "tree": "🌳 Dik", "animal": "🐾 Yerleştir", "decor": "🎨 Yerleştir", "remove": "🗑️ Kaldır"}
+const ACT_TXT := {"plant": "🌱 Ek", "water": "💧 Sula", "harvest": "🧺 Topla", "feed": "🌾 Yemle", "flower": "🌼 Çiçek dik", "pond": "🐟 Gölet kur", "build": "🏗️ Kur", "coop": "🛖 Kümes kur", "plow": "⛏️ Sür", "tree": "🌳 Dik", "animal": "🐾 Yerleştir", "decor": "🎨 Yerleştir", "remove": "🗑️ Kaldır", "move": "🚚 Buraya taşı", "turn": "🔄 Döndür"}
 ## Yeni kariyerin başında temizlenecek yabani şeyler: [modeller, ölçek, altın, XP, yolu kapatır mı]
 const DEBRIS := {
 	"weed": [["Grass_Wispy_Tall.gltf", "Fern_1.gltf", "Plant_1_Big.gltf"], 1.5, 2, 1, false],
@@ -258,7 +260,7 @@ const STORY_PAGES := [
 const SHELF_COLS := 4
 const SHELF_PER_PAGE := 8
 const SHELF_TITLES := {"seed": "🌱 Tohumlar", "tree": "🌳 Meyve Ağaçları", "animal": "🐔 Hayvanlar", "decor": "🌷 Dekor", "garden": "🌼 Bahçe", "build": "🏗️ Yapılar"}
-const MARKER_COL := {"hand": "#ffffff", "plow": "#a1673f", "seed": "#8bc34a", "water": "#4fc3f7", "tree": "#2e7d32", "animal": "#ffca28", "decor": "#ce93d8", "garden": "#f48fb1", "build": "#a1887f", "remove": "#e53935"}
+const MARKER_COL := {"hand": "#ffffff", "plow": "#a1673f", "seed": "#8bc34a", "water": "#4fc3f7", "tree": "#2e7d32", "animal": "#ffca28", "decor": "#ce93d8", "garden": "#f48fb1", "build": "#a1887f", "remove": "#e53935", "move": "#64b5f6"}
 
 # ------------------------------------------------------------ durum
 var coins := 120
@@ -384,6 +386,13 @@ var net_players := {}       # peer -> {"name", "node", "parts", "tp", "ry", "mv"
 var net_applying := false   # uzaktan gelen işi uygularken
 var net_actor := 1
 var net_sync_t := 0.0
+var move_src = null   # Taşı aleti: seçilen nesnenin köşe karesi (Vector2i) ya da null
+var hold_ent = null   # bina üstünde sol tuş basılı: kısa tıklama mı, menü mü?
+var hold_tile := Vector2i.ZERO
+var hold_at := Vector2.ZERO
+var hold_t := 0.0
+var ctx_menu: PanelContainer
+var ctx_box: VBoxContainer
 var net_quest_dirty := false   # ev sahibi: görevler değişti, misafirlere hemen gönder
 var net_quest_t := 0.0
 var net_pos_t := 0.0
@@ -1798,7 +1807,137 @@ func _resolve(t: String, arg, x: int, z: int):
 			if e != null and e.kind == "building" and e.type == "barn" and _count_buildings("barn") <= 1 and _res_total() > 0:
 				return null   # son ambar doluyken yıkılmaz
 			return "remove" if e != null else null
+		"move":
+			var src = _move_entity_of(arg)
+			if src == null:
+				return null
+			var w := int(src.get("w", 1))
+			var d := int(src.get("d", 1))
+			if x == src.x and z == src.z:
+				return "turn"   # kendi yerine: 90° döndür
+			for i in w:
+				for j in d:
+					var o = tiles.get(key(x + i, z + j))
+					if not in_farm(x + i, z + j) or (o != null and o != src):
+						return null
+			return "move"
 	return null
+
+## Taşı aletinin argümanı "x,z" (seçilen nesnenin köşesi) → o nesne.
+func _move_entity_of(arg):
+	if arg == null or str(arg) == "":
+		return null
+	var a := str(arg).split(",")
+	if a.size() != 2:
+		return null
+	var e = tiles.get(key(int(a[0]), int(a[1])))
+	if e == null or e.kind == "debris":
+		return null
+	return e
+
+## Nesneyi kendi yerinde 90° döndürür (ağda ev sahibinden geçer).
+func _turn_entity(e) -> void:
+	if e != null and e.kind != "debris" and e.kind != "plot":
+		_perform({"tool": "move", "arg": "%d,%d" % [e.x, e.z], "x": e.x, "z": e.z})
+
+## Bina üstünde basılı tutunca: Döndür / Taşı / Kaldır.
+func _open_ctx(e) -> void:
+	if ctx_menu == null:
+		ctx_menu = _panel(10)
+		ctx_menu.mouse_filter = Control.MOUSE_FILTER_STOP
+		ui.add_child(ctx_menu)
+		ctx_box = VBoxContainer.new()
+		ctx_box.add_theme_constant_override("separation", 6)
+		ctx_menu.add_child(ctx_box)
+	for c in ctx_box.get_children():
+		ctx_box.remove_child(c)
+		c.queue_free()
+	var bd: Dictionary = Data.BUILDINGS.get(e.type, {"icon": "🏠", "name": str(e.type)})
+	var t := Label.new()
+	t.text = "%s %s" % [bd.icon, bd.name]
+	t.add_theme_font_size_override("font_size", 17)
+	ctx_box.add_child(t)
+	var ee = e
+	ctx_box.add_child(_small_btn("  🔄 Döndür  ", func():
+		_turn_entity(ee)))
+	ctx_box.add_child(_small_btn("  🚚 Taşı  ", func():
+		ctx_menu.visible = false
+		_set_tool("move")
+		_move_pick(ee)))
+	var can_rm := _resolve("remove", null, e.x, e.z) != null
+	ctx_box.add_child(_small_btn("  🗑️ Kaldır  +%d 🪙  " % _refund_of(e), func():
+		ctx_menu.visible = false
+		_perform({"tool": "remove", "arg": null, "x": ee.x, "z": ee.z}), can_rm))
+	if not can_rm:
+		var w := Label.new()
+		w.text = "📦 İçi dolu son ambar kaldırılamaz"
+		w.add_theme_font_size_override("font_size", 12)
+		w.add_theme_color_override("font_color", Color("#c62828"))
+		ctx_box.add_child(w)
+	ctx_menu.visible = true
+	ctx_menu.reset_size()
+	var vs := get_viewport().get_visible_rect().size
+	ctx_menu.position = Vector2(clampf(hold_at.x + 12, 8, vs.x - ctx_menu.size.x - 8), clampf(hold_at.y - 20, 8, vs.y - ctx_menu.size.y - 8))
+	_sfx("place")
+
+## Sol tuş bırakıldı ya da süre doldu: basılı tutma kararı.
+func _update_hold(dt: float) -> void:
+	if hold_ent == null:
+		return
+	if Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
+		hold_t += dt
+		if mouse_pos.distance_to(hold_at) > 16.0:
+			hold_ent = null   # sürükledi: vazgeç
+		elif hold_t >= 0.45:
+			var he = hold_ent
+			hold_ent = null
+			if tiles.get(key(he.x, he.z)) == he:
+				_open_ctx(he)
+		return
+	var hv := hold_tile
+	hold_ent = null
+	_click_tile(hv, hold_at)
+
+## Kareye normal tıklama (alete göre iş, ambar penceresi, yürüme).
+func _click_tile(hv: Vector2i, at: Vector2) -> void:
+	var he = tiles.get(key(hv.x, hv.y))
+	if he != null and he.kind == "building" and (he.type == "barn" or he.type == "silo") and tool != "remove" and tool != "build" and tool != "move":
+		_open_barn()
+		return
+	if _resolve(tool, _current_arg(), hv.x, hv.y) != null:
+		_enqueue(hv)
+	else:
+		_walk_to(_pick_point(at))
+		_explain_fail(_current_arg(), hv.x, hv.y)
+
+## Kaldırınca geri gelen altın: satın alma fiyatının yarısı.
+func _refund_of(e: Dictionary) -> int:
+	var def = null
+	match e.kind:
+		"tree": def = Data.TREES.get(e.type)
+		"animal": def = Data.ANIMALS.get(e.type)
+		"decor": def = Data.DECOR.get(e.type)
+		"flower": def = Data.FLOWERS.get(e.type)
+		"pond": def = Data.POND
+		"coop": def = Data.COOP
+		"building": def = Data.BUILDINGS.get(e.type)
+	if def == null:
+		return 0
+	return int(def.cost * 0.5)
+
+## Taşı aleti: nesneyi seç / bırak (seçilince hafifçe havalanır).
+func _move_pick(e) -> void:
+	if move_src != null:
+		var old = tiles.get(key(move_src.x, move_src.y))
+		if old != null and old.has("group") and is_instance_valid(old.group):
+			old.group.position.y = 0.0
+	move_src = null
+	if e == null:
+		return
+	move_src = Vector2i(e.x, e.z)
+	e.group.position.y = 0.35
+	_sfx("place")
+	_toast("🚚 Seçildi. Yeni yerine tıkla · kendisine tıkla ya da T: döndür · Esc: vazgeç", "hint")
 
 func _count_buildings(type: String) -> int:
 	var n := 0
@@ -1853,7 +1992,7 @@ func _perform_local(item: Dictionary) -> bool:
 		return false
 	var e = tiles.get(key(x, z))
 	var pos := tile_center(x, z)
-	if act != "remove":
+	if act != "remove" and act != "move" and act != "turn":
 		_act_anim(act, pos)
 	match act:
 		"plow":
@@ -2021,16 +2160,41 @@ func _perform_local(item: Dictionary) -> bool:
 			_burst(pos + Vector3(0, 0.3, 0), "#9e9e9e", 10, 2.5)
 			if e.kind == "building":
 				_recompute_boosts()
-			if def != null and def.cost >= 8:
-				var back := int(def.cost * 0.25)
+			var back := _refund_of(e)
+			if back > 0:
 				coins += back
 				hud_dirty = true
 				_float_text(pos, "+%d 🪙" % back, Color("#ffe066"))
 			_sfx("remove")
+		"turn":
+			var te = _move_entity_of(arg)
+			te.rot = fmod(float(te.rot) + PI / 2.0, TAU)
+			te.group.rotation.y = te.rot
+			_burst(te.group.position + Vector3(0, 0.4, 0), "#bbdefb", 6, 1.5)
+			_sfx("place")
+		"move":
+			var src = _move_entity_of(arg)
+			var d := _ent_base(_ent_dict(src))
+			if src.has("w"):
+				d.w = src.w
+				d.d = src.d
+			d.x = x
+			d.z = z
+			if move_src != null and move_src == Vector2i(src.x, src.z):
+				move_src = null
+			_remove_entity(src)
+			var ne := _add_entity(d)
+			var c: Vector3 = ne.group.position
+			_act_anim("plant", c)
+			_burst(c + Vector3(0, 0.3, 0), "#bbdefb", 12, 2.5)
+			if ne.kind == "building" or ne.get("type", "") == "scarecrow":
+				_recompute_boosts()
+			_sfx("place")
 	return true
 
 func _current_arg():
 	match tool:
+		"move": return "" if move_src == null else "%d,%d" % [move_src.x, move_src.y]
 		"hand", "seed": return sel.seed
 		"tree": return sel.tree
 		"animal": return sel.animal
@@ -2105,6 +2269,8 @@ func _explain_fail(arg, x: int, z: int) -> void:
 		return
 	if tool == "seed" and e == null:
 		_toast("⛏️ Önce Çapa ile toprağı sür (2)", "hint")
+	if tool == "move" and arg != null and arg != "":
+		_toast("🚚 Oraya sığmıyor: boş ve çiftlik içinde bir yer seç", "hint")
 
 func _clear_queue() -> void:
 	for q in queue:
@@ -2623,6 +2789,9 @@ func _unhandled_input(ev: InputEvent) -> void:
 					shelf_open = false
 					_render_shelf()
 					return
+				if ctx_menu != null and ctx_menu.visible:
+					ctx_menu.visible = false
+					return
 				painting = true
 				drag_moved = false
 				hover = _pick(ev.position)
@@ -2631,16 +2800,33 @@ func _unhandled_input(ev: InputEvent) -> void:
 						_toast("🗺️ Burası çiftliğin dışı. Genişletmek için üstteki 🗺️ Arazi düğmesi.", "hint")
 					_walk_to(_pick_point(ev.position))
 					return
+				if hover != null and tool == "move":
+					painting = false
+					var me = tiles.get(key(hover.x, hover.y))
+					if move_src == null:
+						if me != null and me.kind != "debris":
+							_move_pick(me)
+						return
+					if me != null and Vector2i(me.x, me.z) == move_src:
+						_turn_entity(me)   # seçili nesneye yeniden tıkla: döndür
+						return
+					if _resolve("move", _current_arg(), hover.x, hover.y) != null:
+						_enqueue(hover)
+						move_src = null   # nesne, çiftçi varınca taşınır
+					else:
+						_explain_fail(_current_arg(), hover.x, hover.y)
+					return
 				if hover != null:
 					var he = tiles.get(key(hover.x, hover.y))
-					if he != null and he.kind == "building" and (he.type == "barn" or he.type == "silo") and tool != "remove" and tool != "build":
-						_open_barn()
+					if he != null and he.kind == "building":
+						# kısa tıklama bırakınca işlenir; basılı tutulursa menü açılır
+						painting = false
+						hold_ent = he
+						hold_tile = hover
+						hold_at = ev.position
+						hold_t = 0.0
 						return
-					if _resolve(tool, _current_arg(), hover.x, hover.y) != null:
-						_enqueue(hover)
-					else:
-						_walk_to(_pick_point(ev.position))
-						_explain_fail(_current_arg(), hover.x, hover.y)
+					_click_tile(hover, ev.position)
 			MOUSE_BUTTON_RIGHT:
 				rotating = true
 			MOUSE_BUTTON_MIDDLE:
@@ -2655,12 +2841,25 @@ func _unhandled_input(ev: InputEvent) -> void:
 			_set_tool(TOOLS[k - KEY_1].id, TOOLS[k - KEY_1].id != "hand")
 		elif k == KEY_0 and TOOLS.size() >= 10:
 			_set_tool(TOOLS[9].id, false)
+		elif k == KEY_MINUS and TOOLS.size() >= 11:
+			_set_tool(TOOLS[10].id, false)
 		elif k == KEY_TAB:
 			if wheel.visible:
 				_close_wheel()
 			else:
 				_open_wheel(mouse_pos)
+		elif k == KEY_T:
+			if move_src != null:
+				_turn_entity(tiles.get(key(move_src.x, move_src.y)))
+			elif hover != null:
+				_turn_entity(tiles.get(key(hover.x, hover.y)))
 		elif k == KEY_ESCAPE:
+			if ctx_menu != null and ctx_menu.visible:
+				ctx_menu.visible = false
+				return
+			if move_src != null:
+				_move_pick(null)
+				return
 			if wheel.visible:
 				_close_wheel()
 				return
@@ -2714,7 +2913,13 @@ func _update_cursor() -> void:
 	var e = tiles.get(key(x, z))
 	var c := tile_center(x, z)
 	var s := Vector3.ONE
-	if e != null and e.has("w"):
+	var msrc = _move_entity_of(arg) if tool == "move" else null
+	if msrc != null:
+		var mw := int(msrc.get("w", 1))
+		var md := int(msrc.get("d", 1))
+		c = Vector3(x + mw / 2.0, 0, z + md / 2.0)
+		s = Vector3(mw, 1, md)
+	elif e != null and e.has("w"):
 		c = Vector3(e.x + e.w / 2.0, 0, e.z + e.d / 2.0)
 		s = Vector3(e.w, 1, e.d)
 	elif e == null and tool == "garden" and arg == "pond":
@@ -2821,6 +3026,7 @@ func _describe(e, act, arg, x: int, z: int) -> String:
 				s = "%s %s\n%s" % [bd.icon, bd.name, bd.info]
 				if e.type == "barn" or e.type == "silo":
 					s += "\n📦 %d / %d" % [_res_total(), _barn_cap()]
+				s += "\n🖱️ Basılı tut: döndür · taşı · kaldır"
 	if act != null:
 		var extra := ""
 		match act:
@@ -2833,6 +3039,7 @@ func _describe(e, act, arg, x: int, z: int) -> String:
 			"tree": extra = " %s  -%d🪙" % [Data.TREES[arg].icon, Data.TREES[arg].cost]
 			"animal": extra = " %s  -%d🪙" % [Data.ANIMALS[arg].icon, Data.ANIMALS[arg].cost]
 			"decor": extra = " %s  -%d🪙" % [Data.DECOR[arg].icon, Data.DECOR[arg].cost]
+			"remove": extra = ("  +%d🪙" % _refund_of(e)) if e != null and _refund_of(e) > 0 else ""
 		s += ("\n" if s != "" else "") + "👉 " + ACT_TXT[act] + extra
 	return s
 
@@ -3807,8 +4014,21 @@ func _local_ips() -> Array:
 	var out := []
 	for a in IP.get_local_addresses():
 		if a.contains(".") and not a.begins_with("127.") and not a.begins_with("169.254."):
-			out.append(a)
+			out.append(a + _ip_kind(a))
 	return out
+
+## Adresin hangi ağa ait olduğu (sanal ağ adresleri arkadaşa verilecek olanlardır).
+static func _ip_kind(a: String) -> String:
+	var p := a.split(".")
+	var b0 := int(p[0])
+	var b1 := int(p[1]) if p.size() > 1 else 0
+	if b0 == 25:
+		return "   ← Hamachi"
+	if b0 == 100 and b1 >= 64 and b1 <= 127:
+		return "   ← Tailscale"
+	if b0 == 192 and b1 == 168 or b0 == 10 or (b0 == 172 and b1 >= 16 and b1 <= 31):
+		return "   (ev ağı)"
+	return ""
 
 func _net_host() -> void:
 	var peer := ENetMultiplayerPeer.new()
@@ -3871,7 +4091,8 @@ func _on_net_connected() -> void:
 func _on_net_failed() -> void:
 	_net_close()
 	if net_status != null:
-		net_status.text = "❌ Bağlanılamadı. Adresi ve arkadaşının 📡 paylaşımını kontrol et."
+		net_status.text = "❌ Bağlanılamadı. Adresi ve arkadaşının 📡 paylaşımını kontrol et.
+Hamachi/sanal ağ kullanıyorsanız: çiftlik sahibinin bilgisayarında Windows Güvenlik Duvarı oyuna o ağda izin vermeli (Hamachi ağını \"Özel\" yapın)."
 
 func _on_server_lost() -> void:
 	if net_role == "guest":
@@ -4164,7 +4385,9 @@ func _render_net_dlg() -> void:
 	b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	if net_role == "host":
 		var ips := _local_ips()
-		b.text = "Arkadaşın ana menüde 🤝 Arkadaşa Katıl'a basıp şu adresi yazsın:\n\n   %s\n\nAynı ağda (ev Wi-Fi'ı) doğrudan çalışır. İnternetten oynamak için modemde %d (UDP) portunu aç ya da ikiniz de Tailscale/ZeroTier gibi bir sanal ağ kullanın." % [("\n   ".join(ips)) if ips.size() > 0 else "(ağ bulunamadı)", NET_PORT]
+		b.text = "Arkadaşın ana menüde 🤝 Arkadaşa Katıl'a basıp şu adresi yazsın:\n\n   %s\n\nAynı ağda (ev Wi-Fi'ı) ev ağı adresiyle çalışır. Uzaktan: ikiniz de Hamachi/Tailscale/ZeroTier'a girin ve arkadaşın sanal ağ adresini yazsın; ya da modemde %d (UDP) portunu açın.
+
+Bağlanamıyorsa: bu bilgisayarda Windows Güvenlik Duvarı oyuna yalnız \"Özel\" ağlarda izin veriyor olabilir; Hamachi ağını Özel yapın." % [("\n   ".join(ips)) if ips.size() > 0 else "(ağ bulunamadı)", NET_PORT]
 	else:
 		b.text = "Çiftlik sahibinin dünyasındasın. Ekip biçebilir, sulayabilir, yemleyebilirsin; ambar ve arazi alımı sahibinde."
 	net_box.add_child(b)
@@ -4690,6 +4913,8 @@ func _delete_slot(n: int) -> void:
 	_render_menu("list")
 
 func _set_tool(id: String, open := false) -> void:
+	if id != "move" and move_src != null:
+		_move_pick(null)
 	tool = id
 	shelf_open = open and _shelf_key_of(id) != ""
 	for k in tool_buttons:
@@ -5120,6 +5345,7 @@ func _process(delta: float) -> void:
 		return
 	if painting and not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
 		painting = false
+	_update_hold(dt)
 	sim_acc += dt
 	if sim_acc > 0.1:
 		_simulate(sim_acc)
@@ -5157,6 +5383,12 @@ func _process(delta: float) -> void:
 					_set_tool(a.substr(7), true)
 				elif a == "--wheel":
 					_open_wheel(Vector2(640, 380))
+				elif a == "--ctx":   # geliştirici: ambarın basılı tut menüsü
+					for e in entities:
+						if e.kind == "building" and e.type == "barn":
+							hold_at = Vector2(640, 300)
+							_open_ctx(e)
+							break
 		for a in OS.get_cmdline_user_args():
 			if a.begins_with("--act=") and shot_t > 3.45 and shot_t - delta <= 3.45:
 				farmer.rotation.y = 0.0
@@ -5470,7 +5702,27 @@ func _selftest_build(fails: Array) -> void:
 		_perform({"x": ps.x, "z": ps.y, "tool": "plow", "arg": null})
 		var pe = tiles.get(key(ps.x, ps.y))
 		if pe == null or not pe.get("wn", false): fails.append("kuyu bonusu")
+	# taşı: ambar bir kare kayar (kendi yerine taşabilir), dolu yere gitmez
+	if _free_area(sp.x + 4, sp.y, 1, 4):
+		var c1 := coins
+		if not _perform({"x": sp.x + 1, "z": sp.y, "tool": "move", "arg": "%d,%d" % [sp.x, sp.y]}): fails.append("ambar taşıma")
+		var mb = tiles.get(key(sp.x + 4, sp.y))
+		if mb == null or mb.type != "barn" or tiles.has(key(sp.x, sp.y)) or coins != c1: fails.append("ambar yeni yerinde değil")
+		if not _perform({"x": sp.x, "z": sp.y, "tool": "move", "arg": "%d,%d" % [sp.x + 1, sp.y]}): fails.append("ambarı geri taşıma")
+	var wl = tiles.get(key(ws.x, ws.y))
+	if wl != null and wl.get("type", "") == "well" and _resolve("move", "%d,%d" % [sp.x, sp.y], ws.x, ws.y) != null: fails.append("dolu yere taşıma")
+	var tb = tiles.get(key(sp.x, sp.y))
+	var r0: float = tb.rot
+	_turn_entity(tb)
+	if absf(fmod(tb.rot - r0 + TAU, TAU) - PI / 2.0) > 0.01 or tiles.get(key(sp.x, sp.y)) != tb: fails.append("döndürme")
+	hold_at = Vector2(300, 300)
+	_open_ctx(tb)
+	if ctx_menu == null or not ctx_menu.visible or ctx_box.get_child_count() < 4: fails.append("basılı tut menüsü")
+	ctx_menu.visible = false
+	var rb := _refund_of(tiles.get(key(sp.x, sp.y)))
+	var c2 := coins
 	if not _perform({"x": sp.x, "z": sp.y, "tool": "remove", "arg": null}) or _count_buildings("barn") != b0: fails.append("bina kaldırma")
+	if rb != Data.BUILDINGS.barn.cost / 2 or coins != c2 + rb: fails.append("yarı fiyat iade")
 	var we = tiles.get(key(ws.x, ws.y))
 	if we != null:
 		_remove_entity(we)
