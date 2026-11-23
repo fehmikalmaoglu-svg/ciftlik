@@ -10,7 +10,7 @@ Kaynak: Farm Together Wiki, *Game Basics* ve *Crops* sayfaları (okundu: 23.11.2
 | Ekin/ağaç/hayvan zamanlayıcıları, sulama | ✓ | ✓ (sulama tek seferlik) |
 | Çevrimdışı büyüme | ✓ | ✓ (6 saate kadar) |
 | Tıklanan yere yürüme | ✓ | ✓ (bu sürümde eklendi) |
-| Kaynak envanteri (sebze, tahıl, meyve, süt, yumurta, kumaş…) | ✓ | ✗ |
+| Kaynak envanteri (sebze, tahıl, meyve, süt, yumurta, kumaş…) | ✓ | ✓ Aşama 1 (ambar, satış, sipariş, madalya) |
 | Mevsimler + hava (yağmur, kuraklık, kar) | ✓ 17 dk'da bir | ✗ |
 | Hayvan yemleme, ağıl (bitişik aynı tür yemi paylaşır), hayvan seviyesi | ✓ | ✗ |
 | Çiçekler (sulanınca çok daha fazla kazanç, seviye) | ✓ | ✗ |
@@ -25,7 +25,7 @@ Kaynak: Farm Together Wiki, *Game Basics* ve *Crops* sayfaları (okundu: 23.11.2
 
 Her aşama kendi içinde oynanabilir biter; sonunda `--selftest` genişletilir ve commit edilir.
 
-### 1. Ekonomi temeli: kaynaklar ve satış
+### 1. Ekonomi temeli: kaynaklar ve satış ✅ (tamamlandı)
 - Hasat altının yanında **kaynak** da verir: sebze, tahıl, meyve, yumurta, süt, yün, çiçek, balık.
 - Ambar ekranı: kaynakları gör, sat. İkinci para birimi **madalya** (işlenmiş ürünlerden ve görevlerden).
 - `data.gd`'ye her ekin/hayvan için `resource` alanı.
@@ -61,7 +61,8 @@ Her aşama kendi içinde oynanabilir biter; sonunda `--selftest` genişletilir v
 - **Traktör**: binince 3×3 alanı tek seferde sürer/eker/sular. **Fıskiye**: çevresini otomatik sular.
 - Ev içi: mobilya kur, çok adımlı **işler** yap, **bilet** kazan; biletle dekor ve yardımcı işçi.
 
-### 9. Görsel yenileme (CC0 asset'ler)
+### 9. Görsel yenileme (CC0 asset'ler) — kısmen ✅
+- Yapıldı: ekinler (4 aşama), elma/portakal ağaçları, inek/domuz/koyun (animasyonlu), kaya/çalı, çevre ormanı. Tavuk, kiraz, ayçiçeği pakette yok → prosedürel.
 - Ağaç, kaya, çit, çalı, çiçek: [Kenney Nature Kit](https://kenney.nl/assets/nature-kit) (CC0, 330 dosya).
 - Animasyonlu hayvanlar: [Quaternius LowPoly Animated Animals](https://quaternius.itch.io/lowpoly-animated-animals) / [OpenGameArt](https://opengameart.org/content/lowpoly-animated-farm-animal-pack) (CC0, idle/yürüme/koşma).
 - 5 büyüme aşamalı ekinler: [Quaternius LowPoly Crops](https://opengameart.org/node/126983) (CC0, 100+ model).

@@ -33,6 +33,9 @@ var day := 1
 var tool := "hand"
 var sel := {"seed": "wheat", "tree": "apple", "animal": "chicken", "decor": "path"}
 var muted := false
+var medals := 0
+var res := {}            # kaynak -> adet
+var order := {}          # {"need": {kaynak: adet}, "medals", "xp", "coins"}
 
 var tiles := {}          # Vector2i -> entity (Dictionary)
 var entities: Array = []
@@ -85,6 +88,9 @@ var lbl_level: Label
 var lbl_xp: Label
 var bar_xp: ProgressBar
 var lbl_coins: Label
+var lbl_medals: Label
+var barn: Control
+var barn_box: VBoxContainer
 var lbl_clock: Label
 var lbl_queue: Label
 var shelf_panel: PanelContainer
@@ -165,6 +171,12 @@ func _ready() -> void:
 			help.visible = true
 	if args.has("--night"):
 		day_time = 0.88
+	if args.has("--demo"):
+		_demo()
+	if args.has("--barn"):
+		res = {"cereal": 24, "veg": 13, "fruit": 9, "milk": 6}
+		order = {"need": {"veg": 10, "cereal": 30}, "medals": 3, "xp": 41, "coins": 240}
+		_open_barn()
 	if args.has("--selftest"):
 		_selftest()
 	_set_tool(tool)
@@ -328,7 +340,6 @@ func _tri(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, col: Color) -> vo
 func _build_surroundings() -> void:
 	var r := RandomNumberGenerator.new()
 	r.seed = 42
-	var greens := ["#4caf50", "#66bb6a", "#43a047", "#7cb342"]
 	for i in 260:
 		var x := (r.randf() - 0.5) * 110.0
 		var z := (r.randf() - 0.5) * 110.0
@@ -343,11 +354,11 @@ func _build_surroundings() -> void:
 		var k := r.randf()
 		var t: Node3D
 		if k < 0.45:
-			t = Models.pine(0.9 + r.randf() * 0.9)
+			t = Visuals.scenery(0, 0.9 + r.randf() * 0.9, r.randf())
 		elif k < 0.8:
-			t = Models.round_tree(0.9 + r.randf() * 0.7, greens[r.randi() % 4])
+			t = Visuals.scenery(1, 0.9 + r.randf() * 0.7, r.randf())
 		else:
-			t = Models.decor("rock")
+			t = Visuals.scenery(2, 0.8 + r.randf() * 0.6, r.randf())
 		t.position = Vector3(x, height_at(x, z) - 0.05, z)
 		t.rotation.y = r.randf() * TAU
 		add_child(t)
@@ -539,18 +550,18 @@ func _refresh(e: Dictionary) -> void:
 			g.add_child(Models.soil(e.watered and e.crop != null and e.progress < 1.0))
 			if e.crop != null:
 				e.stage = crop_stage(e)
-				g.add_child(Models.crop(e.crop, e.stage))
+				g.add_child(Visuals.crop(e.crop, e.stage))
 		"tree":
-			g.add_child(Models.tree(e.type, e.age >= 1.0, e.has_fruit))
+			g.add_child(Visuals.tree(e.type, e.age >= 1.0, e.has_fruit))
 		"animal":
-			e.model = Models.animal(e.type)
+			e.model = Visuals.animal(e.type)
 			g.add_child(e.model)
 			e.icon = Models.product(e.type)
 			e.icon.position.y = 1.35
 			e.icon.visible = e.ready
 			g.add_child(e.icon)
 		"decor":
-			g.add_child(Models.decor(e.type, {"n": _is_fence(e.x, e.z - 1), "s": _is_fence(e.x, e.z + 1), "e": _is_fence(e.x + 1, e.z), "w": _is_fence(e.x - 1, e.z)}))
+			g.add_child(Visuals.decor(e.type, {"n": _is_fence(e.x, e.z - 1), "s": _is_fence(e.x, e.z + 1), "e": _is_fence(e.x + 1, e.z), "w": _is_fence(e.x - 1, e.z)}))
 		"building":
 			g.add_child(Models.building(e.type))
 
@@ -696,13 +707,15 @@ func _perform(item: Dictionary) -> bool:
 			_sfx("water")
 		"harvest":
 			if e.kind == "plot":
-				var c = Data.CROPS[e.crop]
+				var ck: String = e.crop
+				var c = Data.CROPS[ck]
 				_burst(pos + Vector3(0, 0.4, 0), c.color, 12, 3.5)
 				e.crop = null
 				e.progress = 0.0
 				e.watered = false
 				_refresh(e)
 				_gain(c.sell, c.xp, pos, c.icon)
+				_store(ck, pos)
 			elif e.kind == "tree":
 				var t = Data.TREES[e.type]
 				e.has_fruit = false
@@ -710,6 +723,7 @@ func _perform(item: Dictionary) -> bool:
 				_refresh(e)
 				_burst(pos + Vector3(0, 1.2, 0), t.fruit, 14, 3.0)
 				_gain(t.sell, t.xp, pos, t.icon)
+				_store(e.type, pos)
 			elif e.kind == "animal":
 				var a = Data.ANIMALS[e.type]
 				e.ready = false
@@ -717,6 +731,7 @@ func _perform(item: Dictionary) -> bool:
 				e.icon.visible = false
 				_burst(pos + Vector3(0, 1.0, 0), a.color, 10, 3.0)
 				_gain(a.sell, a.xp, pos, a.picon)
+				_store(e.type, pos)
 			_sfx("harvest")
 		"tree":
 			var t = Data.TREES[arg]
@@ -943,6 +958,10 @@ func _unhandled_input(ev: InputEvent) -> void:
 				drag_moved = false
 				hover = _pick(ev.position)
 				if hover != null:
+					var he = tiles.get(key(hover.x, hover.y))
+					if he != null and he.kind == "building" and (he.type == "barn" or he.type == "silo"):
+						_open_barn()
+						return
 					if _resolve(tool, _current_arg(), hover.x, hover.y) != null:
 						_enqueue(hover)
 					else:
@@ -961,6 +980,12 @@ func _unhandled_input(ev: InputEvent) -> void:
 		elif k == KEY_ESCAPE:
 			_clear_queue()
 			help.visible = false
+			barn.visible = false
+		elif k == KEY_B:
+			if barn.visible:
+				barn.visible = false
+			else:
+				_open_barn()
 
 func _update_hover() -> void:
 	var over_ui := get_viewport().gui_get_hovered_control() != null
@@ -1256,7 +1281,7 @@ func _animate_world(dt: float) -> void:
 			continue
 		var w = e.wander
 		var m: Node3D = e.model
-		var head = m.get_meta("head", null)
+		var head = m.get_meta("head") if m.has_meta("head") else null
 		if w.wait > 0.0:
 			w.wait -= dt
 			if head != null:
@@ -1264,12 +1289,14 @@ func _animate_world(dt: float) -> void:
 			if w.wait <= 0.0:
 				w.tx = randf_range(-0.35, 0.35)
 				w.tz = randf_range(-0.35, 0.35)
+				_animal_anim(m, true)
 		else:
 			var dx: float = w.tx - w.x
 			var dz: float = w.tz - w.z
 			var d := Vector2(dx, dz).length()
 			if d < 0.02:
 				w.wait = 1.0 + randf() * 3.0
+				_animal_anim(m, false)
 			else:
 				var s := minf(d, dt * 0.45)
 				w.x += dx / d * s
@@ -1281,6 +1308,15 @@ func _animate_world(dt: float) -> void:
 		if e.ready:
 			e.icon.position.y = 1.35 + sin(clock_t * 3.0 + w.phase) * 0.08
 			e.icon.rotation.y += dt * 1.5
+
+func _animal_anim(m: Node3D, walking: bool) -> void:
+	if not m.has_meta("anim"):
+		return
+	var ap: AnimationPlayer = m.get_meta("anim")
+	var walk: String = m.get_meta("walk", "")
+	var target: String = walk if walking and walk != "" else m.get_meta("idle", "")
+	if target != "" and ap.current_animation != target:
+		ap.play(target, 0.25)
 
 # ============================================================ arayüz
 func _sb(bg: Color, r := 16, border := Color(0, 0, 0, 0), bw := 0, pad := 8) -> StyleBoxFlat:
@@ -1378,6 +1414,10 @@ func _build_ui() -> void:
 	lbl_coins.add_theme_font_size_override("font_size", 21)
 	lbl_coins.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	sh.add_child(lbl_coins)
+	lbl_medals = Label.new()
+	lbl_medals.add_theme_font_size_override("font_size", 21)
+	lbl_medals.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	sh.add_child(lbl_medals)
 
 	var clockp := _panel(12)
 	top.add_child(clockp)
@@ -1398,6 +1438,9 @@ func _build_ui() -> void:
 		muted = not muted
 		btn_sound.text = "🔇" if muted else "🔊")
 	ah.add_child(btn_sound)
+	var bb := _icon_btn("📦", "Ambar  [B]")
+	bb.pressed.connect(_open_barn)
+	ah.add_child(bb)
 	var bh := _icon_btn("❔", "Yardım")
 	bh.pressed.connect(func(): help.visible = not help.visible)
 	ah.add_child(bh)
@@ -1495,7 +1538,7 @@ func _build_ui() -> void:
 	var body := Label.new()
 	body.custom_minimum_size = Vector2(520, 0)
 	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	body.text = "Toprağı sür, tohum ek, sula, hasat et; altınla ağaç, hayvan ve dekor al. Seviye atladıkça yeni ekinler açılır.\n\n• Sol tık / sürükle — seçili aleti karelere uygula (çiftçi sırayla yapar)\n• Sağ tık sürükle veya Q / E — kamerayı döndür · Tekerlek — yakınlaştır\n• WASD / oklar — çiftçiyi yürüt · 1–8 — alet seç · Esc — iş sırasını iptal et\n• ✋ El akıllıdır: boş tarlaya seçili tohumu eker, susuzu sular, hazırı toplar.\n• 💧 Sulanan ekin 2× hızlı büyür · 🧑‍🌾 Korkuluk çevresine +%25 hız verir.\n• Oyun otomatik kaydedilir; sen yokken de çiftlik büyür."
+	body.text = "Toprağı sür, tohum ek, sula, hasat et; altınla ağaç, hayvan ve dekor al. Seviye atladıkça yeni ekinler açılır.\n\n• Sol tık / sürükle — seçili aleti karelere uygula (çiftçi sırayla yapar)\n• Sağ tık sürükle veya Q / E — kamerayı döndür · Tekerlek — yakınlaştır\n• Boş yere tıkla — çiftçi oraya yürür · WASD / oklar — yürüt\n• 1–8 — alet seç · B — 📦 Ambar (kaynak sat, sipariş teslim et) · Esc — iptal\n• ✋ El akıllıdır: boş tarlaya seçili tohumu eker, susuzu sular, hazırı toplar.\n• 💧 Sulanan ekin 2× hızlı büyür · 🧑‍🌾 Korkuluk çevresine +%25 hız verir.\n• Oyun otomatik kaydedilir; sen yokken de çiftlik büyür."
 	hv.add_child(body)
 	var go := Button.new()
 	go.text = "Başlayalım!"
@@ -1510,6 +1553,7 @@ func _build_ui() -> void:
 	go.pressed.connect(func(): help.visible = false)
 	hv.add_child(go)
 	help.visible = false
+	_build_barn_ui()
 
 func _icon_btn(icon: String, tip: String) -> Button:
 	var b := Button.new()
@@ -1607,6 +1651,7 @@ func _update_hud(dt: float) -> void:
 	hud_dirty = false
 	var need := Data.xp_for_level(level)
 	lbl_level.text = str(level)
+	lbl_medals.text = "🏅 %d" % medals
 	lbl_xp.text = "Seviye · %d / %d XP" % [xp, need]
 	bar_xp.max_value = need
 	bar_xp.value = xp
@@ -1633,7 +1678,7 @@ func _save() -> void:
 				s.at = e.t
 				s.rd = e.ready
 		ents.append(s)
-	var data := {"v": 1, "coins": coins, "xp": xp, "level": level, "day_time": day_time, "day": day, "sel": sel, "muted": muted,
+	var data := {"v": 1, "medals": medals, "res": res, "order": order, "coins": coins, "xp": xp, "level": level, "day_time": day_time, "day": day, "sel": sel, "muted": muted,
 		"saved_at": Time.get_unix_time_from_system(), "ents": ents, "fx": farmer.position.x, "fz": farmer.position.z}
 	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if f:
@@ -1651,6 +1696,17 @@ func _load() -> bool:
 	day_time = float(data.day_time)
 	day = int(data.get("day", 1))
 	muted = bool(data.get("muted", false))
+	medals = int(data.get("medals", 0))
+	res = {}
+	for k in data.get("res", {}):
+		res[k] = int(data.res[k])
+	order = {}
+	var od = data.get("order", {})
+	if typeof(od) == TYPE_DICTIONARY and od.has("need"):
+		var need := {}
+		for k in od.need:
+			need[k] = int(od.need[k])
+		order = {"need": need, "medals": int(od.medals), "xp": int(od.xp), "coins": int(od.coins)}
 	for k in data.get("sel", {}):
 		sel[k] = data.sel[k]
 	for s in data.ents:
@@ -1675,6 +1731,8 @@ func _load() -> bool:
 				base.ready = bool(s.get("rd", false))
 		_add_entity(base)
 	_recompute_boosts()
+	if order.is_empty():
+		_new_order()
 	farmer.position = Vector3(float(data.get("fx", 0.5)), 0, float(data.get("fz", 9.0)))
 	cam_target = farmer.position
 	btn_sound.text = "🔇" if muted else "🔊"
@@ -1712,6 +1770,7 @@ func _new_game() -> void:
 		_add_entity({"kind": "decor", "type": "fence", "x": -3, "z": z})
 	_add_entity({"kind": "tree", "type": "apple", "x": -6, "z": -3, "age": 1.0, "fruit_t": 0.0, "has_fruit": true})
 	_add_entity({"kind": "tree", "type": "apple", "x": -3, "z": -3, "age": 0.4, "fruit_t": 0.0, "has_fruit": false})
+	_new_order()
 	for d in [["flowers", -11, -7], ["flowers", -11, -6], ["lantern", -2, 10], ["lantern", 1, 10], ["lantern", -3, -5], ["bush", 10, 9], ["hay", 5, -6], ["rock", 9, 6]]:
 		_add_entity({"kind": "decor", "type": d[0], "x": d[1], "z": d[2]})
 	_recompute_boosts()
@@ -1780,6 +1839,26 @@ func _selftest() -> void:
 	for i in 200:
 		_update_farmer(0.05)
 	if _blocked(farmer.position): fails.append("binanın içine girdi")
+	# Aşama 1: kaynak, satış, sipariş
+	res = {}
+	medals = 0
+	var tree_e = tiles[key(9, 5)]
+	tree_e.age = 1.0
+	tree_e.has_fruit = true
+	coins = 100
+	var c1 := coins
+	if not _perform({"x": 9, "z": 5, "tool": "hand", "arg": "wheat"}): fails.append("meyve hasadı")
+	if res.get("fruit", 0) != 5: fails.append("kiraz kaynağı %s" % res)
+	_sell("fruit", 2)
+	if res.fruit != 3 or coins != c1 + 95 + 12: fails.append("satış altını %d" % coins)
+	order = {"need": {"fruit": 3}, "medals": 2, "xp": 10, "coins": 30}
+	_deliver()
+	if medals != 2 or res.fruit != 0: fails.append("sipariş teslimi")
+	if order.is_empty(): fails.append("yeni sipariş oluşmadı")
+	res = {"veg": Data.BARN_CAP - 1}
+	_store("pumpkin", Vector3.ZERO)
+	if _res_total() != Data.BARN_CAP: fails.append("ambar kapasitesi %d" % _res_total())
+	res = {}
 	var n_before := entities.size()
 	_save()
 	var data = JSON.parse_string(FileAccess.get_file_as_string(SAVE_PATH))
@@ -1787,3 +1866,225 @@ func _selftest() -> void:
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(SAVE_PATH))
 	print("SELFTEST ", "OK" if fails.is_empty() else "FAIL: " + ", ".join(fails))
 	get_tree().quit()
+
+## --demo: ekran görüntüleri için her türden örnek yerleştirir.
+func _demo() -> void:
+	coins = 5000
+	level = 6
+	var crops := ["wheat", "carrot", "tomato", "corn", "sunflower", "pumpkin"]
+	for i in crops.size():
+		for st in 4:
+			var x := 2 + st
+			var z := -5 + i
+			if tiles.has(key(x, z)):
+				continue
+			_add_entity({"kind": "plot", "x": x, "z": z, "crop": crops[i], "progress": [0.0, 0.4, 0.75, 1.0][st], "watered": st < 3})
+	var an := [["cow", 8, 2], ["pig", 9, 3], ["sheep", 10, 2], ["cow", 10, 4]]
+	for a in an:
+		_add_entity({"kind": "animal", "type": a[0], "x": a[1], "z": a[2], "ready": a[1] == 9})
+	var tr := [["apple", -6, 7, 1.0, true], ["orange", -4, 7, 1.0, true], ["cherry", -2, 7, 1.0, true], ["apple", -6, 9, 1.0, false], ["orange", -4, 9, 0.3, false]]
+	for t in tr:
+		if not tiles.has(key(t[1], t[2])):
+			_add_entity({"kind": "tree", "type": t[0], "x": t[1], "z": t[2], "age": t[3], "fruit_t": 0.0, "has_fruit": t[4]})
+	farmer.position = Vector3(6.5, 0, 1.5)
+	cam_target = farmer.position
+	cam_dist = 11.0
+
+# ============================================================ ambar, satış, sipariş (Aşama 1)
+func _res_total() -> int:
+	var t := 0
+	for k in res:
+		t += res[k]
+	return t
+
+## Hasadın kaynağını ambara koyar; yer yoksa sığdığı kadarını.
+func _store(src: String, pos: Vector3) -> void:
+	if not Data.YIELD.has(src):
+		return
+	var r: String = Data.YIELD[src][0]
+	var amt: int = Data.YIELD[src][1]
+	var add := mini(amt, Data.BARN_CAP - _res_total())
+	if add > 0:
+		res[r] = res.get(r, 0) + add
+		_float_text(pos + Vector3(0.35, -0.15, 0), "+%d %s" % [add, Data.RESOURCES[r].icon], Color("#e6f7ff"))
+	if add < amt:
+		_toast("📦 Ambar dolu! B ile aç, kaynak sat.", "warn")
+	if barn.visible:
+		_render_barn()
+
+func _sell(r: String, n: int) -> void:
+	n = mini(n, res.get(r, 0))
+	if n <= 0:
+		return
+	res[r] -= n
+	var gain_c: int = n * Data.RESOURCES[r].price
+	coins += gain_c
+	hud_dirty = true
+	_sfx("harvest")
+	_toast("💰 %d %s satıldı: +%d 🪙" % [n, Data.RESOURCES[r].icon, gain_c])
+	_render_barn()
+
+## Oyuncunun seviyesinde üretebildiği kaynaklardan rastgele bir sipariş.
+func _new_order() -> void:
+	var avail := []
+	for list in [Data.CROPS, Data.TREES, Data.ANIMALS]:
+		for k in list:
+			if list[k].level <= level and Data.YIELD.has(k):
+				var r: String = Data.YIELD[k][0]
+				if not avail.has(r):
+					avail.append(r)
+	avail.shuffle()
+	var need := {}
+	var value := 0
+	for i in mini(2, avail.size()):
+		var n := randi_range(4, 8) + level * 2
+		need[avail[i]] = n
+		value += n * int(Data.RESOURCES[avail[i]].price)
+	order = {"need": need, "medals": maxi(1, value / 40), "xp": maxi(5, value / 4), "coins": int(value * 1.5)}
+
+func _can_deliver() -> bool:
+	if order.is_empty():
+		return false
+	for r in order.need:
+		if res.get(r, 0) < order.need[r]:
+			return false
+	return true
+
+func _deliver() -> void:
+	if not _can_deliver():
+		return
+	for r in order.need:
+		res[r] -= order.need[r]
+	medals += order.medals
+	var got: int = order.medals
+	_gain(order.coins, order.xp, farmer.position, "🏅")
+	_new_order()
+	_toast("📋 Sipariş teslim edildi! +%d 🏅" % got, "level")
+	hud_dirty = true
+	_render_barn()
+
+func _open_barn() -> void:
+	help.visible = false
+	barn.visible = true
+	_render_barn()
+
+func _build_barn_ui() -> void:
+	barn = ColorRect.new()
+	barn.color = Color(0.12, 0.2, 0.08, 0.35)
+	barn.set_anchors_preset(Control.PRESET_FULL_RECT)
+	barn.mouse_filter = Control.MOUSE_FILTER_STOP
+	ui.add_child(barn)
+	var cc := CenterContainer.new()
+	cc.set_anchors_preset(Control.PRESET_FULL_RECT)
+	barn.add_child(cc)
+	var p := _panel(20)
+	p.custom_minimum_size = Vector2(580, 0)
+	cc.add_child(p)
+	barn_box = VBoxContainer.new()
+	barn_box.add_theme_constant_override("separation", 8)
+	p.add_child(barn_box)
+	barn.visible = false
+
+func _small_btn(text: String, cb: Callable, enabled := true, primary := false) -> Button:
+	var b := Button.new()
+	b.text = text
+	b.focus_mode = Control.FOCUS_NONE
+	b.custom_minimum_size = Vector2(0, 32)
+	b.disabled = not enabled
+	if primary:
+		_btn_styles(b, Color("#6fbf3b"), Color("#7fcf4b"))
+		for st in ["font_color", "font_hover_color", "font_pressed_color", "font_disabled_color"]:
+			b.add_theme_color_override(st, Color.WHITE)
+	else:
+		_btn_styles(b, Color("#f3e6cf"), Color("#ead9bb"))
+	if not enabled:
+		b.modulate = Color(1, 1, 1, 0.5)
+	b.pressed.connect(cb)
+	return b
+
+func _change_order() -> void:
+	if coins < 20:
+		return
+	coins -= 20
+	hud_dirty = true
+	_new_order()
+	_render_barn()
+
+func _render_barn() -> void:
+	for c in barn_box.get_children():
+		barn_box.remove_child(c)
+		c.queue_free()
+	var head := HBoxContainer.new()
+	var t := Label.new()
+	t.text = "📦 Ambar   %d / %d" % [_res_total(), Data.BARN_CAP]
+	t.add_theme_font_size_override("font_size", 24)
+	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(t)
+	head.add_child(_small_btn("  ✕  ", func(): barn.visible = false))
+	barn_box.add_child(head)
+	var fill := ProgressBar.new()
+	fill.show_percentage = false
+	fill.custom_minimum_size = Vector2(0, 8)
+	fill.max_value = Data.BARN_CAP
+	fill.value = _res_total()
+	fill.add_theme_stylebox_override("background", _sb(Color("#eadcc6"), 4, Color(0, 0, 0, 0), 0, 0))
+	fill.add_theme_stylebox_override("fill", _sb(Color("#e0a030") if _res_total() > Data.BARN_CAP * 0.85 else Color("#5cbf2f"), 4, Color(0, 0, 0, 0), 0, 0))
+	barn_box.add_child(fill)
+
+	var grid := GridContainer.new()
+	grid.columns = 5
+	grid.add_theme_constant_override("h_separation", 14)
+	grid.add_theme_constant_override("v_separation", 6)
+	var any := false
+	for r in Data.RESOURCES:
+		var n: int = res.get(r, 0)
+		if n <= 0:
+			continue
+		any = true
+		var info = Data.RESOURCES[r]
+		var nm := Label.new()
+		nm.text = "%s %s" % [info.icon, info.name]
+		nm.custom_minimum_size = Vector2(150, 0)
+		grid.add_child(nm)
+		var cnt := Label.new()
+		cnt.text = "× %d" % n
+		cnt.custom_minimum_size = Vector2(60, 0)
+		grid.add_child(cnt)
+		var pr := Label.new()
+		pr.text = "%d🪙/adet" % info.price
+		pr.add_theme_color_override("font_color", Color("#8a7260"))
+		grid.add_child(pr)
+		var rr: String = r
+		grid.add_child(_small_btn("Sat 10", func(): _sell(rr, 10)))
+		grid.add_child(_small_btn("Tümü (+%d🪙)" % (n * int(info.price)), func(): _sell(rr, 999999), true, true))
+	if any:
+		barn_box.add_child(grid)
+	else:
+		var e := Label.new()
+		e.text = "Ambar boş. Hasat edince kaynaklar buraya gelir."
+		e.add_theme_color_override("font_color", Color("#8a7260"))
+		barn_box.add_child(e)
+
+	barn_box.add_child(HSeparator.new())
+	var ot := Label.new()
+	ot.text = "📋 Pazar Siparişi"
+	ot.add_theme_font_size_override("font_size", 19)
+	barn_box.add_child(ot)
+	var need_parts := []
+	for r in order.get("need", {}):
+		var have: int = res.get(r, 0)
+		var want: int = order.need[r]
+		var mark := "✅" if have >= want else "▫️"
+		need_parts.append("%s %s %s  %d / %d" % [mark, Data.RESOURCES[r].icon, Data.RESOURCES[r].name, mini(have, want), want])
+	var nl := Label.new()
+	nl.text = "\n".join(need_parts)
+	barn_box.add_child(nl)
+	var rw := Label.new()
+	rw.text = "Ödül:  🏅 %d   ·   +%d XP   ·   +%d 🪙" % [order.get("medals", 0), order.get("xp", 0), order.get("coins", 0)]
+	rw.add_theme_color_override("font_color", Color("#9a6a00"))
+	barn_box.add_child(rw)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	row.add_child(_small_btn("  Teslim et  ", _deliver, _can_deliver(), true))
+	row.add_child(_small_btn("Değiştir (-20🪙)", _change_order, coins >= 20))
+	barn_box.add_child(row)

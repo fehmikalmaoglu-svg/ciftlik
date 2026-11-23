@@ -39,5 +39,27 @@ const BUILDINGS := {
 	"house": "Çiftlik Evi", "barn": "Ahır", "silo": "Silo", "well": "Kuyu", "windmill": "Yel Değirmeni",
 }
 
+## Kaynaklar: hasatla ambara girer, satılır ya da siparişe verilir.
+const RESOURCES := {
+	"cereal":   {"name": "Tahıl",     "icon": "🌾", "price": 3},
+	"veg":      {"name": "Sebze",     "icon": "🥕", "price": 4},
+	"fruit":    {"name": "Meyve",     "icon": "🍎", "price": 6},
+	"nut":      {"name": "Kuruyemiş", "icon": "🌻", "price": 8},
+	"egg":      {"name": "Yumurta",   "icon": "🥚", "price": 5},
+	"wool":     {"name": "Yün",       "icon": "🧶", "price": 9},
+	"mushroom": {"name": "Mantar",    "icon": "🍄", "price": 12},
+	"milk":     {"name": "Süt",       "icon": "🥛", "price": 14},
+}
+
+## Hangi hasat hangi kaynaktan kaç tane verir.
+const YIELD := {
+	"wheat": ["cereal", 2], "carrot": ["veg", 2], "tomato": ["veg", 3], "corn": ["cereal", 4],
+	"sunflower": ["nut", 3], "pumpkin": ["veg", 6],
+	"apple": ["fruit", 3], "orange": ["fruit", 4], "cherry": ["fruit", 5],
+	"chicken": ["egg", 2], "sheep": ["wool", 2], "pig": ["mushroom", 2], "cow": ["milk", 3],
+}
+
+const BARN_CAP := 150
+
 static func xp_for_level(lv: int) -> int:
 	return int(round(40.0 * pow(lv, 1.6)))
