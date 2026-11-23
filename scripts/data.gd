@@ -36,6 +36,11 @@ const DECOR := {
 	"lantern":   {"name": "Fener",    "icon": "🏮", "cost": 40, "level": 2},
 	"hay":       {"name": "Saman",    "icon": "🟡", "cost": 20, "level": 3},
 	"scarecrow": {"name": "Korkuluk", "icon": "🧑‍🌾", "cost": 80, "level": 4, "info": "Çevresindeki (3 kare) ekinler %25 hızlı büyür"},
+	# mevsim etkinliği kupaları: satılmaz, altın derecede kazanılır
+	"tr_spring": {"name": "Çiçek Kemeri", "icon": "🌸", "cost": 0, "level": 1, "event": true, "info": "🏆 Çiçek Şenliği ödülü"},
+	"tr_summer": {"name": "Altın Balık Heykeli", "icon": "🐠", "cost": 0, "level": 1, "event": true, "info": "🏆 Balık Yarışması ödülü"},
+	"tr_autumn": {"name": "Bal Kabağı Feneri", "icon": "🎃", "cost": 0, "level": 1, "event": true, "info": "🏆 Hasat Festivali ödülü"},
+	"tr_winter": {"name": "Kardan Adam", "icon": "⛄", "cost": 0, "level": 1, "event": true, "info": "🏆 Kardan Adam Yarışması ödülü"},
 }
 
 ## Çiçekler (Aşama 4): kalıcı tarh, sabit büyüme süresi; hasattan sonra yeniden açar.

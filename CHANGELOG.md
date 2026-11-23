@@ -1,5 +1,14 @@
 # Çiftliğim 3D — Sürüm Notları
 
+## v0.10.0 · Erken Erişim
+- 🎪 **Mevsim etkinlikleri**: her mevsim bir yarışma. Üst çubuktaki 🎪 düğmesinden puanını ve ödülleri gör; saat çubuğunda da ilerlemen yazar.
+  - 🌷 İlkbahar · Çiçek Şenliği: tarhlardan çiçek topla.
+  - 🎣 Yaz · Balık Yarışması: tuttuğun balıkların kilosu puan olur.
+  - 🎃 Sonbahar · Hasat Festivali: ürün ve meyve topla.
+  - ⛄ Kış · Kardan Adam Yarışması: kasaba pazarının çevresindeki kar yığınlarını topla (her sabah yenileri gelir); pazardaki kardan adam büyür.
+- 🥉🥈🥇 Bronz, gümüş, altın derece: altın, madalya ve elmas. Altın derecede kalıcı **kupa dekoru**: Çiçek Kemeri, Altın Balık Heykeli, Bal Kabağı Feneri, Kardan Adam. 🌷 Dekor menüsünde çıkar; kaldırırsan envantere geri döner.
+- 🌐 Online: yarışma puanı ve kar yığınları iki oyuncuda ortak.
+
 ## v0.9.0 · Erken Erişim
 - 🏘️ **Kasaba pazarı**: çiftliğin güneyinde, yolun yanında çeşmeli bir pazar meydanı ve 4 köylü: Fırıncı Zeynep, Balıkçı Rıza, Çiçekçi Leyla, Muhtar Hasan.
 - 📜 Her sabah her köylü bir şey ister. Ambardan getirirsen altın, XP ve ❤ dostluk kazanırsın. İsteği olanın başında ❗ görünür.

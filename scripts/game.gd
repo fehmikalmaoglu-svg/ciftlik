@@ -33,7 +33,7 @@ func _net_port() -> int:
 	return NET_PORT
 const NET_COLORS := ["#4a90d9", "#9c5bd6", "#e0912f", "#2fae8f", "#d94a8c"]
 const WALK_LIM := 56     # çiftçinin gezebileceği alan (±), görünen arazinin içi
-const BLOCK_DECOR := ["fence", "rock", "lantern", "hay", "scarecrow", "bush", "flowers"]
+const BLOCK_DECOR := ["fence", "rock", "lantern", "hay", "scarecrow", "bush", "flowers", "tr_spring", "tr_summer", "tr_autumn", "tr_winter"]
 const QUEST_SKIP_COOLDOWN := 24.0 * 3600.0
 const QUEST_SKIP_GEMS := 2
 const FSPEED := 5.2
@@ -146,6 +146,7 @@ const HELP_PAGES := [
 		["🚚 · 🗑️", "Taşı: nesneye tıkla, sonra yeni yerine tıkla; seçiliyken kendisine tıkla ya da T ile döndür (Esc vazgeçer). Her nesnenin (bina, fener, çit, ağaç, hayvan…) üstünde basılı tut: Döndür / Taşı / Kaldır menüsü; ambar, ev, ağaç, hayvan, çit… hepsi taşınır, bedava. Kaldır: nesneyi siler, yarı fiyatı geri gelir."],
 		["B · J · Esc", "B ambarı, J görev panelini açar; Esc iş kuyruğunu ve pencereleri kapatır."],
 		["🎣", "Balık tutma: gölün batı kıyısındaki 🎣 Balıkçı tezgâhından olta ve yem al. Göle tıkla; ❗ çıkınca tıkla (ya da Boşluk), mini oyunda basılı tutarak yeşil alanı balığın üstünde tut. 6 tür var, yayın balığı geceleri çıkar; tezgâhta balık defterin durur."],
+		["🎪", "Mevsim etkinliği: ilkbaharda Çiçek Şenliği, yazın Balık Yarışması, sonbaharda Hasat Festivali, kışın Kardan Adam (pazarın çevresinde kar topla). Bronz, gümüş, altın derece ödülleri; altında kalıcı kupa dekoru."],
 		["🏘️", "Kasaba pazarı yolun güneyinde: 4 köylü var. Her sabah her biri bir şey ister; getirirsen altın ve ❤ dostluk. Günde bir hediye verebilirsin (çok sevdiği şey ❤ ×2). Her kalpte hediye, 5 kalpte kalıcı bir yetenek açılır."],
 		["🔥", "Fırın (Yapı, seviye 3, 2×2): un ile poğaça (+yumurta), balık ekmek (+balık) ve meyveli turta (+süt, meyve) pişir. Tıkla ya da Boşluk ile körükle, ısıyı yeşil bantta tut; çabuk pişirirsen +1 ürün."],
 		["🌬️", "Değirmen (çiftliğin kuzeydoğusu, seviye 2): 6 tahılı una çevirir. İbre yeşil bölgedeyken tıkla; 5 turun her isabeti 1 🥖 un, altın ortası fazladan XP."],
@@ -431,6 +432,21 @@ const VILLAGERS := [
 	{"id": "hasan", "name": "Muhtar Hasan", "icon": "🎩", "shirt": "#2fae8f", "likes": ["milk", "egg", "wool", "veg", "cereal"], "loves": ["pogaca"],
 		"say": "Kasabanın işleri hiç bitmez. Çalışkan bir çiftçi hepimize lazım.", "perk": "Pazar siparişlerinden %20 fazla altın"},
 ]
+## Mevsim etkinlikleri: her mevsim bir yarışma; 3 derece ödül, altın derecede kalıcı kupa dekoru.
+const EVENTS := [
+	{"name": "Çiçek Şenliği", "icon": "🌷", "how": "Çiçek tarhlarından çiçek topla. Her hasat 1 puan.", "unit": "çiçek", "div": 1, "tiers": [6, 18, 36], "trophy": "tr_spring"},
+	{"name": "Balık Yarışması", "icon": "🎣", "how": "Gölde balık tut. Tuttuğun her balığın kilosu puanına eklenir.", "unit": "kg", "div": 10, "tiers": [50, 150, 300], "trophy": "tr_summer"},
+	{"name": "Hasat Festivali", "icon": "🎃", "how": "Tarladan ürün, ağaçlardan meyve topla. Her hasat 1 puan.", "unit": "hasat", "div": 1, "tiers": [20, 60, 120], "trophy": "tr_autumn"},
+	{"name": "Kardan Adam Yarışması", "icon": "⛄", "how": "Kasaba pazarının çevresindeki kar yığınlarını topla, her sabah yenileri gelir. Pazardaki kardan adam her topla büyür!", "unit": "kar topu", "div": 1, "tiers": [8, 16, 24], "trophy": "tr_winter"},
+]
+const EV_REWARD := [[80, 1, 0], [200, 0, 2], [400, 0, 4]]   # altın, madalya, elmas
+const EV_TIER := ["🥉 Bronz", "🥈 Gümüş", "🥇 Altın"]
+const SNOW_PER_DAY := 12
+var ev := {"s": -1, "y": -1, "score": 0, "tier": 0, "sd": -1, "sc": []}
+var trophies := {}
+var snow_nodes := []
+var snowman: Node3D
+var ev_open := false
 const HEART_PTS := 10
 const HEARTS_MAX := 5
 var vill := {}           # id → {"pts", "r", "n", "done", "gd"}
@@ -754,6 +770,8 @@ func _ready() -> void:
 		elif a.begins_with("--weather="):
 			_start_weather(a.substr(10))
 	_apply_season_visual(true)
+	_ev_check()
+	_ev_refresh_world()
 	if args.has("--demo"):
 		_demo()
 	if args.has("--barn"):
@@ -1913,7 +1931,7 @@ func _resolve(t: String, arg, x: int, z: int):
 			return "animal" if e == null and _unlocked(c) and coins >= c.cost else null
 		"decor":
 			var c = Data.DECOR.get(arg)
-			return "decor" if e == null and _unlocked(c) and coins >= c.cost else null
+			return "decor" if e == null and _unlocked(c) and coins >= c.cost and (not c.get("event", false) or int(trophies.get(arg, 0)) > 0) else null
 		"garden":
 			if arg == "pond":
 				return "pond" if _unlocked(Data.POND) and coins >= Data.POND.cost and _free_area(x, z, 2, 2) else null
@@ -2344,6 +2362,15 @@ func _perform_local(item: Dictionary) -> bool:
 		"decor":
 			var dd = Data.DECOR[arg]
 			_spend(dd.cost)
+			if dd.get("event", false):
+				trophies[arg] = int(trophies.get(arg, 0)) - 1
+				if int(trophies[arg]) <= 0:
+					trophies.erase(arg)
+					if sel.decor == arg:
+						sel.decor = "path"
+				net_quest_dirty = true
+				if shelf_box != null:
+					_render_shelf()
 			_add_entity({"kind": "decor", "type": arg, "x": x, "z": z})
 			_burst(pos + Vector3(0, 0.2, 0), "#d7ccc8", 6, 2.0)
 			_sfx("place")
@@ -2378,6 +2405,11 @@ func _perform_local(item: Dictionary) -> bool:
 			if e.kind == "building":
 				_recompute_boosts()
 			var back := _refund_of(e)
+			if e.kind == "decor" and Data.DECOR.get(e.type, {}).get("event", false):
+				trophies[e.type] = int(trophies.get(e.type, 0)) + 1   # kupa envantere döner
+				net_quest_dirty = true
+				if shelf_box != null:
+					_render_shelf()
 			if back > 0:
 				coins += back
 				hud_dirty = true
@@ -3035,6 +3067,10 @@ func _unhandled_input(ev: InputEvent) -> void:
 					bake_stoke += 1
 					return
 				var gp = _pick_point(ev.position)
+				if gp != null and _snow_at(gp) >= 0:
+					_snow_collect(_snow_at(gp))
+					_walk_to(gp)
+					return
 				if gp != null and _near_villager(gp) != "":
 					_open_villager(_near_villager(gp))
 					return
@@ -3482,6 +3518,8 @@ func _update_day(dt: float) -> void:
 		hud_dirty = true
 		if net_role != "guest" and not loading:
 			_vill_new_day()
+			_ev_day()
+		_ev_refresh_world()
 		if _count_buildings("house") > 0 and not loading and net_role != "guest":
 			var gift := 20 + level * 5
 			_gain(gift, 2, farmer.position, "🏠")
@@ -3539,6 +3577,9 @@ func _update_day(dt: float) -> void:
 	var txt := "%s %02d:%02d · Gün %d   ·   %s %s (%d dk) · Yıl %d" % [icon, hh, mm - mm % 10, day, sn.icon, sn.name, left, year]
 	if weather != "":
 		txt += "   ·   %s %s" % [Data.WEATHER[weather].icon, Data.WEATHER[weather].name]
+	if int(ev.s) == season:
+		var ed := _ev_def()
+		txt += "   ·   %s %s" % [ed.icon, "🏆" if int(ev.tier) >= 3 else "%s/%s" % [_ev_fmt(int(ev.score)), _ev_fmt(int(ed.tiers[int(ev.tier)]))]]
 	lbl_clock.text = txt
 
 func _update_lamps(dt: float) -> void:
@@ -3783,6 +3824,9 @@ func _build_ui() -> void:
 	var bemo := _icon_btn("😄", "Emote: arkadaşına el salla, gül, kalp gönder  [G]")
 	bemo.pressed.connect(_toggle_emote_bar)
 	ah.add_child(bemo)
+	var bev := _icon_btn("🎪", "Mevsim etkinliği: yarışma, dereceler, kupalar")
+	bev.pressed.connect(_open_event)
+	ah.add_child(bev)
 	var bland := _icon_btn("🗺️", "Arazi: çiftliği genişlet  [L]")
 	bland.pressed.connect(_open_land)
 	ah.add_child(bland)
@@ -4492,6 +4536,9 @@ func net_req(t: String, a: String, x: int, z: int) -> void:
 		_deliver()
 		net_quest_dirty = true
 		return
+	if t == "@snow":
+		_snow_collect(x)
+		return
 	if t == "@vdeliver":
 		_vill_deliver(a)
 		return
@@ -4594,7 +4641,7 @@ func _net_sync_dict() -> Dictionary:
 	for e in entities:
 		ents.append(_ent_dict(e))
 	return {"coins": coins, "xp": xp, "level": level, "day_time": day_time, "day": day, "season": season, "season_t": season_t,
-		"year": year, "weather": weather, "weather_t": weather_t, "fh": farm_h, "res": res, "ents": ents, "q": _net_quest_dict(), "order": order, "fg": fishgear, "vill": vill}
+		"year": year, "weather": weather, "weather_t": weather_t, "fh": farm_h, "res": res, "ents": ents, "q": _net_quest_dict(), "order": order, "fg": fishgear, "vill": vill, "ev": {"e": ev, "t": trophies}}
 
 @rpc("authority", "reliable")
 func net_sync(d: Dictionary) -> void:
@@ -4625,6 +4672,12 @@ func net_sync(d: Dictionary) -> void:
 		net_quests(d.q)
 	if d.has("order") and typeof(d.order) == TYPE_DICTIONARY:
 		order = d.order
+	if d.has("ev"):
+		_load_ev(d.ev.get("e", {}), d.ev.get("t", {}))
+		if ev_open and land_dlg.visible:
+			_open_event()
+		if shelf_box != null and shelf_open:
+			_render_shelf()
 	if d.has("vill"):
 		_load_vill(d.vill)
 		if vill_open != "" and land_dlg.visible:
@@ -5303,7 +5356,7 @@ func _shelf_key_of(id: String) -> String:
 	return ""
 
 func _shelf_list(cat: String) -> Dictionary:
-	return {"seed": Data.CROPS, "tree": Data.TREES, "animal": Data.animal_shop(), "decor": Data.DECOR, "garden": Data.garden(), "build": Data.BUILDINGS}[cat]
+	return {"seed": Data.CROPS, "tree": Data.TREES, "animal": Data.animal_shop(), "decor": _decor_shop(), "garden": Data.garden(), "build": Data.BUILDINGS}[cat]
 
 ## Alet düğmeleri seçili eşyanın simgesini de gösterir (ör. 🌱🥗 Tohum).
 func _update_tool_labels() -> void:
@@ -5369,7 +5422,7 @@ func _render_shelf() -> void:
 			"seed": meta = "⏱%s → %d🪙" % [fmt_time(it.time), it.sell] if _in_season(it) else "🚫 " + Data.season_icons(it.seasons)
 			"tree": meta = "🍃%s → %d🪙" % [fmt_time(it.regrow), it.sell]
 			"animal": meta = "🥚 yuva 2×2" if k == "coop" else "%s%s → %d🪙" % [it.picon, fmt_time(it.time), it.sell]
-			"decor": meta = "✨ bonus" if it.has("info") else " "
+			"decor": meta = ("🎁 ×%d" % int(trophies.get(k, 0))) if it.get("event", false) else ("✨ bonus" if it.has("info") else " ")
 			"build": meta = "%d×%d · +%d XP" % [it.w, it.d, it.xp]
 			"garden":
 				if k == "pond":
@@ -5380,7 +5433,7 @@ func _render_shelf() -> void:
 		b.focus_mode = Control.FOCUS_NONE
 		b.custom_minimum_size = Vector2(124, 100)
 		b.add_theme_font_size_override("font_size", 13)
-		b.text = "%s\n%s\n🪙 %d\n%s" % [it.icon, it.name, it.cost, ("🔒 Sv %d" % it.level) if locked else meta]
+		b.text = "%s\n%s\n%s\n%s" % [it.icon, it.name, "🏆 Kupa" if it.get("event", false) else "🪙 %d" % it.cost, ("🔒 Sv %d" % it.level) if locked else meta]
 		b.tooltip_text = it.get("info", it.name)
 		if cat == "garden" and k != "pond":
 			b.tooltip_text = "%s · Sv %d\nKalıcı tarh: hasattan sonra yeniden açar.\nBüyürken sulu tutarsan kazanç 3 katına kadar çıkar." % [it.name, _flower_lv(k).lv]
@@ -5442,7 +5495,7 @@ func _state_dict() -> Dictionary:
 	var ents := []
 	for e in entities:
 		ents.append(_ent_dict(e))
-	return {"v": 1, "bv": 1, "sv": 2, "story": story_step, "sh": story_have, "fh": farm_h, "fg": fishgear, "vill": vill, "name": farm_name, "gems": gems, "quests": quests, "qskip": quest_skip_at, "flv": flv, "season": season, "season_t": season_t, "year": year, "weather": weather, "weather_t": weather_t, "medals": medals, "res": res, "order": order, "coins": coins, "xp": xp, "level": level, "day_time": day_time, "day": day, "sel": sel, "muted": muted,
+	return {"v": 1, "bv": 1, "sv": 2, "story": story_step, "sh": story_have, "fh": farm_h, "fg": fishgear, "vill": vill, "ev": ev, "tro": trophies, "name": farm_name, "gems": gems, "quests": quests, "qskip": quest_skip_at, "flv": flv, "season": season, "season_t": season_t, "year": year, "weather": weather, "weather_t": weather_t, "medals": medals, "res": res, "order": order, "coins": coins, "xp": xp, "level": level, "day_time": day_time, "day": day, "sel": sel, "muted": muted,
 		"saved_at": Time.get_unix_time_from_system(), "ents": ents, "fx": farmer.position.x, "fz": farmer.position.z}
 
 func _ent_dict(e: Dictionary) -> Dictionary:
@@ -5497,6 +5550,7 @@ func _load_dict(data, offline: bool) -> bool:
 	gems = int(data.get("gems", 0))
 	_load_fishgear(data.get("fg", {}))
 	_load_vill(data.get("vill", {}))
+	_load_ev(data.get("ev", {}), data.get("tro", {}))
 	farm_h = int(data.get("fh", 0))
 	if farm_h <= 0:
 		farm_h = _farm_h_from_parcels(data.get("parcels", []))
@@ -5758,6 +5812,18 @@ func _process(delta: float) -> void:
 					_set_tool(a.substr(7), true)
 				elif a == "--wheel":
 					_open_wheel(Vector2(640, 380))
+				elif a == "--event":   # geliştirici: etkinlik penceresi
+					ev.score = int(_ev_def().tiers[1]) + 3
+					ev.tier = 2
+					trophies = {"tr_spring": 1}
+					_open_event()
+				elif a == "--trophies":   # geliştirici: kupalar tarlada
+					var f0 := _free_spot(7, 1)
+					for i in 4:
+						var tk: String = ["tr_spring", "tr_summer", "tr_autumn", "tr_winter"][i]
+						_add_entity({"kind": "decor", "type": tk, "x": f0.x + i * 2, "z": f0.y})
+					farmer.position = Vector3(f0.x + 3.5, 0, f0.y + 2.5)
+					cam_target = Vector3(f0.x + 3.5, 0, f0.y + 0.5)
 				elif a == "--town":   # geliştirici: kasabaya git, Zeynep'in penceresi
 					farmer.position = MARKET + Vector3(0, 0, -3.5)
 					cam_target = farmer.position
@@ -6054,6 +6120,8 @@ func _fish_reward(id: String, w: float) -> void:
 	gems += int(f.get("gems", 0))
 	_gain(0, int(f.xp), pos, f.icon)
 	_quest_event("fish", "", 1)
+	if season == 1:
+		_ev_add(int(round(w * 10.0)))
 	net_quest_dirty = true
 	if barn.visible:
 		_render_barn()
@@ -6318,6 +6386,7 @@ func _update_fishing(dt: float) -> void:
 ## Balıkçı tezgâhı: olta, yem, yem seçimi ve balık defteri.
 func _open_fish_shop() -> void:
 	vill_open = ""
+	ev_open = false
 	for c in land_box.get_children():
 		land_box.remove_child(c)
 		c.queue_free()
@@ -6377,6 +6446,218 @@ func _open_fish_shop() -> void:
 	land_box.add_child(hint)
 	land_box.add_child(_small_btn("  Kapat  ", func():
 		shop_open = false
+		land_dlg.visible = false, true, true))
+	land_dlg.visible = true
+
+# ============================================================ mevsim etkinlikleri
+func _ev_def() -> Dictionary:
+	return EVENTS[season]
+
+func _ev_fmt(v: int) -> String:
+	var d := int(_ev_def().div)
+	return str(v) if d == 1 else "%.1f" % (v / float(d))
+
+## Mevsim değiştiyse yarışmayı sıfırla (ev sahibi).
+func _ev_check() -> void:
+	if net_role == "guest":
+		return
+	if int(ev.s) != season or int(ev.y) != year:
+		ev = {"s": season, "y": year, "score": 0, "tier": 0, "sd": day, "sc": []}
+		net_quest_dirty = true
+	_ev_day()
+
+func _ev_day() -> void:
+	if net_role != "guest" and int(ev.sd) != day:
+		ev.sd = day
+		ev.sc = []
+		net_quest_dirty = true
+
+func _ev_add(n: int) -> void:
+	if n <= 0 or net_role == "guest":
+		return
+	_ev_check()
+	var d := _ev_def()
+	ev.score = int(ev.score) + n
+	while int(ev.tier) < 3 and int(ev.score) >= int(d.tiers[int(ev.tier)]):
+		var t := int(ev.tier)
+		var rw: Array = EV_REWARD[t]
+		ev.tier = t + 1
+		coins += int(rw[0])
+		medals += int(rw[1])
+		gems += int(rw[2])
+		var msg := "%s %s: %s derece! +%d 🪙" % [d.icon, d.name, EV_TIER[t], rw[0]]
+		if int(rw[1]) > 0:
+			msg += " +%d 🏅" % rw[1]
+		if int(rw[2]) > 0:
+			msg += " +%d 💎" % rw[2]
+		if t == 2:
+			trophies[d.trophy] = int(trophies.get(d.trophy, 0)) + 1
+			msg += "\n🏆 Kupa: %s %s → 🌷 Dekor menüsünde seni bekliyor!" % [Data.DECOR[d.trophy].icon, Data.DECOR[d.trophy].name]
+			if shelf_box != null:
+				_render_shelf()
+		_toast_all(msg, "level")
+		_sfx("level")
+		_quest_event("earn", "", int(rw[0]))
+	hud_dirty = true
+	net_quest_dirty = true
+	_ev_refresh_world()
+	if ev_open and land_dlg.visible:
+		_open_event()
+
+## Günün kar yığınlarının yeri (iki oyuncuda aynı).
+func _snow_spots() -> Array:
+	var r := RandomNumberGenerator.new()
+	r.seed = year * 10007 + day * 31 + 5
+	var out := []
+	for i in SNOW_PER_DAY:
+		var a := r.randf() * TAU
+		var rad := r.randf_range(7.8, 10.2)
+		out.append(Vector3(MARKET.x + cos(a) * rad, 0, MARKET.z + sin(a) * rad))
+	return out
+
+func _snow_at(p: Vector3) -> int:
+	if season != 3 or int(ev.s) != 3:
+		return -1
+	var sp := _snow_spots()
+	for i in sp.size():
+		if not ev.sc.has(i) and Vector2(p.x - sp[i].x, p.z - sp[i].z).length() < 1.1:
+			return i
+	return -1
+
+func _snow_collect(i: int) -> bool:
+	if season != 3 or i < 0 or i >= SNOW_PER_DAY or ev.sc.has(i):
+		return false
+	if net_role == "guest":
+		rpc_id(1, "net_req", "@snow", "", i, 0)
+		return true
+	_ev_check()
+	ev.sc.append(i)
+	var p: Vector3 = _snow_spots()[i]
+	p.y = height_at(p.x, p.z)
+	_burst(p + Vector3(0, 0.3, 0), "#ffffff", 14, 3.0)
+	_gain(0, 2, p, "❄️")
+	_sfx("harvest")
+	_ev_add(1)
+	return true
+
+func _ev_build_world(root: Node3D) -> void:
+	snow_nodes.clear()
+	for i in SNOW_PER_DAY:
+		var g := Node3D.new()
+		g.add_child(Models.scl(Models.ball(0.42, "#f7fbff", 0, 0.05, 0, 1), 1.0, 0.5, 1.0))
+		g.add_child(Models.ball(0.2, "#ffffff", 0.18, 0.2, 0.1))
+		g.add_child(Models.ball(0.14, "#eef4fb", -0.2, 0.15, -0.12))
+		g.visible = false
+		root.add_child(g)
+		snow_nodes.append(g)
+	snowman = Models.decor("tr_winter")
+	snowman.position = MARKET + Vector3(3.0, height_at(MARKET.x + 3.0, MARKET.z), 0)
+	snowman.rotation.y = -PI / 2.0
+	snowman.visible = false
+	root.add_child(snowman)
+
+## Kış: kar yığınlarını ve pazardaki kardan adamı güncelle.
+func _ev_refresh_world() -> void:
+	if snow_nodes.is_empty():
+		return
+	var winter := season == 3 and int(ev.s) == 3
+	var sp := _snow_spots()
+	for i in snow_nodes.size():
+		var n: Node3D = snow_nodes[i]
+		n.visible = winter and not ev.sc.has(i)
+		n.position = Vector3(sp[i].x, height_at(sp[i].x, sp[i].z), sp[i].z)
+	snowman.visible = winter
+	if winter:
+		snowman.scale = Vector3.ONE * (0.8 + minf(1.6, int(ev.score) * 0.06))
+
+func _load_ev(d, t) -> void:
+	if typeof(d) == TYPE_DICTIONARY and d.has("s"):
+		var sc := []
+		for v in d.get("sc", []):
+			sc.append(int(v))
+		ev = {"s": int(d.s), "y": int(d.get("y", year)), "score": int(d.get("score", 0)), "tier": clampi(int(d.get("tier", 0)), 0, 3), "sd": int(d.get("sd", -1)), "sc": sc}
+	trophies = {}
+	if typeof(t) == TYPE_DICTIONARY:
+		for k in t:
+			if Data.DECOR.has(k) and int(t[k]) > 0:
+				trophies[k] = int(t[k])
+	_ev_check()
+	_ev_refresh_world()
+	hud_dirty = true
+
+func _decor_shop() -> Dictionary:
+	var out := {}
+	for k in Data.DECOR:
+		if not Data.DECOR[k].get("event", false) or int(trophies.get(k, 0)) > 0:
+			out[k] = Data.DECOR[k]
+	return out
+
+func _open_event() -> void:
+	_ev_check()
+	var d := _ev_def()
+	vill_open = ""
+	shop_open = false
+	ev_open = true
+	for c in land_box.get_children():
+		land_box.remove_child(c)
+		c.queue_free()
+	var t := Label.new()
+	t.text = "%s %s" % [d.icon, d.name]
+	t.add_theme_font_size_override("font_size", 26)
+	land_box.add_child(t)
+	var sub := Label.new()
+	sub.text = "🎪 %s etkinliği · %d dk kaldı" % [Data.SEASONS[season].name, ceili((1.0 - season_t) * Data.SEASON_LEN / 60.0)]
+	sub.add_theme_color_override("font_color", Color("#8a7260"))
+	land_box.add_child(sub)
+	var how := Label.new()
+	how.text = d.how
+	how.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	how.custom_minimum_size = Vector2(400, 0)
+	land_box.add_child(how)
+	var sc := int(ev.score)
+	var top := int(d.tiers[2])
+	var pb := ProgressBar.new()
+	pb.max_value = top
+	pb.value = mini(sc, top)
+	pb.show_percentage = false
+	pb.custom_minimum_size = Vector2(400, 18)
+	land_box.add_child(pb)
+	var sl := Label.new()
+	sl.text = "Puanın: %s %s" % [_ev_fmt(sc), d.unit]
+	sl.add_theme_font_size_override("font_size", 18)
+	land_box.add_child(sl)
+	for i in 3:
+		var rw: Array = EV_REWARD[i]
+		var row := PanelContainer.new()
+		var got := int(ev.tier) > i
+		row.add_theme_stylebox_override("panel", _sb(Color("#e8f5d8") if got else Color("#fffaf0"), 8, Color("#9ccc65") if got else Color("#e7d7bf"), 2, 8))
+		var l := Label.new()
+		var rt := "+%d 🪙" % rw[0]
+		if int(rw[1]) > 0:
+			rt += "  +%d 🏅" % rw[1]
+		if int(rw[2]) > 0:
+			rt += "  +%d 💎" % rw[2]
+		if i == 2:
+			rt += "  +🏆 %s %s" % [Data.DECOR[d.trophy].icon, Data.DECOR[d.trophy].name]
+		l.text = "%s %s  ·  %s %s  →  %s" % ["✅" if got else "⬜", EV_TIER[i], _ev_fmt(int(d.tiers[i])), d.unit, rt]
+		row.add_child(l)
+		land_box.add_child(row)
+	var have := []
+	for k in trophies:
+		have.append("%s×%d" % [Data.DECOR[k].icon, trophies[k]])
+	if have.size() > 0:
+		var tl := Label.new()
+		tl.text = "🏆 Yerleştirilmeyi bekleyen kupaların: " + "  ".join(have)
+		tl.add_theme_font_size_override("font_size", 13)
+		land_box.add_child(tl)
+	var nx := Label.new()
+	var nxt = EVENTS[(season + 1) % 4]
+	nx.text = "Sonraki mevsim: %s %s" % [nxt.icon, nxt.name]
+	nx.add_theme_font_size_override("font_size", 12)
+	nx.add_theme_color_override("font_color", Color("#8a7260"))
+	land_box.add_child(nx)
+	land_box.add_child(_small_btn("  Kapat  ", func():
+		ev_open = false
 		land_dlg.visible = false, true, true))
 	land_dlg.visible = true
 
@@ -6493,6 +6774,7 @@ func _open_villager(id: String) -> void:
 	var v := _vdef(id)
 	var st: Dictionary = vill[id]
 	vill_open = id
+	ev_open = false
 	shop_open = false
 	for c in land_box.get_children():
 		land_box.remove_child(c)
@@ -6652,6 +6934,7 @@ func _build_market() -> void:
 		ex.position = Vector3(0, 2.75, 0)
 		npc.add_child(ex)
 		vill_nodes[v.id] = npc
+	_ev_build_world(root)
 	_vill_ensure()
 	_vill_marks()
 
@@ -6700,6 +6983,7 @@ static func _recipe_text(rc: Dictionary) -> String:
 
 func _open_oven() -> void:
 	vill_open = ""
+	ev_open = false
 	for c in land_box.get_children():
 		land_box.remove_child(c)
 		c.queue_free()
@@ -6901,6 +7185,7 @@ func _near_mill(p: Vector3) -> bool:
 
 func _open_mill() -> void:
 	vill_open = ""
+	ev_open = false
 	for c in land_box.get_children():
 		land_box.remove_child(c)
 		c.queue_free()
@@ -7140,6 +7425,7 @@ func _build_land_ui() -> void:
 func _open_land() -> void:
 	shop_open = false
 	vill_open = ""
+	ev_open = false
 	if net_role == "guest":
 		_toast("🗺️ Arazi genişletme çiftlik sahibinde.", "hint")
 		return
@@ -7361,6 +7647,7 @@ func _selftest_build(fails: Array) -> void:
 	_selftest_mill(fails)
 	_selftest_bake(fails)
 	_selftest_town(fails)
+	_selftest_events(fails)
 	var rb := _refund_of(tiles.get(key(sp.x, sp.y)))
 	var c2 := coins
 	if not _perform({"x": sp.x, "z": sp.y, "tool": "remove", "arg": null}) or _count_buildings("barn") != b0: fails.append("bina kaldırma")
@@ -7371,6 +7658,56 @@ func _selftest_build(fails: Array) -> void:
 	var pe2 = tiles.get(key(ps.x, ps.y))
 	if pe2 != null and pe2.kind == "plot":
 		_remove_entity(pe2)
+
+func _selftest_events(fails: Array) -> void:
+	var keep := [season, coins, gems, medals, ev.duplicate(true), trophies.duplicate(), res.duplicate()]
+	season = 0
+	ev = {"s": -1, "y": -1, "score": 0, "tier": 0, "sd": -1, "sc": []}
+	trophies = {}
+	_ev_check()
+	if int(ev.s) != 0 or int(ev.score) != 0: fails.append("etkinlik başlangıcı")
+	_quest_event("flower", "daisy", 6)
+	if int(ev.score) != 6 or int(ev.tier) != 1: fails.append("çiçek şenliği puanı %d/%d" % [ev.score, ev.tier])
+	_quest_event("crop", "wheat", 5)
+	if int(ev.score) != 6: fails.append("yanlış mevsimde puan")
+	_ev_add(40)
+	if int(ev.tier) != 3 or int(trophies.get("tr_spring", 0)) != 1: fails.append("altın derece ve kupa")
+	if not _decor_shop().has("tr_spring") or _decor_shop().has("tr_winter"): fails.append("kupa dükkânı")
+	var sp := _free_spot(1, 1)
+	if sp.x != 999:
+		if not _perform_local({"tool": "decor", "arg": "tr_spring", "x": sp.x, "z": sp.y}) or trophies.has("tr_spring"): fails.append("kupa yerleştirme")
+		if _resolve("decor", "tr_spring", sp.x + 1, sp.y) != null and tiles.get(key(sp.x + 1, sp.y)) == null: fails.append("kupa iki kez")
+		var te = tiles.get(key(sp.x, sp.y))
+		if te == null or not _perform_local({"tool": "remove", "arg": null, "x": sp.x, "z": sp.y}) or int(trophies.get("tr_spring", 0)) != 1: fails.append("kupa geri alma")
+	# yaz: balık kilosu
+	season = 1
+	_ev_check()
+	_fish_reward("sazan", 2.0)
+	if int(ev.score) != 20: fails.append("balık yarışması %d" % ev.score)
+	# kış: kar yığınları
+	season = 3
+	_ev_check()
+	_ev_refresh_world()
+	var s0: Vector3 = _snow_spots()[0]
+	if _snow_at(s0) != 0 or not snow_nodes[0].visible: fails.append("kar yığını")
+	if not _snow_collect(0) or int(ev.score) != 1 or _snow_at(s0) == 0 or snow_nodes[0].visible: fails.append("kar toplama")
+	if _snow_collect(0): fails.append("kar iki kez")
+	var sv := _state_dict()
+	_load_ev(sv.ev, sv.tro)
+	if not ev.sc.has(0) or int(ev.score) != 1: fails.append("etkinlik kaydı")
+	day += 1
+	_ev_day()
+	if not ev.sc.is_empty(): fails.append("kar yenilenmesi")
+	day -= 1
+	season = keep[0]
+	coins = keep[1]
+	gems = keep[2]
+	medals = keep[3]
+	ev = keep[4]
+	trophies = keep[5]
+	res = keep[6]
+	_ev_check()
+	_ev_refresh_world()
 
 func _selftest_town(fails: Array) -> void:
 	var keep_res := res.duplicate()
@@ -7758,6 +8095,8 @@ func _quest_event(kind: String, arg: String, n: int) -> void:
 	if n <= 0 or net_role == "guest":   # çiftliğin görevleri ortak: işi ev sahibi uygular ve sayar
 		return
 	_story_event(kind, arg, n)
+	if (kind == "flower" and season == 0) or ((kind == "crop" or kind == "fruit") and season == 2):
+		_ev_add(n)
 	var done := []
 	for i in quests.size():
 		var q = quests[i]
@@ -8155,6 +8494,11 @@ func _on_season_start() -> void:
 	_apply_season_visual(loading)
 	if shelf_box != null:
 		_render_shelf()
+	_ev_check()
+	_ev_refresh_world()
+	if not loading:
+		var ed := _ev_def()
+		_toast("🎪 Mevsim etkinliği başladı: %s %s!\n%s" % [ed.icon, ed.name, ed.how], "level")
 
 ## Tarla/tarh üstünde küçük simge: 🧺 hazır, 💧 susuz büyüyor.
 func _make_mark(g: Node3D, y: float) -> Label3D:

@@ -1027,6 +1027,54 @@ static func decor(type: String, conn := {}) -> Node3D:
 			add(g, box(0.1, 0.025, 0.02, "#5d4037", 0, 1.37, 0.16))
 			add(g, cyl(0.3, 0.3, 0.025, 10, "#c8a15a", 0, 1.56, 0))
 			add(g, cone(0.16, 0.22, 8, "#c8a15a", 0, 1.68, 0))
+		"tr_spring":   # çiçek kemeri
+			for s in [-1.0, 1.0]:
+				add(g, cyl(0.045, 0.05, 1.5, 6, "#6d4c41", s * 0.4, 0.75, 0))
+				for k in 5:
+					add(g, ball(0.07, "#66bb6a", s * 0.4, 0.25 + k * 0.28, 0.03))
+					add(g, ball(0.05, FLOWER_COLS[(k * 2 + (1 if s > 0 else 0)) % FLOWER_COLS.size()], s * 0.43, 0.38 + k * 0.28, 0.07))
+			for i in 11:
+				var a := PI * i / 10.0
+				add(g, ball(0.085, "#66bb6a", -cos(a) * 0.4, 1.5 + sin(a) * 0.32, 0))
+				add(g, ball(0.075, FLOWER_COLS[i % FLOWER_COLS.size()], -cos(a) * 0.4, 1.52 + sin(a) * 0.32, 0.07))
+		"tr_summer":   # altın balık heykeli
+			add(g, box(0.5, 0.5, 0.5, "#cfc6b8", 0, 0.25, 0))
+			add(g, box(0.62, 0.08, 0.62, "#b0a8a0", 0, 0.54, 0))
+			add(g, box(0.62, 0.06, 0.62, "#b0a8a0", 0, 0.03, 0))
+			add(g, cyl(0.04, 0.05, 0.25, 6, "#b0a8a0", 0, 0.7, 0))
+			var fish := node()
+			fish.position = Vector3(0, 1.0, 0)
+			fish.rotation.z = 0.5
+			add(fish, scl(ball(0.2, "#ffc107", 0, 0, 0, 1), 1.7, 1.0, 0.6))
+			add(fish, rot(cone(0.16, 0.24, 4, "#ffb300", -0.42, 0, 0), 0, 0, PI / 2.0))
+			add(fish, rot(cone(0.08, 0.16, 4, "#ffb300", 0, 0.22, 0), 0, 0, -0.4))
+			for zz in [-0.11, 0.11]:
+				add(fish, ball(0.035, "#3e2723", 0.22, 0.05, zz))
+			add(g, fish)
+		"tr_autumn":   # bal kabağı feneri
+			add(g, scl(ball(0.34, "#f57c00", 0, 0.3, 0, 1), 1.15, 0.85, 1.15))
+			for i in 4:
+				add(g, rot(scl(ball(0.33, "#ef6c00", 0, 0.3, 0), 0.38, 0.86, 1.18), 0, i * PI / 4.0))
+			add(g, cyl(0.035, 0.05, 0.16, 5, "#5d4037", 0, 0.62, 0))
+			add(g, scl(ball(0.08, "#7cb342", 0.08, 0.6, 0), 1.4, 0.4, 1.0))
+			for x in [-0.12, 0.12]:
+				add(g, rot(box(0.09, 0.09, 0.03, glow(), x, 0.38, 0.36), 0, 0, PI / 4.0))
+			add(g, box(0.24, 0.05, 0.03, glow(), 0, 0.22, 0.37))
+		"tr_winter":   # kardan adam
+			add(g, ball(0.34, "#fafcff", 0, 0.32, 0, 1))
+			add(g, ball(0.25, "#fafcff", 0, 0.82, 0, 1))
+			add(g, ball(0.18, "#fafcff", 0, 1.18, 0, 1))
+			add(g, rot(cone(0.035, 0.18, 6, "#ff7043", 0, 1.18, 0.25), PI / 2.0))
+			for x in [-0.07, 0.07]:
+				add(g, ball(0.03, "#212121", x, 1.24, 0.16))
+			for y in [0.72, 0.86]:
+				add(g, ball(0.03, "#212121", 0, y, 0.245))
+			add(g, cyl(0.2, 0.21, 0.07, 10, "#e53935", 0, 1.02, 0))
+			add(g, box(0.07, 0.25, 0.04, "#e53935", 0.1, 0.9, 0.17))
+			add(g, cyl(0.17, 0.17, 0.04, 10, "#263238", 0, 1.33, 0))
+			add(g, cyl(0.11, 0.11, 0.2, 10, "#263238", 0, 1.44, 0))
+			for s in [-1.0, 1.0]:
+				add(g, rot(cyl(0.015, 0.02, 0.4, 4, "#6d4c41", s * 0.36, 0.95, 0), 0, 0, s * -1.0))
 	return g
 
 # ------------------------------------------------------------ doğa
