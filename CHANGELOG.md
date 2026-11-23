@@ -1,5 +1,11 @@
 # Çiftliğim 3D — Sürüm Notları
 
+## v0.5.0 · Erken Erişim
+- 😄 Emote: üst çubuktaki 😄 düğmesi ya da G tuşu. El salla, gül, kalp, beğen, kahkaha, kutla, şaşır, üzül. Balon karakterinin başında çıkar; yakında arkadaşın varsa karakterin ona döner. Online iki tarafta da görünür (çubuk açıkken 1–8 tuşları).
+- Online: arkadaşın da ambarı açıp ürün satabilir ve sipariş teslim edebilir; para ve ambar iki tarafta eşitlenir.
+- Kendi koyduğun çitler çiftliğin sınır çitine bağlanır, arada boşluk kalmaz.
+- Hikâye: istenen şey önceden yapıldıysa (ör. kümesi erken kurduysan) adım kendiliğinden geçer.
+
 ## v0.4.0 · Erken Erişim
 - 🚚 Taşı aleti (- tuşu): bir nesneye tıkla, sonra yeni yerine tıkla. Ambar, ev, silo, kuyu, ağaç, hayvan, kümes, çit, yol… hepsi bedava taşınır; Esc vazgeçer.
 - 🔄 Döndürme: Taşı aletiyle seçili nesneye tekrar tıkla ya da T'ye bas, 90° döner.

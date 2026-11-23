@@ -145,6 +145,7 @@ const HELP_PAGES := [
 		["1 – 9 · 0 · -", "Aleti doğrudan seç: El, Çapa, Tohum, Sula, Ağaç, Hayvan, Dekor, Bahçe, Kaldır; 0 Yapı, - Taşı."],
 		["🚚 · 🗑️", "Taşı: nesneye tıkla, sonra yeni yerine tıkla; seçiliyken kendisine tıkla ya da T ile döndür (Esc vazgeçer). Binanın üstünde basılı tut: Döndür / Taşı / Kaldır menüsü; ambar, ev, ağaç, hayvan, çit… hepsi taşınır, bedava. Kaldır: nesneyi siler, yarı fiyatı geri gelir."],
 		["B · J · Esc", "B ambarı, J görev panelini açar; Esc iş kuyruğunu ve pencereleri kapatır."],
+		["G · 😄", "Emote çubuğu: el salla, gül, kalp, alkış… Yakında arkadaşın varsa karakterin ona döner; online iki tarafta da görünür."],
 	]],
 	["🌱  Tarım", [
 		["⛏️", "Çapa ile toprağı sür, 🌱 tohum ek, 💧 sula, ✋ El ile topla."],
@@ -381,6 +382,11 @@ var shelf_open := false
 var shelf_page := {}
 var entrance_doors := []
 var frame_block := {}
+var frame_fences := {}   # Vector2i → sınır çiti parçası (oyuncu çiti yanına gelince yeniden çizilir)
+var frame_gate_z := 0
+const EMOTES := ["👋", "😄", "❤️", "👍", "😂", "🎉", "😮", "😢"]
+var emote_fx := []        # [{"n": Label3D, "t": float}]
+var emote_bar: PanelContainer
 var net_role := ""          # "" | "host" | "guest" | "joining"
 var net_players := {}       # peer -> {"name", "node", "parts", "tp", "ry", "mv", "act_t"}
 var net_applying := false   # uzaktan gelen işi uygularken
@@ -1219,14 +1225,14 @@ func _refresh_parcels() -> void:
 	while in_farm(0, gate_z):
 		gate_z += 1
 	frame_block.clear()
+	frame_fences.clear()
+	frame_gate_z = gate_z
 	for x in range(WORLD_MIN - 1, WORLD_MAX + 2):
 		for z in range(WORLD_MIN - 1, WORLD_MAX + 2):
 			if not _frame_ring(x, z, gate_z):
 				continue
 			frame_block[Vector2i(x, z)] = true
-			var f := Models.fence(_frame_ring(x, z - 1, gate_z), _frame_ring(x, z + 1, gate_z), _frame_ring(x + 1, z, gate_z), _frame_ring(x - 1, z, gate_z))
-			f.position = Vector3(x + 0.5, 0, z + 0.5)
-			frame_root.add_child(f)
+			_frame_fence_at(Vector2i(x, z))
 	for x in [-1.15, 1.15]:
 		frame_root.add_child(Models.box(0.22, 2.0, 0.22, "#8d5f3a", x, 1.0, gate_z + 0.5))
 	frame_root.add_child(Models.box(2.9, 0.5, 0.1, "#c79a6a", 0, 1.85, gate_z + 0.5))
@@ -1487,14 +1493,15 @@ func _remove_entity(e: Dictionary) -> void:
 		_recompute_boosts()
 
 func _is_fence(x: int, z: int) -> bool:
-	var t = tiles.get(key(x, z))
-	return t != null and (t.get("type", "") == "fence" or t.get("type", "") == "gate")
+	return _player_fence(x, z) or frame_block.has(Vector2i(x, z))
 
 func _refresh_fence_neighbors(x: int, z: int) -> void:
 	for dd in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
 		var t = tiles.get(key(x + dd.x, z + dd.y))
 		if t != null and (t.get("type", "") == "fence" or t.get("type", "") == "gate"):
 			_refresh(t)
+		if frame_fences.has(Vector2i(x + dd.x, z + dd.y)):
+			_frame_fence_at(Vector2i(x + dd.x, z + dd.y))
 
 func _scarecrow_near(x: int, z: int) -> bool:
 	for dx in range(-3, 4):
@@ -1834,6 +1841,82 @@ func _move_entity_of(arg):
 	if e == null or e.kind == "debris":
 		return null
 	return e
+
+## Karakterin başında bir süre duran emoji balonu.
+func _show_emote(who: Node3D, i: int) -> void:
+	if who == null or not is_instance_valid(who) or i < 0 or i >= EMOTES.size():
+		return
+	for f in emote_fx.duplicate():   # aynı karakterin eski balonu gitsin
+		if is_instance_valid(f.n) and f.n.get_parent() == who:
+			f.n.queue_free()
+			emote_fx.erase(f)
+	var l := Label3D.new()
+	l.text = EMOTES[i]
+	l.font = font
+	l.font_size = 96
+	l.pixel_size = 0.006
+	l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	l.no_depth_test = true
+	l.outline_size = 0
+	l.position = Vector3(0, 2.3, 0)
+	who.add_child(l)
+	emote_fx.append({"n": l, "t": 0.0})
+
+func _update_emotes(dt: float) -> void:
+	for f in emote_fx.duplicate():
+		if not is_instance_valid(f.n):
+			emote_fx.erase(f)
+			continue
+		f.t += dt
+		var k: float = f.t
+		f.n.position.y = 2.3 + minf(k, 0.25) * 1.2 + k * 0.08
+		f.n.scale = Vector3.ONE * (minf(1.0, k * 5.0) * (1.0 + 0.15 * sin(k * 9.0) * maxf(0.0, 1.0 - k)))
+		f.n.modulate.a = clampf((3.0 - k) / 0.5, 0.0, 1.0)
+		if k > 3.0:
+			f.n.queue_free()
+			emote_fx.erase(f)
+
+## Kendi karakterinle emote: yakında başka oyuncu varsa ona döner.
+func _emote(i: int) -> void:
+	if emote_bar != null:
+		emote_bar.visible = false
+	var best = null
+	var bd := 6.0
+	for id in net_players:
+		var m: Node3D = net_players[id].node
+		var dd := m.position.distance_to(farmer.position)
+		if dd < bd:
+			bd = dd
+			best = m
+	if best != null:
+		farmer.rotation.y = atan2(best.position.x - farmer.position.x, best.position.z - farmer.position.z)
+	_show_emote(farmer, i)
+	_sfx("place")
+	if net_role == "guest":
+		rpc_id(1, "net_req", "@emote", str(i), 0, 0)
+	elif net_role == "host" and multiplayer.get_peers().size() > 0:
+		rpc("net_do", "@emote", str(i), 0, 0, 1)
+
+func _toggle_emote_bar() -> void:
+	if emote_bar == null:
+		emote_bar = _panel(8)
+		emote_bar.mouse_filter = Control.MOUSE_FILTER_STOP
+		ui.add_child(emote_bar)
+		var h := HBoxContainer.new()
+		h.add_theme_constant_override("separation", 4)
+		emote_bar.add_child(h)
+		for i in EMOTES.size():
+			var ii := i
+			var b := _small_btn(" %s " % EMOTES[i], func(): _emote(ii))
+			b.add_theme_font_size_override("font_size", 26)
+			b.tooltip_text = "%d" % (i + 1)
+			h.add_child(b)
+		emote_bar.visible = false
+	emote_bar.visible = not emote_bar.visible
+	if emote_bar.visible:
+		emote_bar.reset_size()
+		var vs := get_viewport().get_visible_rect().size
+		emote_bar.position = Vector2((vs.x - emote_bar.size.x) / 2.0, vs.y - emote_bar.size.y - 120)
 
 ## Nesneyi kendi yerinde 90° döndürür (ağda ev sahibinden geçer).
 func _turn_entity(e) -> void:
@@ -2546,6 +2629,21 @@ func _walk_to(p) -> void:
 	move_marker.position = Vector3(p.x, height_at(p.x, p.z) + 0.05, p.z)
 	move_marker.visible = true
 
+## Sınır çiti parçası: komşu sınır çitlerine ve içerideki oyuncu çitlerine bağlanır.
+func _frame_fence_at(p: Vector2i) -> void:
+	if frame_fences.has(p) and is_instance_valid(frame_fences[p]):
+		frame_fences[p].queue_free()
+	var c := func(dx: int, dz: int) -> bool:
+		return _frame_ring(p.x + dx, p.y + dz, frame_gate_z) or _player_fence(p.x + dx, p.y + dz)
+	var f := Models.fence(c.call(0, -1), c.call(0, 1), c.call(1, 0), c.call(-1, 0))
+	f.position = Vector3(p.x + 0.5, 0, p.y + 0.5)
+	frame_root.add_child(f)
+	frame_fences[p] = f
+
+func _player_fence(x: int, z: int) -> bool:
+	var t = tiles.get(key(x, z))
+	return t != null and (t.get("type", "") == "fence" or t.get("type", "") == "gate")
+
 func _walkable(x: int, z: int) -> bool:
 	if x < -WALK_LIM or x >= WALK_LIM or z < -WALK_LIM or z >= WALK_LIM:
 		return false
@@ -2837,7 +2935,9 @@ func _unhandled_input(ev: InputEvent) -> void:
 				cam_dist = clampf(cam_dist * 1.1, 5.0, 60.0)
 	elif ev is InputEventKey and ev.pressed and not ev.echo:
 		var k: int = ev.physical_keycode
-		if k >= KEY_1 and k <= KEY_9 and k - KEY_1 < TOOLS.size():
+		if emote_bar != null and emote_bar.visible and k >= KEY_1 and k < KEY_1 + EMOTES.size():
+			_emote(k - KEY_1)
+		elif k >= KEY_1 and k <= KEY_9 and k - KEY_1 < TOOLS.size():
 			_set_tool(TOOLS[k - KEY_1].id, TOOLS[k - KEY_1].id != "hand")
 		elif k == KEY_0 and TOOLS.size() >= 10:
 			_set_tool(TOOLS[9].id, false)
@@ -2848,6 +2948,8 @@ func _unhandled_input(ev: InputEvent) -> void:
 				_close_wheel()
 			else:
 				_open_wheel(mouse_pos)
+		elif k == KEY_G:
+			_toggle_emote_bar()
 		elif k == KEY_T:
 			if move_src != null:
 				_turn_entity(tiles.get(key(move_src.x, move_src.y)))
@@ -2856,6 +2958,9 @@ func _unhandled_input(ev: InputEvent) -> void:
 		elif k == KEY_ESCAPE:
 			if ctx_menu != null and ctx_menu.visible:
 				ctx_menu.visible = false
+				return
+			if emote_bar != null and emote_bar.visible:
+				emote_bar.visible = false
 				return
 			if move_src != null:
 				_move_pick(null)
@@ -3492,6 +3597,9 @@ func _build_ui() -> void:
 		muted = not muted
 		btn_sound.text = "🔇" if muted else "🔊")
 	ah.add_child(btn_sound)
+	var bemo := _icon_btn("😄", "Emote: arkadaşına el salla, gül, kalp gönder  [G]")
+	bemo.pressed.connect(_toggle_emote_bar)
+	ah.add_child(bemo)
 	var bland := _icon_btn("🗺️", "Arazi: çiftliği genişlet  [L]")
 	bland.pressed.connect(_open_land)
 	ah.add_child(bland)
@@ -4193,6 +4301,20 @@ func net_req(t: String, a: String, x: int, z: int) -> void:
 		if x >= 0 and x < quests.size():
 			_skip_quest(x)
 		return
+	if t == "@sell":   # misafir ambardan sattı
+		_sell(a, x)
+		net_quest_dirty = true
+		return
+	if t == "@deliver":
+		_deliver()
+		net_quest_dirty = true
+		return
+	if t == "@emote":
+		var sid := multiplayer.get_remote_sender_id()
+		if net_players.has(sid):
+			_show_emote(net_players[sid].node, int(a))
+		rpc("net_do", "@emote", a, 0, 0, sid)
+		return
 	var id := multiplayer.get_remote_sender_id()
 	net_actor = id
 	net_applying = true
@@ -4208,6 +4330,10 @@ func net_do(t: String, a: String, x: int, z: int, actor: int, msg := "") -> void
 		return
 	if t == "@toast":
 		_toast(msg, a)
+		return
+	if t == "@emote":
+		if actor != multiplayer.get_unique_id() and net_players.has(actor):
+			_show_emote(net_players[actor].node, int(a))
 		return
 	var keep := coins
 	coins = 1 << 30
@@ -4255,7 +4381,7 @@ func _net_sync_dict() -> Dictionary:
 	for e in entities:
 		ents.append(_ent_dict(e))
 	return {"coins": coins, "xp": xp, "level": level, "day_time": day_time, "day": day, "season": season, "season_t": season_t,
-		"year": year, "weather": weather, "weather_t": weather_t, "fh": farm_h, "res": res, "ents": ents, "q": _net_quest_dict()}
+		"year": year, "weather": weather, "weather_t": weather_t, "fh": farm_h, "res": res, "ents": ents, "q": _net_quest_dict(), "order": order}
 
 @rpc("authority", "reliable")
 func net_sync(d: Dictionary) -> void:
@@ -4284,6 +4410,10 @@ func net_sync(d: Dictionary) -> void:
 	_net_apply_ents(d.ents)
 	if d.has("q"):
 		net_quests(d.q)
+	if d.has("order") and typeof(d.order) == TYPE_DICTIONARY:
+		order = d.order
+	if barn != null and barn.visible:
+		_render_barn()
 	hud_dirty = true
 
 func _vis_sig(e: Dictionary) -> String:
@@ -4407,7 +4537,9 @@ Bağlanamıyorsa: bu bilgisayarda Windows Güvenlik Duvarı oyuna yalnız \"Öze
 			_toast("📡 Paylaşım kapandı.")))
 
 ## İki süreçli ağ denemesi (misafir tarafı): çapala, ev sahibinden onay bekle.
+var qok_sell_fail := false
 func _net_host_probe() -> void:
+	res["cereal"] = 10   # deneme: misafir 3 tanesini satacak
 	if quests.size() > 0:   # deneme: misafirin çapası bu göreve sayılmalı
 		quests[0] = {"kind": "plow", "arg": "", "text": "⛏️ Deneme: 5 kare sür", "need": 5, "have": 0, "medals": 1, "gems": 0, "xp": 1}
 		_render_quests()
@@ -4417,8 +4549,9 @@ func _net_host_probe() -> void:
 		await get_tree().create_timer(0.1).timeout
 		seen = maxi(seen, net_players.size())
 	var plots1 := entities.filter(func(e): return e.kind == "plot").size()
-	var qok: bool = quests.is_empty() or quests[0].kind != "plow" or quests[0].have == 1
-	print("NET HOST ", "OK" if plots1 == plots0 + 1 and seen == 1 and qok else "FAIL", " tarla %d→%d oyuncu=%d görev=%s" % [plots0, plots1, seen, qok])
+	if int(res.get("cereal", 0)) != 7: qok_sell_fail = true
+	var qok: bool = not qok_sell_fail and (quests.is_empty() or quests[0].kind != "plow" or quests[0].have == 1)
+	print("NET HOST ", "OK" if plots1 == plots0 + 1 and seen == 1 and qok else "FAIL", " tarla %d→%d oyuncu=%d görev+satış=%s" % [plots0, plots1, seen, qok])
 	get_tree().quit()
 
 func _net_selftest() -> void:
@@ -4442,6 +4575,11 @@ func _net_selftest() -> void:
 	if e == null or e.kind != "plot": fails.append("çapa ev sahibinden dönmedi")
 	await get_tree().create_timer(3.5).timeout
 	if coins <= 0: fails.append("senkron para yok")
+	var c0 := coins
+	if int(res.get("cereal", 0)) != 10: fails.append("ambar misafire gelmedi")
+	_sell("cereal", 3)
+	await get_tree().create_timer(2.5).timeout
+	if int(res.get("cereal", 0)) != 7 or coins <= c0: fails.append("misafir satışı")
 	var plow_q := false
 	for q in quests:
 		if q.kind == "plow":
@@ -5217,6 +5355,7 @@ func _load_finish(data: Dictionary, offline: bool) -> void:
 	if not data.has("bv"):
 		_add_default_buildings()   # binaların kayda girmediği eski sürüm
 	_fit_farm_h()
+	call_deferred("_story_catchup")
 	if int(data.get("sv", 1)) < 2 and story_step > 0:
 		story_step = STORY.size() if story_step >= 9 else story_step + 1   # ambar adımı araya girdi
 	_recompute_boosts()
@@ -5346,6 +5485,7 @@ func _process(delta: float) -> void:
 	if painting and not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
 		painting = false
 	_update_hold(dt)
+	_update_emotes(dt)
 	sim_acc += dt
 	if sim_acc > 0.1:
 		_simulate(sim_acc)
@@ -5383,6 +5523,9 @@ func _process(delta: float) -> void:
 					_set_tool(a.substr(7), true)
 				elif a == "--wheel":
 					_open_wheel(Vector2(640, 380))
+				elif a == "--emote":   # geliştirici: emote çubuğu ve balon
+					_toggle_emote_bar()
+					_show_emote(farmer, 2)
 				elif a == "--ctx":   # geliştirici: ambarın basılı tut menüsü
 					for e in entities:
 						if e.kind == "building" and e.type == "barn":
@@ -5719,6 +5862,33 @@ func _selftest_build(fails: Array) -> void:
 	_open_ctx(tb)
 	if ctx_menu == null or not ctx_menu.visible or ctx_box.get_child_count() < 4: fails.append("basılı tut menüsü")
 	ctx_menu.visible = false
+	# hikâye: kümes önceden kurulduysa adım kendiliğinden geçer
+	var ks := story_step
+	var kh := story_have
+	for i in STORY.size():
+		if STORY[i].kind == "buy" and STORY[i].arg == "coop":
+			story_step = i
+	story_have = 0
+	var has_coop := false
+	for e in entities:
+		if e.kind == "coop":
+			has_coop = true
+	_story_catchup()
+	if has_coop and STORY[story_step].arg == "coop": fails.append("hikâye önceden kurulan kümesi saymadı")
+	story_step = ks
+	story_have = kh
+	# sınır çiti: içeriye konan çite bağlanır
+	var fx := -farm_h
+	var fz := 0
+	if not tiles.has(key(fx, fz)):
+		var fe := _add_entity({"kind": "decor", "type": "fence", "x": fx, "z": fz})
+		if not _is_fence(fx - 1, fz): fails.append("sınır çiti çit sayılmıyor")
+		if not frame_fences.has(Vector2i(fx - 1, fz)): fails.append("sınır çiti parçası yok")
+		_remove_entity(fe)
+	_show_emote(farmer, 0)
+	if emote_fx.is_empty(): fails.append("emote balonu")
+	_update_emotes(3.5)
+	if not emote_fx.is_empty(): fails.append("emote kaybolmadı")
 	var rb := _refund_of(tiles.get(key(sp.x, sp.y)))
 	var c2 := coins
 	if not _perform({"x": sp.x, "z": sp.y, "tool": "remove", "arg": null}) or _count_buildings("barn") != b0: fails.append("bina kaldırma")
@@ -5914,6 +6084,25 @@ func _fill_quests() -> void:
 		quests.append(_random_quest())
 	_render_quests()
 
+## Hikâye adımı bir şeyin var olmasını istiyorsa (ambar, kümes, tavuk, ev) ve o şey zaten varsa adım kendiliğinden geçer.
+func _story_catchup() -> void:
+	if not _story_on() or net_role == "guest":
+		return
+	var st: Dictionary = STORY[story_step]
+	var have := 0
+	match st.kind:
+		"build":
+			have = _count_buildings(st.arg)
+		"buy":
+			for e in entities:
+				if (st.arg == "coop" and e.kind == "coop") or (st.arg != "coop" and e.kind == "animal" and e.type == st.arg):
+					have += 1
+		_:
+			return
+	if have > story_have:
+		story_have = mini(have, st.need)
+		_story_event(st.kind, st.arg, 0)
+
 func _story_event(kind: String, arg: String, n: int) -> void:
 	if not _story_on() or net_role == "guest":
 		return
@@ -5926,6 +6115,7 @@ func _story_event(kind: String, arg: String, n: int) -> void:
 		return
 	story_step += 1
 	story_have = 0
+	call_deferred("_story_catchup")
 	_sfx("level")
 	if st.say != "":
 		_toast_all("⭐ %s" % st.say, "level")
@@ -6489,6 +6679,15 @@ func _sell(r: String, n: int) -> void:
 	n = mini(n, res.get(r, 0))
 	if n <= 0:
 		return
+	if net_role == "guest":   # satışı ev sahibi yapar; para ve ambar eşitlenir
+		rpc_id(1, "net_req", "@sell", r, n, 0)
+		res[r] -= n
+		coins += n * int(Data.RESOURCES[r].price)
+		hud_dirty = true
+		_sfx("harvest")
+		_toast("💰 %d %s satıldı: +%d 🪙" % [n, Data.RESOURCES[r].icon, n * int(Data.RESOURCES[r].price)])
+		_render_barn()
+		return
 	res[r] -= n
 	var gain_c: int = n * Data.RESOURCES[r].price
 	coins += gain_c
@@ -6528,6 +6727,15 @@ func _can_deliver() -> bool:
 func _deliver() -> void:
 	if not _can_deliver():
 		return
+	if net_role == "guest":
+		rpc_id(1, "net_req", "@deliver", "", 0, 0)
+		for r in order.need:
+			res[r] -= order.need[r]
+		_toast("📋 Sipariş teslim edildi!", "level")
+		_sfx("level")
+		order = {}
+		_render_barn()
+		return
 	for r in order.need:
 		res[r] -= order.need[r]
 	medals += order.medals
@@ -6540,9 +6748,6 @@ func _deliver() -> void:
 	_render_barn()
 
 func _open_barn() -> void:
-	if net_role == "guest":
-		_toast("📦 Ambar çiftlik sahibinde.", "hint")
-		return
 	if _count_buildings("barn") == 0:
 		_toast("📦 Henüz ambarın yok. 🏗️ Yapı aletiyle bir ambar kur.", "hint")
 		return
