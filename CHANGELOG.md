@@ -1,5 +1,11 @@
 # Çiftliğim 3D — Sürüm Notları
 
+## v0.12.0 · Erken Erişim
+- 💬 **Online sohbet**: Enter'a bas, yaz, Enter ile gönder (Esc vazgeçer). Mesajlar sol altta ve karakterin üstünde balon olarak görünür. Üst çubukta 💬 düğmesi de var.
+- 🚩 **Sahiplik işareti**: online oynarken arkadaşının kurduğu bina, ağaç, hayvan ve dekorların köşesinde onun renginde küçük bir bayrak olur. Üstüne gelince "👤 … kurdu" yazar.
+- 🤝 **Ortak görevler**: arkadaşın katılınca bir görev ortak olur: 1,5 kat iş, **2 kat ödül**. İkinizin de katkı vermesi gerekir; görev panelinde kimin ne kadar yaptığı yazar.
+- 🖥️ Küçük pencerede üst sağdaki düğmeler artık taşmıyor, iki sıraya geçiyor.
+
 ## v0.11.0 · Erken Erişim
 - 🤗 **Hayvan bakımı**: hayvanın üstünde basılı tut → **Sev** (günde bir) ve **isim ver**. İsimler hayvanın üstünde yazar.
 - 😊 **Mutluluk**: her hayvanın bir mutluluğu var. Mutlu hayvan %25'e kadar hızlı üretir, üzgün olan yavaşlar. Sevmek ve yemlemek mutlu eder; zamanla azalır.

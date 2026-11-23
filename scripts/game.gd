@@ -146,6 +146,7 @@ const HELP_PAGES := [
 		["🚚 · 🗑️", "Taşı: nesneye tıkla, sonra yeni yerine tıkla; seçiliyken kendisine tıkla ya da T ile döndür (Esc vazgeçer). Her nesnenin (bina, fener, çit, ağaç, hayvan…) üstünde basılı tut: Döndür / Taşı / Kaldır menüsü; ambar, ev, ağaç, hayvan, çit… hepsi taşınır, bedava. Kaldır: nesneyi siler, yarı fiyatı geri gelir."],
 		["B · J · Esc", "B ambarı, J görev panelini açar; Esc iş kuyruğunu ve pencereleri kapatır."],
 		["🎣", "Balık tutma: gölün batı kıyısındaki 🎣 Balıkçı tezgâhından olta ve yem al. Göle tıkla; ❗ çıkınca tıkla (ya da Boşluk), mini oyunda basılı tutarak yeşil alanı balığın üstünde tut. 6 tür var, yayın balığı geceleri çıkar; tezgâhta balık defterin durur."],
+		["Enter · 💬", "Online sohbet: Enter'a bas, yaz, Enter ile gönder. Mesaj sol altta ve karakterinin üstünde balon olarak görünür. Arkadaşının kurduğu şeylerde onun renginde küçük bayrak olur. 🤝 Ortak görevler 2 kat ödül verir; ikiniz de katkı vermelisiniz."],
 		["🤗", "Hayvanın üstünde basılı tut: Sev (günde bir, mutluluk artar) ve isim ver. Mutlu hayvan %25'e kadar hızlı üretir, üzgün olan yavaşlar. Yemlemek de mutlu eder. 🐮 Ahır: çevresindeki koyun, domuz ve ineklerin mutluluğu yavaş düşer."],
 		["🎪", "Mevsim etkinliği: ilkbaharda Çiçek Şenliği, yazın Balık Yarışması, sonbaharda Hasat Festivali, kışın Kardan Adam (pazarın çevresinde kar topla). Bronz, gümüş, altın derece ödülleri; altında kalıcı kupa dekoru."],
 		["🏘️", "Kasaba pazarı yolun güneyinde: 4 köylü var. Her sabah her biri bir şey ister; getirirsen altın ve ❤ dostluk. Günde bir hediye verebilirsin (çok sevdiği şey ❤ ×2). Her kalpte hediye, 5 kalpte kalıcı bir yetenek açılır."],
@@ -380,6 +381,7 @@ var quest_open := true
 var barn: Control
 var barn_box: VBoxContainer
 var lbl_clock: Label
+var act_grid: GridContainer   # üst sağ düğmeler: dar ekranda iki sıra
 var lbl_queue: Label
 var shelf_panel: PanelContainer
 var shelf_box: GridContainer
@@ -448,7 +450,15 @@ var trophies := {}
 var snow_nodes := []
 var snowman: Node3D
 var ev_open := false
-var stable_rects := []   # ahırların kapladığı alan (Rect2i)
+var stable_rects := []
+var net_from := 0            # şu an işlenen misafir isteğinin gönderen kimliği (0: ev sahibi)
+var net_fake_online := false # test: çevrim içi gibi davran
+var place_at := Vector2i(-9999, -9999)
+var place_frame := -1
+var chat_log: VBoxContainer
+var chat_in: LineEdit
+var chat_lines := []
+var chat_rx := 0             # alınan sohbet mesajı sayısı (ağ testi)         # {"n": Label, "t": float}   # ahırların kapladığı alan (Rect2i)
 const HAPPY_DAY := 2.0   # tam mutluluk ~2 günde sıfırlanır
 const HEART_PTS := 10
 const HEARTS_MAX := 5
@@ -1565,6 +1575,7 @@ func _add_entity(d: Dictionary) -> Dictionary:
 	g.rotation.y = e.rot
 	add_child(g)
 	entities.append(e)
+	_owner_stamp(e)
 	_grass_mark(e.x, e.z)
 	if e.has("w"):
 		_grass_mark(e.x + e.w - 1, e.z + e.d - 1)
@@ -1767,6 +1778,7 @@ func _refresh(e: Dictionary) -> void:
 			g.add_child(Visuals.decor(e.type, {"n": _is_fence(e.x, e.z - 1), "s": _is_fence(e.x, e.z + 1), "e": _is_fence(e.x + 1, e.z), "w": _is_fence(e.x - 1, e.z)}))
 		"building":
 			g.add_child(Models.building(e.type))
+	_owner_flag(e)
 
 # ============================================================ simülasyon
 func _wet(e: Dictionary) -> bool:
@@ -2021,7 +2033,7 @@ func _show_emote(who: Node3D, i: int) -> void:
 	l.outline_size = 0
 	l.position = Vector3(0, 2.3, 0)
 	who.add_child(l)
-	emote_fx.append({"n": l, "t": 0.0})
+	emote_fx.append({"n": l, "t": 0.0, "y": 2.3, "d": 3.0})
 
 func _update_emotes(dt: float) -> void:
 	for f in emote_fx.duplicate():
@@ -2030,10 +2042,11 @@ func _update_emotes(dt: float) -> void:
 			continue
 		f.t += dt
 		var k: float = f.t
-		f.n.position.y = 2.3 + minf(k, 0.25) * 1.2 + k * 0.08
+		var dur: float = f.get("d", 3.0)
+		f.n.position.y = float(f.get("y", 2.3)) + minf(k, 0.25) * 1.2 + minf(k, 3.0) * 0.08
 		f.n.scale = Vector3.ONE * (minf(1.0, k * 5.0) * (1.0 + 0.15 * sin(k * 9.0) * maxf(0.0, 1.0 - k)))
-		f.n.modulate.a = clampf((3.0 - k) / 0.5, 0.0, 1.0)
-		if k > 3.0:
+		f.n.modulate.a = clampf((dur - k) / 0.5, 0.0, 1.0)
+		if k > dur:
 			f.n.queue_free()
 			emote_fx.erase(f)
 
@@ -2249,6 +2262,200 @@ func _barn_cap() -> int:
 				cap += Data.SILO_CAP
 	return cap if _count_buildings("barn") > 0 else 0
 
+# ============================================================ online: sohbet, sahiplik, ortak görev
+func _online() -> bool:
+	return net_fake_online or (net_role != "" and multiplayer.has_multiplayer_peer() and multiplayer.get_peers().size() > 0)
+
+func _peer_name(id: int) -> String:
+	if id == 0:
+		return player_name
+	return str(net_players[id].name) if net_players.has(id) else "Arkadaş"
+
+func _peer_color(id: int) -> String:
+	if id == 0:
+		return "#e8574a"
+	return NET_COLORS[absi(id) % NET_COLORS.size()]
+
+func _build_chat() -> void:
+	chat_log = VBoxContainer.new()
+	chat_log.add_theme_constant_override("separation", 2)
+	chat_log.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	chat_log.anchor_top = 1.0
+	chat_log.anchor_bottom = 1.0
+	chat_log.offset_left = 16
+	chat_log.offset_top = -330
+	chat_log.offset_bottom = -150
+	chat_log.offset_right = 470
+	chat_log.alignment = BoxContainer.ALIGNMENT_END
+	ui.add_child(chat_log)
+	chat_in = LineEdit.new()
+	chat_in.placeholder_text = "💬 Mesaj yaz, Enter ile gönder (Esc: vazgeç)"
+	chat_in.max_length = 80
+	chat_in.anchor_top = 1.0
+	chat_in.anchor_bottom = 1.0
+	chat_in.offset_left = 16
+	chat_in.offset_right = 470
+	chat_in.offset_top = -142
+	chat_in.offset_bottom = -106
+	chat_in.visible = false
+	chat_in.add_theme_stylebox_override("normal", _sb(Color(1, 1, 1, 0.92), 10, Color("#c9b28f"), 2, 8))
+	chat_in.text_submitted.connect(func(tx: String):
+		_chat_send(tx)
+		chat_in.text = ""
+		chat_in.visible = false
+		chat_in.release_focus())
+	chat_in.gui_input.connect(func(e2: InputEvent):
+		if e2 is InputEventKey and e2.pressed and e2.physical_keycode == KEY_ESCAPE:
+			chat_in.text = ""
+			chat_in.visible = false
+			chat_in.release_focus()
+			chat_in.accept_event())
+	ui.add_child(chat_in)
+
+func _chat_open() -> void:
+	if chat_in == null:
+		return
+	if not _online():
+		_toast("💬 Sohbet için önce 📡 ile çiftliğini paylaş ya da bir arkadaşına katıl.", "hint")
+		return
+	chat_in.visible = true
+	chat_in.grab_focus()
+
+func _chat_send(tx: String) -> void:
+	var m := tx.strip_edges().left(80)
+	if m == "":
+		return
+	_chat_add(player_name, "#e8574a" if net_role != "guest" else _peer_color(multiplayer.get_unique_id()), m, farmer)
+	if net_role == "guest":
+		rpc_id(1, "net_req", "@chat", m, 0, 0)
+	elif net_role == "host":
+		rpc("net_do", "@chat", m, 0, 0, 1)
+
+## Sohbet satırı (12 sn sonra solar) ve karakterin üstünde konuşma balonu.
+func _chat_add(who: String, col: String, m: String, node: Node3D) -> void:
+	if chat_log == null:
+		return
+	var l := RichTextLabel.new()
+	l.bbcode_enabled = true
+	l.fit_content = true
+	l.scroll_active = false
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	l.custom_minimum_size = Vector2(450, 0)
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	l.add_theme_constant_override("outline_size", 6)
+	l.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.75))
+	l.add_theme_font_size_override("normal_font_size", 16)
+	l.add_theme_font_size_override("bold_font_size", 16)
+	l.text = "[b][color=%s]%s:[/color][/b] [color=#ffffff]%s[/color]" % [col, who.replace("[", "("), m.replace("[", "(")]
+	chat_log.add_child(l)
+	chat_lines.append({"n": l, "t": 0.0})
+	while chat_lines.size() > 6:
+		chat_lines[0].n.queue_free()
+		chat_lines.remove_at(0)
+	if node != null and is_instance_valid(node):
+		for f in emote_fx.duplicate():
+			if is_instance_valid(f.n) and f.n.get_parent() == node:
+				f.n.queue_free()
+				emote_fx.erase(f)
+		var b := Label3D.new()
+		b.text = m
+		b.font = font
+		b.font_size = 32
+		b.pixel_size = 0.006
+		b.width = 460
+		b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		b.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		b.no_depth_test = true
+		b.modulate = Color("#3e2a1a")
+		b.outline_size = 18
+		b.outline_modulate = Color(1, 1, 1, 0.95)
+		node.add_child(b)
+		emote_fx.append({"n": b, "t": 0.0, "y": 2.1, "d": 5.0})
+	_sfx("place")
+
+func _update_chat(dt: float) -> void:
+	for c in chat_lines.duplicate():
+		c.t += dt
+		if not is_instance_valid(c.n):
+			chat_lines.erase(c)
+			continue
+		var keep := 999.0 if chat_in != null and chat_in.visible else 12.0
+		c.n.modulate.a = clampf((keep - c.t) / 1.5, 0.0, 1.0)
+		if c.t > keep and keep < 100.0:
+			c.n.queue_free()
+			chat_lines.erase(c)
+
+## Çevrim içiyken kurulan şeyi kimin kurduğunu kaydet.
+func _owner_stamp(e: Dictionary) -> void:
+	if e.has("ow") or net_role == "guest" or not _online():
+		return
+	if Engine.get_process_frames() != place_frame or e.x != place_at.x or e.z != place_at.y:
+		return
+	if e.kind == "plot" or e.kind == "debris":
+		return
+	e.ow = _peer_name(net_from)
+	e.oc = _peer_color(net_from)
+
+## Arkadaşın kurduğu şeyin köşesinde onun renginde küçük bayrak.
+func _owner_flag(e: Dictionary) -> void:
+	if str(e.get("ow", "")) == "" or str(e.ow) == player_name:
+		return
+	if e.kind == "decor" and ["path", "fence", "gate"].has(e.type):
+		return
+	var g: Node3D = e.group
+	var w := float(e.get("w", 1))
+	var d := float(e.get("d", 1))
+	var cx := -w / 2.0 + 0.12
+	var cz := -d / 2.0 + 0.12
+	var f := Node3D.new()
+	f.name = "OwnerFlag"
+	f.add_child(Models.box(0.035, 0.55, 0.035, "#5d4037", cx, 0.275, cz))
+	f.add_child(Models.box(0.2, 0.13, 0.02, str(e.get("oc", "#4a90d9")), cx + 0.11, 0.48, cz))
+	g.add_child(f)
+
+func _new_quest() -> Dictionary:
+	var q := _random_quest()
+	if _online() and net_role != "guest":
+		var has := false
+		for o in quests:
+			if o.get("co", false):
+				has = true
+		if not has:
+			_coopify(q)
+	return q
+
+## Ortak görev: 1,5 kat iş, 2 kat ödül; iki oyuncu da katkı vermeli.
+func _coopify(q: Dictionary) -> void:
+	q.co = true
+	q.need = int(ceil(q.need * 1.5))
+	q.medals = int(q.medals) * 2
+	q.gems = int(q.gems) * 2
+	q.xp = int(q.xp) * 2
+	q.hc = 0
+	q.gc = 0
+	if not str(q.text).begins_with("🤝"):
+		q.text = "🤝 " + str(q.text)
+
+func _co_each(q) -> int:
+	return maxi(1, int(q.need) / 4)
+
+func _co_ok(q) -> bool:
+	if not q.get("co", false) or not _online():
+		return true
+	return int(q.get("hc", 0)) >= _co_each(q) and int(q.get("gc", 0)) >= _co_each(q)
+
+## Arkadaş katılınca bir görevi ortak göreve çevir.
+func _ensure_coop() -> void:
+	if net_role == "guest" or _story_on() or quests.is_empty():
+		return
+	for q in quests:
+		if q.get("co", false):
+			return
+	var q := _random_quest()
+	_coopify(q)
+	quests[quests.size() - 1] = q
+	_render_quests()
+
 # ============================================================ hayvan bakımı
 ## Mutluluk üretim hızını etkiler: üzgün ×0.75 … çok mutlu ×1.25.
 func _happy_mult(e: Dictionary) -> float:
@@ -2288,7 +2495,7 @@ func _pet_fx(e: Dictionary) -> void:
 	_burst(p + Vector3(0, 0.9, 0), "#ff6b9a", 10, 2.2)
 	_show_emote(e.group, 2)
 	if not emote_fx.is_empty():
-		emote_fx.back().n.position.y = {"chicken": 1.0, "sheep": 1.5, "pig": 1.4, "cow": 2.0}.get(e.type, 1.5)
+		emote_fx.back().y = {"chicken": 0.6, "sheep": 0.95, "pig": 0.9, "cow": 1.3}.get(e.type, 1.0)
 	e.hop_t = 1.0
 	_sfx("animal")
 
@@ -2339,6 +2546,8 @@ func _perform_local(item: Dictionary) -> bool:
 		return false
 	var e = tiles.get(key(x, z))
 	var pos := tile_center(x, z)
+	place_at = Vector2i(x, z)
+	place_frame = Engine.get_process_frames()
 	if act != "remove" and act != "move" and act != "turn":
 		_act_anim(act, pos)
 	match act:
@@ -3248,6 +3457,8 @@ func _unhandled_input(ev: InputEvent) -> void:
 			_set_tool(TOOLS[9].id, false)
 		elif k == KEY_MINUS and TOOLS.size() >= 11:
 			_set_tool(TOOLS[10].id, false)
+		elif (k == KEY_ENTER or k == KEY_KP_ENTER) and net_role != "":
+			_chat_open()
 		elif k == KEY_TAB:
 			if wheel.visible:
 				_close_wheel()
@@ -3456,6 +3667,8 @@ func _describe(e, act, arg, x: int, z: int) -> String:
 				if e.type == "barn" or e.type == "silo":
 					s += "\n📦 %d / %d" % [_res_total(), _barn_cap()]
 
+	if e != null and str(e.get("ow", "")) != "":
+		s += ("\n" if s != "" else "") + "👤 %s kurdu" % e.ow
 	if e != null and e.kind != "plot" and e.kind != "debris":
 		s += ("\n" if s != "" else "") + "🖱️ Basılı tut: döndür · taşı · kaldır"
 	if act != null:
@@ -3686,13 +3899,18 @@ func _update_day(dt: float) -> void:
 	var icon := "🌙" if night_f > 0.6 else ("🌅" if set_f > 0.4 else "☀️")
 	var sn = Data.SEASONS[season]
 	var left := ceili((1.0 - season_t) * Data.SEASON_LEN / 60.0)
-	var txt := "%s %02d:%02d · Gün %d   ·   %s %s (%d dk) · Yıl %d" % [icon, hh, mm - mm % 10, day, sn.icon, sn.name, left, year]
+	var txt := "%s %02d:%02d · Gün %d  ·  %s %s (%d dk) · Yıl %d" % [icon, hh, mm - mm % 10, day, sn.icon, sn.name, left, year]
 	if weather != "":
-		txt += "   ·   %s %s" % [Data.WEATHER[weather].icon, Data.WEATHER[weather].name]
+		txt += "  ·  %s %s" % [Data.WEATHER[weather].icon, Data.WEATHER[weather].name]
 	if int(ev.s) == season:
 		var ed := _ev_def()
-		txt += "   ·   %s %s" % [ed.icon, "🏆" if int(ev.tier) >= 3 else "%s/%s" % [_ev_fmt(int(ev.score)), _ev_fmt(int(ed.tiers[int(ev.tier)]))]]
+		txt += "  ·  %s %s" % [ed.icon, "🏆" if int(ev.tier) >= 3 else "%s/%s" % [_ev_fmt(int(ev.score)), _ev_fmt(int(ed.tiers[int(ev.tier)]))]]
 	lbl_clock.text = txt
+	if act_grid != null:
+		var n := act_grid.get_child_count()
+		var cols := n if get_viewport().get_visible_rect().size.x >= 1600 else ceili(n / 2.0)
+		if act_grid.columns != cols:
+			act_grid.columns = cols
 
 func _update_lamps(dt: float) -> void:
 	lamp_timer -= dt
@@ -3845,6 +4063,7 @@ func _btn_styles(b: Button, normal: Color, hover: Color, border := Color(0, 0, 0
 	b.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
 
 func _build_ui() -> void:
+	call_deferred("_build_chat")
 	var layer := CanvasLayer.new()
 	add_child(layer)
 	ui = Control.new()
@@ -3929,7 +4148,12 @@ func _build_ui() -> void:
 
 	var acts := _panel(6)
 	top.add_child(acts)
-	var ah := HBoxContainer.new()
+	for tc in top.get_children():
+		tc.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	var ah := GridContainer.new()
+	ah.add_theme_constant_override("h_separation", 4)
+	ah.add_theme_constant_override("v_separation", 0)
+	act_grid = ah
 	acts.add_child(ah)
 	btn_sound = _icon_btn("🔊", "Ses aç/kapa")
 	btn_sound.pressed.connect(func():
@@ -3939,6 +4163,9 @@ func _build_ui() -> void:
 	var bemo := _icon_btn("😄", "Emote: arkadaşına el salla, gül, kalp gönder  [G]")
 	bemo.pressed.connect(_toggle_emote_bar)
 	ah.add_child(bemo)
+	var bchat := _icon_btn("💬", "Sohbet (online)  [Enter]")
+	bchat.pressed.connect(_chat_open)
+	ah.add_child(bchat)
 	var bev := _icon_btn("🎪", "Mevsim etkinliği: yarışma, dereceler, kupalar")
 	bev.pressed.connect(_open_event)
 	ah.add_child(bev)
@@ -4262,9 +4489,9 @@ func _icon_btn(icon: String, tip: String) -> Button:
 	var b := Button.new()
 	b.text = icon
 	b.tooltip_text = tip
-	b.custom_minimum_size = Vector2(40, 40)
+	b.custom_minimum_size = Vector2(34, 40)
 	b.focus_mode = Control.FOCUS_NONE
-	b.add_theme_font_size_override("font_size", 18)
+	b.add_theme_font_size_override("font_size", 17)
 	_btn_styles(b, Color(0, 0, 0, 0), Color("#f3e6cf"))
 	return b
 
@@ -4580,6 +4807,7 @@ func net_ready(nm: String) -> void:
 	var id := multiplayer.get_remote_sender_id()
 	_net_spawn(id, nm.left(14))
 	_toast("👋 %s çiftliğine geldi!" % nm.left(14), "level")
+	_ensure_coop()
 	_net_roster()
 	_render_net_dlg()
 	net_sync_t = 99.0
@@ -4638,6 +4866,19 @@ func net_pos(x: float, z: float, ry: float, mv: bool) -> void:
 @rpc("any_peer", "reliable")
 func net_req(t: String, a: String, x: int, z: int) -> void:
 	if net_role != "host":
+		return
+	net_from = multiplayer.get_remote_sender_id()
+	_net_req_in(t, a, x, z)
+	net_from = 0
+
+func _net_req_in(t: String, a: String, x: int, z: int) -> void:
+	if t == "@chat":
+		var sid := multiplayer.get_remote_sender_id()
+		var m := a.strip_edges().left(80)
+		if m != "" and net_players.has(sid):
+			chat_rx += 1
+			_chat_add(net_players[sid].name, NET_COLORS[absi(sid) % NET_COLORS.size()], m, net_players[sid].node)
+			rpc("net_do", "@chat", m, 0, 0, sid)
 		return
 	if t == "@skip":   # misafir görev silmek istedi: ev sahibinin kurallarıyla (ücretsiz hak / elmas)
 		if x >= 0 and x < quests.size():
@@ -4718,6 +4959,10 @@ func net_do(t: String, a: String, x: int, z: int, actor: int, msg := "") -> void
 		if actor != multiplayer.get_unique_id() and net_players.has(actor):
 			_show_emote(net_players[actor].node, int(a))
 		return
+	if t == "@chat":
+		if actor != multiplayer.get_unique_id() and net_players.has(actor):
+			_chat_add(net_players[actor].name, NET_COLORS[absi(actor) % NET_COLORS.size()], a, net_players[actor].node)
+		return
 	var keep := coins
 	coins = 1 << 30
 	net_applying = true
@@ -4740,7 +4985,8 @@ func net_quests(d: Dictionary) -> void:
 	for q in d.get("quests", []):
 		if typeof(q) == TYPE_DICTIONARY and q.has("kind"):
 			ql.append({"kind": str(q.kind), "arg": str(q.get("arg", "")), "text": str(q.get("text", "")),
-				"need": int(q.need), "have": int(q.get("have", 0)), "medals": int(q.medals), "gems": int(q.gems), "xp": int(q.xp)})
+				"need": int(q.need), "have": int(q.get("have", 0)), "medals": int(q.medals), "gems": int(q.gems), "xp": int(q.xp),
+				"co": bool(q.get("co", false)), "hc": int(q.get("hc", 0)), "gc": int(q.get("gc", 0))})
 	var st := clampi(int(d.get("story", STORY.size())), 0, STORY.size())
 	var sh := int(d.get("sh", 0))
 	medals = int(d.get("medals", medals))
@@ -4816,6 +5062,9 @@ func net_sync(d: Dictionary) -> void:
 	hud_dirty = true
 
 func _vis_sig(e: Dictionary) -> String:
+	return str(e.get("ow", "")) + "#" + _vis_sig0(e)
+
+func _vis_sig0(e: Dictionary) -> String:
 	match e.kind:
 		"plot": return "%s|%d|%s" % [e.crop, crop_stage(e) if e.crop != null else -1, _wet(e)]
 		"tree": return "%s|%s" % [e.age >= 1.0, e.has_fruit]
@@ -4950,7 +5199,7 @@ func _net_host_probe() -> void:
 	var plots1 := entities.filter(func(e): return e.kind == "plot").size()
 	if int(res.get("cereal", 0)) != 7: qok_sell_fail = true
 	if int(fishgear.rod) != 1: qok_sell_fail = true
-	var qok: bool = not qok_sell_fail and (quests.is_empty() or quests[0].kind != "plow" or quests[0].have == 1)
+	var qok: bool = chat_rx == 1 and not qok_sell_fail and (quests.is_empty() or quests[0].kind != "plow" or quests[0].have == 1)
 	print("NET HOST ", "OK" if plots1 == plots0 + 1 and seen == 1 and qok else "FAIL", " tarla %d→%d oyuncu=%d görev+satış=%s" % [plots0, plots1, seen, qok])
 	get_tree().quit()
 
@@ -4969,6 +5218,7 @@ func _net_selftest() -> void:
 	if tiles.has(key(tx, tz)): fails.append("deneme karesi dolu")
 	if quests.is_empty() and not _story_on(): fails.append("görevler misafire gelmedi")
 	var qsig := str(quests) + str(story_have) + str(story_step)
+	_chat_send("ağ testi: merhaba")
 	_perform({"tool": "plow", "arg": null, "x": tx, "z": tz})
 	await get_tree().create_timer(2.0).timeout
 	var e = tiles.get(key(tx, tz))
@@ -5624,6 +5874,9 @@ func _state_dict() -> Dictionary:
 func _ent_dict(e: Dictionary) -> Dictionary:
 		var s := {"k": e.kind, "x": e.x, "z": e.z, "r": e.rot}
 		if e.has("type"): s.t = e.type
+		if e.has("ow"):
+			s.ow = e.ow
+			s.oc = e.get("oc", "#4a90d9")
 		match e.kind:
 			"plot":
 				s.c = e.crop
@@ -5731,6 +5984,9 @@ func _ent_base(s: Dictionary) -> Dictionary:
 		var base := {"kind": s.k, "x": x, "z": z, "rot": float(s.get("r", 0.0))}
 		if s.has("t"):
 			base.type = s.t
+		if s.has("ow"):
+			base.ow = str(s.ow).left(14)
+			base.oc = str(s.get("oc", "#4a90d9"))
 		match s.k:
 			"plot":
 				base.crop = s.get("c")
@@ -5905,6 +6161,7 @@ func _process(delta: float) -> void:
 	_update_mill(dt)
 	_update_bake(dt)
 	_update_villagers(dt)
+	_update_chat(dt)
 	sim_acc += dt
 	if sim_acc > 0.1:
 		_simulate(sim_acc)
@@ -5942,6 +6199,24 @@ func _process(delta: float) -> void:
 					_set_tool(a.substr(7), true)
 				elif a == "--wheel":
 					_open_wheel(Vector2(640, 380))
+				elif a == "--chat":   # geliştirici: sohbet, bayrak ve ortak görev görünümü
+					net_fake_online = true
+					var f1 := _free_spot(3, 3)
+					_add_entity({"kind": "building", "type": "well", "x": f1.x + 1, "z": f1.y + 1, "w": 1, "d": 1, "rot": 0.0, "ow": "Nix", "oc": "#9c5bd6"})
+					_add_entity({"kind": "tree", "type": "apple", "x": f1.x, "z": f1.y + 2, "age": 1.0, "fruit_t": 0.0, "has_fruit": true, "ow": "Nix", "oc": "#9c5bd6"})
+					farmer.position = Vector3(f1.x + 2.5, 0, f1.y + 3.0)
+					cam_target = Vector3(f1.x + 1.5, 0, f1.y + 1.5)
+					_chat_add("Nix", "#9c5bd6", "selam! kuyuyu ben kurdum 😄", null)
+					_chat_add(player_name, "#e8574a", "süper, ben de elma ağacına bakıyorum", farmer)
+					if not _story_on() and not quests.is_empty():
+						var cq := _make_quest("crop", "wheat")
+						_coopify(cq)
+						cq.have = 5
+						cq.hc = 4
+						cq.gc = 1
+						quests[0] = cq
+						_render_quests()
+					chat_in.visible = true
 				elif a == "--pets":   # geliştirici: adlı hayvanlar ve ahır, sevme menüsü
 					level = maxi(level, 6)
 					var f0 := _free_spot(6, 4)
@@ -7791,6 +8066,7 @@ func _selftest_build(fails: Array) -> void:
 	_selftest_town(fails)
 	_selftest_events(fails)
 	_selftest_pets(fails)
+	_selftest_coop(fails)
 	var rb := _refund_of(tiles.get(key(sp.x, sp.y)))
 	var c2 := coins
 	if not _perform({"x": sp.x, "z": sp.y, "tool": "remove", "arg": null}) or _count_buildings("barn") != b0: fails.append("bina kaldırma")
@@ -7801,6 +8077,45 @@ func _selftest_build(fails: Array) -> void:
 	var pe2 = tiles.get(key(ps.x, ps.y))
 	if pe2 != null and pe2.kind == "plot":
 		_remove_entity(pe2)
+
+func _selftest_coop(fails: Array) -> void:
+	var keep := [quests.duplicate(true), medals, gems]
+	net_fake_online = true
+	var q := _make_quest("crop", "wheat")
+	_coopify(q)
+	q.need = 8
+	quests = [q]
+	var m0 := medals
+	_quest_event("crop", "wheat", 8)
+	if quests[0] != q or q.have != 8: fails.append("ortak görev tek kişiyle bitti")
+	net_from = 5
+	_quest_event("crop", "wheat", 2)
+	net_from = 0
+	if quests[0] == q or medals != m0 + int(q.medals): fails.append("ortak görev bitmedi")
+	if not str(q.text).begins_with("🤝"): fails.append("ortak görev adı")
+	# sahiplik
+	var sp := _free_spot(1, 1)
+	if sp.x != 999:
+		coins += 500
+		net_from = 5
+		_perform_local({"tool": "decor", "arg": "rock", "x": sp.x, "z": sp.y})
+		net_from = 0
+		var le = tiles.get(key(sp.x, sp.y))
+		if le == null or str(le.get("ow", "")) != "Arkadaş" or le.group.get_node_or_null("OwnerFlag") == null: fails.append("sahiplik bayrağı")
+		var back := _ent_base(_ent_dict(le))
+		if back.get("ow", "") != "Arkadaş": fails.append("sahiplik kaydı")
+		if le != null:
+			_remove_entity(le)
+	# sohbet
+	if chat_log != null:
+		var n0 := chat_lines.size()
+		_chat_add("Ali", "#4a90d9", "merhaba [b]x", null)
+		if chat_lines.size() != mini(6, n0 + 1): fails.append("sohbet satırı")
+	net_fake_online = false
+	quests = keep[0]
+	medals = keep[1]
+	gems = keep[2]
+	_render_quests()
 
 func _selftest_pets(fails: Array) -> void:
 	var f0 := _free_spot(8, 3)
@@ -8232,7 +8547,7 @@ func _fill_quests() -> void:
 		_render_quests()
 		return
 	while quests.size() < QUEST_SLOTS:
-		quests.append(_random_quest())
+		quests.append(_new_quest())
 	_render_quests()
 
 ## Hikâye adımı bir şeyin var olmasını istiyorsa (ambar, kümes, tavuk, ev) ve o şey zaten varsa adım kendiliğinden geçer.
@@ -8289,13 +8604,18 @@ func _quest_event(kind: String, arg: String, n: int) -> void:
 		var q = quests[i]
 		if q.kind == kind and (q.arg == "" or q.arg == arg):
 			q.have = mini(q.need, q.have + n)
-			if q.have >= q.need:
+			if q.get("co", false):
+				if net_from != 0:
+					q.gc = int(q.get("gc", 0)) + n
+				else:
+					q.hc = int(q.get("hc", 0)) + n
+			if q.have >= q.need and _co_ok(q):
 				done.append(i)
 	for i in done:
 		var q = quests[i]
 		medals += q.medals
 		gems += q.gems
-		quests[i] = _random_quest()
+		quests[i] = _new_quest()
 		_toast_all("📜 Görev tamamlandı: %s\n+%d 🏅  +%d 💎  +%d XP" % [q.text, q.medals, q.gems, q.xp], "level")
 		_gain(0, q.xp, farmer.position, "📜")
 		_sfx("level")
@@ -8317,10 +8637,10 @@ func _skip_quest(i: int) -> bool:
 		return false
 	var old = quests[i]
 	quests.remove_at(i)
-	var nq := _random_quest()
+	var nq := _new_quest()
 	quests.insert(i, nq)
 	if nq.kind == old.kind and nq.arg == old.arg and _quest_candidates().size() > 0:
-		quests[i] = _random_quest()
+		quests[i] = _new_quest()
 	hud_dirty = true
 	_render_quests()
 	return true
@@ -8426,6 +8746,17 @@ func _render_quests() -> void:
 		rw.add_theme_font_size_override("font_size", 12)
 		rw.add_theme_color_override("font_color", Color("#9a6a00"))
 		row.add_child(rw)
+		if q.get("co", false):
+			var cl := Label.new()
+			var mine := int(q.get("gc", 0)) if net_role == "guest" else int(q.get("hc", 0))
+			var theirs := int(q.get("hc", 0)) if net_role == "guest" else int(q.get("gc", 0))
+			if _online() or net_role == "guest":
+				cl.text = "🤝 Ortak · 2× ödül · sen %d · arkadaşın %d (ikiniz de en az %d)" % [mine, theirs, _co_each(q)]
+			else:
+				cl.text = "🤝 Ortak görev · 2× ödül (arkadaş yokken tek başına da biter)"
+			cl.add_theme_font_size_override("font_size", 11)
+			cl.add_theme_color_override("font_color", Color("#2f7d6e"))
+			row.add_child(cl)
 		quest_box.add_child(row)
 	quest_panel.reset_size()
 
