@@ -104,6 +104,19 @@ const HELP_PAGES := [
 	]],
 ]
 
+## Doğa süsleri (Kenney Nature Kit, CC0): assets/nature
+const NAT := "res://assets/nature/"
+const WILD_TREES := ["tree_small.glb", "tree_thin.glb", "tree_simple.glb", "tree_tall.glb", "tree_pineSmallA.glb", "tree_plateau.glb"]
+const WILD_BUSH := ["plant_bushSmall.glb", "plant_bushDetailed.glb", "plant_bushLargeTriangle.glb", "plant_bush.glb", "plant_flatTall.glb"]
+const WILD_ROCK := ["rock_smallB.glb", "rock_smallFlatA.glb", "stone_smallC.glb", "rock_smallA.glb", "rock_largeD.glb"]
+const WILD_WOOD := ["stump_old.glb", "stump_roundDetailed.glb", "log_large.glb", "log.glb", "stump_round.glb"]
+const WILD_FLOWER := ["flower_purpleA.glb", "flower_purpleB.glb", "flower_purpleC.glb", "flower_redA.glb", "flower_redB.glb", "flower_redC.glb", "flower_yellowA.glb", "flower_yellowB.glb", "flower_yellowC.glb"]
+const WILD_MUSH := ["mushroom_red.glb", "mushroom_tanGroup.glb", "mushroom_redTall.glb", "mushroom_redGroup.glb"]
+const WILD_GRASS := ["grass_leafsLarge.glb", "grass_leafs.glb", "grass_large.glb"]
+## Kenney küçük süsleri bu sahnede ufak kalıyor: önek başına ölçek çarpanı.
+const PROP_BOOST := {"flower_": 2.1, "mushroom_": 1.7, "grass_": 1.5, "plant_": 1.4, "rock_small": 1.4, "stone_small": 1.4, "lily_": 1.4}
+const BIG_TREES := ["tree_detailed_dark.glb", "tree_pineRoundA.glb", "tree_pineRoundC.glb", "tree_pineTallA_detailed.glb", "tree_cone_dark.glb", "tree_tall.glb", "tree_plateau.glb"]
+
 const SEASON_TINT := [["#7ccf4a", 0.0], ["#b8bf45", 0.3], ["#d0902e", 0.5], ["#eef3f8", 0.7]]
 
 const TOOLS := [
@@ -165,6 +178,7 @@ var windmill: Node3D
 var clouds: Array = []
 var lamp_lights: Array = []
 var frame_root: Node3D
+var wild_root: Node3D       # kilitli parsellerdeki yabani doğa
 var grass_mat: ShaderMaterial
 var grass_mesh: ArrayMesh
 var grass_chunks := {}     # parsel -> MultiMeshInstance3D
@@ -340,6 +354,7 @@ func _ready() -> void:
 	_load_step(0.35)
 	await get_tree().process_frame
 	_build_surroundings()
+	_build_outskirts()
 	_build_farm_frame()
 	_build_grass()
 	_build_cursor()
@@ -659,6 +674,141 @@ func _build_surroundings() -> void:
 	windmill.rotation.y = -0.9
 	add_child(windmill)
 
+## Doğa modeli yerleştirir; küçük süsler gölge düşürmez.
+func _prop(parent: Node3D, file: String, sc: float, x: float, z: float, yaw: float, shadow := true) -> Node3D:
+	for pre in PROP_BOOST:
+		if file.begins_with(pre):
+			sc *= PROP_BOOST[pre]
+			break
+	var n := Assets.inst(NAT + file, sc, yaw)
+	if n == null:
+		return null
+	n.position = Vector3(x, height_at(x, z) - 0.02, z)
+	if not shadow:
+		_no_shadow(n)
+	parent.add_child(n)
+	return n
+
+func _no_shadow(n: Node) -> void:
+	if n is GeometryInstance3D:
+		n.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	for c in n.get_children():
+		_no_shadow(c)
+
+func _pick_of(r: RandomNumberGenerator, list: Array) -> String:
+	return list[r.randi() % list.size()]
+
+## Satın alınmamış parsel: çalı, kaya, kütük, çiçek ve mantarla dolu yabani arazi.
+func _build_wild(pc: Vector2i) -> void:
+	var r := RandomNumberGenerator.new()
+	r.seed = pc.x * 7331 + pc.y * 1979 + 11
+	var x0 := WORLD_MIN + pc.x * PARCEL
+	var z0 := WORLD_MIN + pc.y * PARCEL
+	var cx := x0 + PARCEL / 2.0
+	var cz := z0 + PARCEL / 2.0
+	var used := []
+	var spot := func(margin: float, gap: float) -> Vector2:
+		for t in 12:
+			var v := Vector2(r.randf_range(x0 + margin, x0 + PARCEL - margin), r.randf_range(z0 + margin, z0 + PARCEL - margin))
+			if v.distance_to(Vector2(cx, cz)) < 1.7:
+				continue
+			var ok := true
+			for u in used:
+				if v.distance_to(u) < gap:
+					ok = false
+					break
+			if ok:
+				used.append(v)
+				return v
+		return Vector2.INF
+	for i in r.randi_range(1, 3):
+		var v: Vector2 = spot.call(1.2, 2.2)
+		if v != Vector2.INF:
+			_prop(wild_root, _pick_of(r, WILD_TREES), r.randf_range(1.4, 2.0), v.x, v.y, r.randf() * TAU)
+	for i in r.randi_range(4, 7):
+		var v: Vector2 = spot.call(0.6, 1.1)
+		if v != Vector2.INF:
+			_prop(wild_root, _pick_of(r, WILD_BUSH), r.randf_range(1.1, 1.7), v.x, v.y, r.randf() * TAU)
+	for i in r.randi_range(2, 4):
+		var v: Vector2 = spot.call(0.5, 0.9)
+		if v != Vector2.INF:
+			_prop(wild_root, _pick_of(r, WILD_ROCK), r.randf_range(0.9, 1.5), v.x, v.y, r.randf() * TAU)
+	for i in r.randi_range(1, 2):
+		var v: Vector2 = spot.call(0.8, 1.2)
+		if v != Vector2.INF:
+			_prop(wild_root, _pick_of(r, WILD_WOOD), r.randf_range(1.0, 1.4), v.x, v.y, r.randf() * TAU)
+	for i in r.randi_range(1, 3):
+		var v: Vector2 = spot.call(0.4, 0.6)
+		if v != Vector2.INF:
+			_prop(wild_root, _pick_of(r, WILD_MUSH), r.randf_range(0.9, 1.3), v.x, v.y, r.randf() * TAU, false)
+	for i in r.randi_range(3, 4):
+		var v: Vector2 = spot.call(0.8, 1.0)
+		if v == Vector2.INF:
+			continue
+		var fl := _pick_of(r, WILD_FLOWER)
+		for k in r.randi_range(4, 7):
+			_prop(wild_root, fl, r.randf_range(0.9, 1.3), v.x + r.randf_range(-0.6, 0.6), v.y + r.randf_range(-0.6, 0.6), r.randf() * TAU, false)
+	for i in 10:
+		_prop(wild_root, _pick_of(r, WILD_GRASS), r.randf_range(1.0, 1.6), r.randf_range(x0 + 0.3, x0 + PARCEL - 0.3), r.randf_range(z0 + 0.3, z0 + PARCEL - 0.3), r.randf() * TAU, false)
+
+## Çiftlik dışı: çiçek tarlaları, çalılar, kütükler, kamp alanı, kano.
+func _build_outskirts() -> void:
+	var r := RandomNumberGenerator.new()
+	r.seed = 77
+	var root := Node3D.new()
+	add_child(root)
+	var camp := Vector2(-31, 14)
+	var free := func(x: float, z: float) -> bool:
+		if maxf(absf(x), absf(z)) < 22.0:
+			return false
+		if Vector2(x - POND_X, z - POND_Z).length() < POND_R + 1.5:
+			return false
+		if absf(x) < 3.0 and z > 12.0:
+			return false
+		if Vector2(x - 25.0, z + 12.0).length() < 3.5:
+			return false
+		return Vector2(x, z).distance_to(camp) > 5.0
+	# çiçek tarlaları
+	for i in 22:
+		var cx := r.randf_range(-48, 48)
+		var cz := r.randf_range(-48, 48)
+		if not free.call(cx, cz):
+			continue
+		var fl := _pick_of(r, WILD_FLOWER)
+		for k in r.randi_range(8, 14):
+			var x := cx + r.randf_range(-1.8, 1.8)
+			var z := cz + r.randf_range(-1.8, 1.8)
+			if free.call(x, z):
+				_prop(root, fl, r.randf_range(1.0, 1.5), x, z, r.randf() * TAU, false)
+	# çalı, kaya, kütük, mantar, uzun ot
+	var sets := [[WILD_BUSH, 70, 1.2, 2.0, true], [WILD_ROCK, 40, 1.0, 1.8, true], [WILD_WOOD, 18, 1.1, 1.5, true],
+		[WILD_MUSH, 30, 1.0, 1.4, false], [WILD_GRASS, 260, 1.1, 1.8, false], [BIG_TREES, 90, 1.6, 2.6, true]]
+	for st in sets:
+		for i in st[1]:
+			var x := r.randf_range(-55, 55)
+			var z := r.randf_range(-55, 55)
+			if free.call(x, z):
+				_prop(root, _pick_of(r, st[0]), r.randf_range(st[2], st[3]), x, z, r.randf() * TAU, st[4])
+	# kamp alanı
+	_prop(root, "tent_detailedOpen.glb", 2.2, camp.x, camp.y - 1.0, 0.4)
+	_prop(root, "campfire_stones.glb", 1.6, camp.x + 1.6, camp.y + 1.2, 0.0)
+	_prop(root, "log.glb", 1.4, camp.x + 0.2, camp.y + 2.4, 0.3)
+	_prop(root, "log.glb", 1.4, camp.x + 3.0, camp.y + 1.0, 1.6)
+	_prop(root, "log_stackLarge.glb", 1.6, camp.x - 2.4, camp.y + 1.0, 1.2)
+	_prop(root, "pot_large.glb", 1.4, camp.x + 1.0, camp.y - 2.6, 0.0)
+	_prop(root, "sign.glb", 1.6, 3.6, 22.5, PI)
+	_prop(root, "log_stack.glb", 1.6, -3.8, 24.0, 0.2)
+	# gölet: kano, nilüfer, kıyı taşları
+	_prop(root, "canoe.glb", 1.8, POND_X - POND_R + 0.4, POND_Z + 1.0, 1.2, false)
+	for i in 10:
+		var a := r.randf() * TAU
+		_prop(root, "rock_smallFlatA.glb", r.randf_range(1.0, 1.6), POND_X + cos(a) * (POND_R + 0.6), POND_Z + sin(a) * (POND_R + 0.6), r.randf() * TAU, false)
+	for i in 5:
+		var a := r.randf() * TAU
+		var n := _prop(root, "lily_small.glb", 1.5, POND_X + cos(a) * POND_R * 0.6, POND_Z + sin(a) * POND_R * 0.6, r.randf() * TAU, false)
+		if n != null:
+			n.position.y = -0.1
+
 func _ring_unused(x: int, z: int) -> bool:
 	var lo := FARM_MIN - 1
 	var hi := FARM_MAX + 1
@@ -688,6 +838,11 @@ func _refresh_parcels() -> void:
 		c.queue_free()
 	for c in parcel_root.get_children():
 		c.queue_free()
+	if wild_root == null:
+		wild_root = Node3D.new()
+		add_child(wild_root)
+	for c in wild_root.get_children():
+		c.queue_free()
 	var gate_z := FARM_MAX + 1
 	while in_farm(0, gate_z):
 		gate_z += 1
@@ -714,12 +869,13 @@ func _refresh_parcels() -> void:
 	var shade := StandardMaterial3D.new()
 	shade.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	shade.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	shade.albedo_color = Color(0.12, 0.16, 0.05, 0.3)
+	shade.albedo_color = Color(0.12, 0.16, 0.05, 0.16)
 	for px in 5:
 		for pz in 5:
 			var pc := Vector2i(px, pz)
 			if _parcel_open(pc):
 				continue
+			_build_wild(pc)
 			var c := Vector3(WORLD_MIN + px * PARCEL + PARCEL / 2.0, 0, WORLD_MIN + pz * PARCEL + PARCEL / 2.0)
 			var pl := MeshInstance3D.new()
 			var pm := PlaneMesh.new()
@@ -2742,6 +2898,9 @@ func _start_play(show_help := false) -> void:
 	ui.visible = true
 	cam_follow = true
 	cam_dist = 20.0
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--cam="):
+			cam_dist = float(a.substr(6))
 	cam_target = farmer.position
 	hud_dirty = true
 	if slot > 0:

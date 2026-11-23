@@ -27,7 +27,7 @@ Web sürümüyle aynı: ⛏️ Çapa ile sür, 🌱 ek, 💧 sula (2× hız), �
 
 **Ana menü ve kariyerler:** açılışta yükleme ekranı ve ana menü gelir. 3 kariyer yuvası var: *Yeni Kariyer* (çiftliğine ad ver), *Kariyerler* (yükle / iki basışla sil), *Devam Et*. Oyun içindeki 🏠 düğmesi kaydedip menüye döner; sıfırlama yok.
 
-**Arazi:** başlangıçta ortadaki 24×24 alan açık. Çevresindeki 8×8 parsellere tıklayıp seviye ve altınla satın alırsın; her parsel bir öncekinden pahalı.
+**Arazi:** başlangıçta ortadaki 24×24 alan açık. Çevresindeki 8×8 parsellere tıklayıp seviye ve altınla satın alırsın; her parsel bir öncekinden pahalı. Kilitli parseller çalı, kaya, kütük, çiçek ve mantarla dolu yabani arazidir; satın alınca temizlenir. Çiftlik dışında orman, çiçek tarlaları, kamp alanı ve gölette kano var.
 
 **Hayvanlar ve çitler:** çiftçi çitlerden, kayalardan, ağaçlardan ve binalardan geçmez, etrafından dolaşır; ağıla 🚪 çit kapısından girer. 🛖 Kümes (Hayvan rafı): çevresindeki 6 karedeki tavuklar yumurtayı kümese bırakır, kümese tıklayınca hepsi toplanır.
 
