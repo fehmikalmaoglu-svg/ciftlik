@@ -15,7 +15,7 @@ Kaynak: Farm Together Wiki, *Game Basics* ve *Crops* sayfaları (okundu: 23.11.2
 | Hayvan yemleme, ağıl (bitişik aynı tür yemi paylaşır), hayvan seviyesi | ✓ | ✓ Aşama 3 |
 | Çiçekler (sulanınca çok daha fazla kazanç, seviye) | ✓ | ✓ Aşama 4 |
 | Göletler / balık | ✓ | ✓ Aşama 4 (basit) |
-| Görevler (aynı anda 4, madalya/elmas/XP ödülü) | ✓ | ✗ |
+| Görevler (aynı anda 4, madalya/elmas/XP ödülü) | ✓ | ✓ Aşama 5 |
 | İşleme binaları (meyve → reçel, süt → peynir) ve tezgahlar | ✓ | ✗ |
 | Arazi genişletme (seviye şartı + artan maliyet) | ✓ | ✗ |
 | Araçlar, ev içi işler, bilet | ✓ | ✗ |
@@ -51,7 +51,9 @@ Her aşama kendi içinde oynanabilir biter; sonunda `--selftest` genişletilir v
 - Yeni kategori çiçek: sabit büyüme süresi; sulu tutulursa kazanç ve XP çok daha yüksek; hasatla seviye atlar.
 - Gölet kareleri (2×2): balık yetiştir/tut. Balık kaynağı.
 
-### 5. Görevler
+### 5. Görevler ✅ (tamamlandı)
+- 12 görev türü (ekin, meyve, hayvan ürünü, çiçek, balık, ekim, sulama, yemleme, satış, sipariş, ağaç dikme, altın). Yalnız sahip olunan/açılmış şeylerden görev gelir; aynı görev iki kez gelmez.
+- Panel solda (J). Silme: 24 saatte 1 ücretsiz, sonra 2 💎. 💎 şimdilik yalnız silmede; dükkân eşyaları Aşama 6–8'de.
 - Aynı anda 4 görev ("20 havuç topla", "3 ağaç dik", "10 yumurta sat"…), süresiz.
 - Ödül: madalya + elmas + XP. Tamamlanınca yenisi gelir; 24 saatte 1 görev silinebilir.
 - Dükkânda görev gerektiren eşyaya işaret.

@@ -21,6 +21,8 @@ Web sürümüyle aynı: ⛏️ Çapa ile sür, 🌱 ek, 💧 sula (2× hız), �
 
 **Bahçe (9):** 🌼 çiçek tarhları kalıcıdır; sabit sürede açar, hasattan sonra yeniden büyür. Büyürken toprağı ıslak tutarsan kazanç 3 katına çıkar. Her çiçek türü hasat edildikçe seviye atlar. 🐟 Balık göleti 2×2 kare kaplar, kendiliğinden balık üretir.
 
+**Görevler (J):** sol panelde aynı anda 4 görev ("8 Havuç topla", "17 kez sula"…). Tamamlanınca 🏅 madalya, 💎 elmas ve XP verir, yerine yenisi gelir. ✕ ile görev silinir: günde 1 ücretsiz, sonrası 2 💎.
+
 **Ambar (B):** hasat, altının yanında kaynak da verir (tahıl, sebze, meyve, yumurta, süt…). Ambarda sat ya da pazar siparişini teslim edip 🏅 madalya kazan. Ambara/siloya tıklamak da açar.
 
 **Kontroller:** boş yere tıkla = oraya yürü · sol tık/sürükle = alet · sağ tık sürükle veya Q/E = kamera · tekerlek = yakınlaştır · WASD = yürü · 1–9 = alet · Esc = iş sırasını iptal.

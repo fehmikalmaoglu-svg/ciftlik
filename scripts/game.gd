@@ -9,6 +9,9 @@ const POND_X := 21.0
 const POND_Z := 6.0
 const POND_R := 4.2
 const OFFLINE_CAP := 6.0 * 3600.0
+const QUEST_SLOTS := 4
+const QUEST_SKIP_COOLDOWN := 24.0 * 3600.0
+const QUEST_SKIP_GEMS := 2
 const FSPEED := 5.2
 ## Zemin: köşe rengi + mevsim tonu (yaz kuru, sonbahar sarı, kış karlı).
 const GROUND_SHADER := """
@@ -50,6 +53,9 @@ var day := 1
 var tool := "hand"
 var sel := {"seed": "wheat", "tree": "apple", "animal": "chicken", "decor": "path", "garden": "daisy"}
 var flv := {}            # çiçek türü -> {"lv", "n"}
+var gems := 0
+var quests: Array = []   # en fazla QUEST_SLOTS görev
+var quest_skip_at := 0.0 # son ücretsiz silme (unix sn)
 var muted := false
 var medals := 0
 var res := {}            # kaynak -> adet
@@ -118,6 +124,10 @@ var lbl_xp: Label
 var bar_xp: ProgressBar
 var lbl_coins: Label
 var lbl_medals: Label
+var lbl_gems: Label
+var quest_panel: PanelContainer
+var quest_box: VBoxContainer
+var quest_open := true
 var barn: Control
 var barn_box: VBoxContainer
 var lbl_clock: Label
@@ -212,6 +222,7 @@ func _ready() -> void:
 		res = {"cereal": 24, "veg": 13, "fruit": 9, "milk": 6}
 		order = {"need": {"veg": 10, "cereal": 30}, "medals": 3, "xp": 41, "coins": 240}
 		_open_barn()
+	_render_quests()
 	if args.has("--selftest"):
 		_selftest()
 	_set_tool(tool)
@@ -793,6 +804,8 @@ func _spend(n: int) -> void:
 	hud_dirty = true
 
 func _gain(c: int, x: int, pos: Vector3, icon: String) -> void:
+	if c > 0:
+		_quest_event("earn", "", c)
 	coins += c
 	xp += x
 	hud_dirty = true
@@ -909,6 +922,7 @@ func _perform(item: Dictionary) -> bool:
 		"plant":
 			var c = Data.CROPS[arg]
 			_spend(c.cost)
+			_quest_event("plant", arg, 1)
 			e.crop = arg
 			e.progress = 0.0
 			_refresh(e)
@@ -918,6 +932,7 @@ func _perform(item: Dictionary) -> bool:
 		"water":
 			e.water = 1.0
 			_refresh(e)
+			_quest_event("water", "", 1)
 			_burst(pos + Vector3(0, 0.5, 0), "#4fc3f7", 12, 2.5)
 			_sfx("water")
 		"harvest":
@@ -930,6 +945,7 @@ func _perform(item: Dictionary) -> bool:
 				_refresh(e)
 				_gain(c.sell, c.xp, pos, c.icon)
 				_store(ck, pos)
+				_quest_event("crop", ck, 1)
 			elif e.kind == "tree":
 				var t = Data.TREES[e.type]
 				e.has_fruit = false
@@ -938,6 +954,7 @@ func _perform(item: Dictionary) -> bool:
 				_burst(pos + Vector3(0, 1.2, 0), t.fruit, 14, 3.0)
 				_gain(t.sell, t.xp, pos, t.icon)
 				_store(e.type, pos)
+				_quest_event("fruit", e.type, 1)
 			elif e.kind == "animal":
 				var a = Data.ANIMALS[e.type]
 				e.ready = false
@@ -947,6 +964,7 @@ func _perform(item: Dictionary) -> bool:
 				_gain(int(round(a.sell * Data.animal_sell_mult(e.lv))), a.xp, pos, a.picon)
 				_store(e.type, pos, Data.animal_extra_yield(e.lv))
 				_animal_harvested(e, pos)
+				_quest_event("animal", e.type, 1)
 				_update_hungry(e)
 			elif e.kind == "flower":
 				_harvest_flower(e, pos)
@@ -959,6 +977,7 @@ func _perform(item: Dictionary) -> bool:
 				_burst(pc + Vector3(0, 0.4, 0), "#4fc3f7", 14, 3.5)
 				_gain(pd.sell, pd.xp, pc, pd.icon)
 				_store("pond", pc)
+				_quest_event("fish", "", 1)
 			_sfx("harvest")
 		"feed":
 			_feed_pen(e)
@@ -979,6 +998,7 @@ func _perform(item: Dictionary) -> bool:
 		"tree":
 			var t = Data.TREES[arg]
 			_spend(t.cost)
+			_quest_event("tree", arg, 1)
 			_add_entity({"kind": "tree", "type": arg, "x": x, "z": z, "age": 0.0, "fruit_t": 0.0, "has_fruit": false})
 			_float_text(pos, "-%d 🪙" % t.cost, Color("#ffb4a8"))
 			_burst(pos + Vector3(0, 0.3, 0), "#66bb6a", 10, 2.5)
@@ -1246,6 +1266,9 @@ func _unhandled_input(ev: InputEvent) -> void:
 			_clear_queue()
 			help.visible = false
 			barn.visible = false
+		elif k == KEY_J:
+			quest_open = not quest_open
+			_render_quests()
 		elif k == KEY_B:
 			if barn.visible:
 				barn.visible = false
@@ -1745,6 +1768,10 @@ func _build_ui() -> void:
 	lbl_medals.add_theme_font_size_override("font_size", 21)
 	lbl_medals.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	sh.add_child(lbl_medals)
+	lbl_gems = Label.new()
+	lbl_gems.add_theme_font_size_override("font_size", 21)
+	lbl_gems.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	sh.add_child(lbl_gems)
 
 	var clockp := _panel(12)
 	top.add_child(clockp)
@@ -1865,7 +1892,7 @@ func _build_ui() -> void:
 	var body := Label.new()
 	body.custom_minimum_size = Vector2(520, 0)
 	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	body.text = "Toprağı sür, tohum ek, sula, hasat et; altınla ağaç, hayvan ve dekor al. Seviye atladıkça yeni ekinler açılır.\n\n• Sol tık / sürükle — seçili aleti karelere uygula (çiftçi sırayla yapar)\n• Sağ tık sürükle veya Q / E — kamerayı döndür · Tekerlek — yakınlaştır\n• Boş yere tıkla — çiftçi oraya yürür · WASD / oklar — yürüt\n• 1–9 — alet seç · B — 📦 Ambar (kaynak sat, sipariş teslim et) · Esc — iptal\n• ✋ El akıllıdır: boş tarlaya seçili tohumu eker, susuzu sular, hazırı toplar.\n• 💧 Sulanan toprak bir süre ıslak kalır (2× hız), sonra kurur · 🧑‍🌾 Korkuluk çevresine +%25 hız verir.\n• 🐔 Hayvanlar yem ister (tahıl; yoksa altın). Aç hayvan üretmez; ✋ ile yemle. Yan yana aynı tür hayvanlar ağıl olur, biri yemlenince hepsi yer. Topladıkça seviye atlar, daha çok kazandırır.\n• 🌼 Bahçe (9): çiçek tarhları kalıcıdır, sabit sürede açar; büyürken sulu kalırsa 3 kata kadar kazanç. 🐟 Gölet 2×2 kare, kendiliğinden balık verir.\n• 🌸 Dört mevsim (10'ar dk): bazı tohumlar yalnız kendi mevsiminde ekilir. 🌧️ Yağmur sular, 🔥 kuraklıkta su çabuk biter, 🌨️ karda sulamaya gerek yok.\n• Oyun otomatik kaydedilir; sen yokken de çiftlik büyür."
+	body.text = "Toprağı sür, tohum ek, sula, hasat et; altınla ağaç, hayvan ve dekor al. Seviye atladıkça yeni ekinler açılır.\n\n• Sol tık / sürükle — seçili aleti karelere uygula (çiftçi sırayla yapar)\n• Sağ tık sürükle veya Q / E — kamerayı döndür · Tekerlek — yakınlaştır\n• Boş yere tıkla — çiftçi oraya yürür · WASD / oklar — yürüt\n• 1–9 — alet seç · B — 📦 Ambar (kaynak sat, sipariş teslim et) · Esc — iptal\n• ✋ El akıllıdır: boş tarlaya seçili tohumu eker, susuzu sular, hazırı toplar.\n• 💧 Sulanan toprak bir süre ıslak kalır (2× hız), sonra kurur · 🧑‍🌾 Korkuluk çevresine +%25 hız verir.\n• 🐔 Hayvanlar yem ister (tahıl; yoksa altın). Aç hayvan üretmez; ✋ ile yemle. Yan yana aynı tür hayvanlar ağıl olur, biri yemlenince hepsi yer. Topladıkça seviye atlar, daha çok kazandırır.\n• 🌼 Bahçe (9): çiçek tarhları kalıcıdır, sabit sürede açar; büyürken sulu kalırsa 3 kata kadar kazanç. 🐟 Gölet 2×2 kare, kendiliğinden balık verir.\n• 📜 Görevler (J): aynı anda 4 görev; bitince 🏅 madalya, 💎 elmas ve XP. Günde bir görev ücretsiz silinir, sonrası 2 💎.\n• 🌸 Dört mevsim (10'ar dk): bazı tohumlar yalnız kendi mevsiminde ekilir. 🌧️ Yağmur sular, 🔥 kuraklıkta su çabuk biter, 🌨️ karda sulamaya gerek yok.\n• Oyun otomatik kaydedilir; sen yokken de çiftlik büyür."
 	hv.add_child(body)
 	var go := Button.new()
 	go.text = "Başlayalım!"
@@ -1881,6 +1908,7 @@ func _build_ui() -> void:
 	hv.add_child(go)
 	help.visible = false
 	_build_barn_ui()
+	_build_quest_ui()
 
 func _icon_btn(icon: String, tip: String) -> Button:
 	var b := Button.new()
@@ -1988,6 +2016,7 @@ func _update_hud(dt: float) -> void:
 	var need := Data.xp_for_level(level)
 	lbl_level.text = str(level)
 	lbl_medals.text = "🏅 %d" % medals
+	lbl_gems.text = "💎 %d" % gems
 	lbl_xp.text = "Seviye · %d / %d XP" % [xp, need]
 	bar_xp.max_value = need
 	bar_xp.value = xp
@@ -2025,7 +2054,7 @@ func _save() -> void:
 				s.lv = e.lv
 				s.hv = e.hv
 		ents.append(s)
-	var data := {"v": 1, "flv": flv, "season": season, "season_t": season_t, "year": year, "weather": weather, "weather_t": weather_t, "medals": medals, "res": res, "order": order, "coins": coins, "xp": xp, "level": level, "day_time": day_time, "day": day, "sel": sel, "muted": muted,
+	var data := {"v": 1, "gems": gems, "quests": quests, "qskip": quest_skip_at, "flv": flv, "season": season, "season_t": season_t, "year": year, "weather": weather, "weather_t": weather_t, "medals": medals, "res": res, "order": order, "coins": coins, "xp": xp, "level": level, "day_time": day_time, "day": day, "sel": sel, "muted": muted,
 		"saved_at": Time.get_unix_time_from_system(), "ents": ents, "fx": farmer.position.x, "fz": farmer.position.z}
 	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if f:
@@ -2044,6 +2073,15 @@ func _load() -> bool:
 	day = int(data.get("day", 1))
 	muted = bool(data.get("muted", false))
 	medals = int(data.get("medals", 0))
+	gems = int(data.get("gems", 0))
+	quest_skip_at = float(data.get("qskip", 0.0))
+	quests = []
+	var qd = data.get("quests", [])
+	if typeof(qd) == TYPE_ARRAY:
+		for q in qd:
+			if typeof(q) == TYPE_DICTIONARY and q.has("kind"):
+				quests.append({"kind": str(q.kind), "arg": str(q.get("arg", "")), "text": str(q.get("text", "")),
+					"need": int(q.need), "have": int(q.get("have", 0)), "medals": int(q.medals), "gems": int(q.gems), "xp": int(q.xp)})
 	flv = {}
 	var fd = data.get("flv", {})
 	if typeof(fd) == TYPE_DICTIONARY:
@@ -2101,6 +2139,7 @@ func _load() -> bool:
 	_recompute_boosts()
 	if order.is_empty():
 		_new_order()
+	_fill_quests()
 	farmer.position = Vector3(float(data.get("fx", 0.5)), 0, float(data.get("fz", 9.0)))
 	cam_target = farmer.position
 	btn_sound.text = "🔇" if muted else "🔊"
@@ -2144,6 +2183,8 @@ func _new_game() -> void:
 	for d in [["flowers", -11, -7], ["flowers", -11, -6], ["lantern", -2, 10], ["lantern", 1, 10], ["lantern", -3, -5], ["bush", 10, 9], ["hay", 5, -6], ["rock", 9, 6]]:
 		_add_entity({"kind": "decor", "type": d[0], "x": d[1], "z": d[2]})
 	_recompute_boosts()
+	quests = []
+	_fill_quests()
 
 # ============================================================ döngü
 func _process(delta: float) -> void:
@@ -2235,6 +2276,7 @@ func _selftest() -> void:
 	_selftest_seasons(fails)
 	_selftest_animals(fails)
 	_selftest_garden(fails)
+	_selftest_quests(fails)
 	var n_before := entities.size()
 	_save()
 	var data = JSON.parse_string(FileAccess.get_file_as_string(SAVE_PATH))
@@ -2272,6 +2314,266 @@ func _demo() -> void:
 	cam_target = farmer.position
 	cam_dist = 11.0
 
+# ============================================================ görevler (Aşama 5)
+func _owned(kind: String, type: String) -> bool:
+	for e in entities:
+		if e.kind == kind and e.get("type", "") == type:
+			return true
+	return false
+
+func _owned_kind(kind: String) -> bool:
+	for e in entities:
+		if e.kind == kind:
+			return true
+	return false
+
+## Görev şablonu: ihtiyaç ve ödül seviyeye göre ölçeklenir.
+func _make_quest(kind: String, arg: String) -> Dictionary:
+	var need := 1
+	var val := 1.0
+	var text := ""
+	var lv := level
+	match kind:
+		"crop":
+			var c = Data.CROPS[arg]
+			need = maxi(3, int(round(300.0 / c.time))) + lv
+			val = c.sell
+			text = "%s %d %s topla" % [c.icon, need, c.name]
+		"fruit":
+			var t = Data.TREES[arg]
+			need = 3 + lv / 2
+			val = t.sell
+			text = "%s %d kez %s topla" % [t.icon, need, t.name]
+		"animal":
+			var a = Data.ANIMALS[arg]
+			need = 3 + lv / 2
+			val = a.sell
+			text = "%s %d kez %s topla" % [a.picon, need, a.product]
+		"flower":
+			need = 4 + lv / 2
+			val = 20.0
+			text = "🌼 %d çiçek tarhı topla" % need
+		"fish":
+			need = 3 + lv / 3
+			val = 40.0
+			text = "🐟 %d kez balık tut" % need
+		"plant":
+			need = 15 + lv * 2
+			val = 6.0
+			text = "🌱 %d tohum ek" % need
+		"water":
+			need = 15 + lv * 2
+			val = 4.0
+			text = "💧 %d kez sula" % need
+		"feed":
+			need = 4 + lv / 2
+			val = 15.0
+			text = "🌾 %d kez hayvan yemle" % need
+		"sell":
+			need = 30 + lv * 5
+			val = 3.0
+			text = "💰 Ambardan %d kaynak sat" % need
+		"order":
+			need = 1 + lv / 4
+			val = 150.0
+			text = "📋 %d pazar siparişi teslim et" % need
+		"tree":
+			need = 1 + lv / 5
+			val = 100.0
+			text = "🌳 %d ağaç dik" % need
+		"earn":
+			need = 300 + lv * 100
+			val = 0.3
+			text = "🪙 %d altın kazan" % need
+	var v := need * val
+	return {"kind": kind, "arg": arg, "text": text, "need": need, "have": 0,
+		"medals": maxi(1, int(v / 60.0)), "gems": 1 if v < 250.0 else 2, "xp": maxi(5, int(v / 5.0))}
+
+func _quest_candidates() -> Array:
+	var out := []
+	for k in Data.CROPS:
+		if Data.CROPS[k].level <= level:
+			out.append(["crop", k])
+	for k in Data.TREES:
+		if _owned("tree", k):
+			out.append(["fruit", k])
+	for k in Data.ANIMALS:
+		if _owned("animal", k):
+			out.append(["animal", k])
+	out.append(["flower", ""])
+	if _owned_kind("pond"):
+		out.append(["fish", ""])
+	for k in ["plant", "water", "sell", "order", "earn"]:
+		out.append([k, ""])
+	if _owned_kind("animal"):
+		out.append(["feed", ""])
+	if Data.TREES.apple.level <= level:
+		out.append(["tree", ""])
+	var active := {}
+	for q in quests:
+		active[q.kind + ":" + q.arg] = true
+	return out.filter(func(c): return not active.has(c[0] + ":" + c[1]))
+
+func _random_quest() -> Dictionary:
+	var c := _quest_candidates()
+	var pick = c[randi() % c.size()]
+	return _make_quest(pick[0], pick[1])
+
+func _fill_quests() -> void:
+	while quests.size() < QUEST_SLOTS:
+		quests.append(_random_quest())
+	_render_quests()
+
+func _quest_event(kind: String, arg: String, n: int) -> void:
+	if n <= 0:
+		return
+	var done := []
+	for i in quests.size():
+		var q = quests[i]
+		if q.kind == kind and (q.arg == "" or q.arg == arg):
+			q.have = mini(q.need, q.have + n)
+			if q.have >= q.need:
+				done.append(i)
+	for i in done:
+		var q = quests[i]
+		medals += q.medals
+		gems += q.gems
+		quests[i] = _random_quest()
+		_toast("📜 Görev tamamlandı: %s\n+%d 🏅  +%d 💎  +%d XP" % [q.text, q.medals, q.gems, q.xp], "level")
+		_gain(0, q.xp, farmer.position, "📜")
+		_sfx("level")
+	hud_dirty = true
+	_render_quests()
+
+func _skip_quest(i: int) -> bool:
+	var now := Time.get_unix_time_from_system()
+	if now - quest_skip_at >= QUEST_SKIP_COOLDOWN:
+		quest_skip_at = now
+	elif gems >= QUEST_SKIP_GEMS:
+		gems -= QUEST_SKIP_GEMS
+	else:
+		var left := QUEST_SKIP_COOLDOWN - (now - quest_skip_at)
+		_toast("⏳ Ücretsiz silme %s sonra (ya da %d 💎)" % [fmt_time(left), QUEST_SKIP_GEMS], "warn")
+		return false
+	var old = quests[i]
+	quests.remove_at(i)
+	var nq := _random_quest()
+	quests.insert(i, nq)
+	if nq.kind == old.kind and nq.arg == old.arg and _quest_candidates().size() > 0:
+		quests[i] = _random_quest()
+	hud_dirty = true
+	_render_quests()
+	return true
+
+func _build_quest_ui() -> void:
+	quest_panel = _panel(10)
+	quest_panel.position = Vector2(12, 84)
+	quest_panel.custom_minimum_size = Vector2(290, 0)
+	quest_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	ui.add_child(quest_panel)
+	ui.move_child(quest_panel, help.get_index())
+	quest_box = VBoxContainer.new()
+	quest_box.add_theme_constant_override("separation", 6)
+	quest_panel.add_child(quest_box)
+
+func _render_quests() -> void:
+	if quest_box == null:
+		return
+	for c in quest_box.get_children():
+		quest_box.remove_child(c)
+		c.queue_free()
+	var head := HBoxContainer.new()
+	var t := Label.new()
+	t.text = "📜 Görevler"
+	t.add_theme_font_size_override("font_size", 17)
+	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(t)
+	var tg := _small_btn(" ▾ " if quest_open else " ▸ ", func():
+		quest_open = not quest_open
+		_render_quests())
+	tg.tooltip_text = "Görevleri aç/kapa  [J]"
+	head.add_child(tg)
+	quest_box.add_child(head)
+	quest_panel.reset_size()
+	if not quest_open:
+		return
+	for i in quests.size():
+		var q = quests[i]
+		var row := VBoxContainer.new()
+		row.add_theme_constant_override("separation", 2)
+		var top := HBoxContainer.new()
+		var l := Label.new()
+		l.text = q.text
+		l.add_theme_font_size_override("font_size", 14)
+		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		top.add_child(l)
+		var cnt := Label.new()
+		cnt.text = "%d/%d" % [q.have, q.need]
+		cnt.add_theme_font_size_override("font_size", 13)
+		cnt.add_theme_color_override("font_color", Color("#8a7260"))
+		top.add_child(cnt)
+		var ii := i
+		var x := _small_btn("✕", func(): _skip_quest(ii))
+		x.custom_minimum_size = Vector2(26, 24)
+		x.add_theme_font_size_override("font_size", 11)
+		x.tooltip_text = "Görevi sil (günde 1 ücretsiz, sonra %d 💎)" % QUEST_SKIP_GEMS
+		top.add_child(x)
+		row.add_child(top)
+		var pb := ProgressBar.new()
+		pb.show_percentage = false
+		pb.custom_minimum_size = Vector2(0, 6)
+		pb.max_value = q.need
+		pb.value = q.have
+		pb.add_theme_stylebox_override("background", _sb(Color("#eadcc6"), 3, Color(0, 0, 0, 0), 0, 0))
+		pb.add_theme_stylebox_override("fill", _sb(Color("#5cbf2f"), 3, Color(0, 0, 0, 0), 0, 0))
+		row.add_child(pb)
+		var rw := Label.new()
+		rw.text = "🏅 %d   💎 %d   +%d XP" % [q.medals, q.gems, q.xp]
+		rw.add_theme_font_size_override("font_size", 12)
+		rw.add_theme_color_override("font_color", Color("#9a6a00"))
+		row.add_child(rw)
+		quest_box.add_child(row)
+	quest_panel.reset_size()
+
+func _selftest_quests(fails: Array) -> void:
+	medals = 0
+	gems = 0
+	quests = []
+	_fill_quests()
+	if quests.size() != QUEST_SLOTS: fails.append("görev sayısı %d" % quests.size())
+	var keys := {}
+	for q in quests:
+		keys[q.kind + ":" + q.arg] = true
+	if keys.size() != QUEST_SLOTS: fails.append("tekrarlı görev")
+	for i in 40:
+		var rq := _random_quest()
+		if rq.text == "" or rq.need <= 0: fails.append("boş görev %s" % rq)
+	quests = [_make_quest("crop", "wheat"), _make_quest("sell", ""), _make_quest("water", ""), _make_quest("earn", "")]
+	quests[0].need = 2
+	quests[1].need = 5
+	var q0 = quests[0]
+	_quest_event("crop", "carrot", 1)
+	if q0.have != 0: fails.append("yanlış ekin sayıldı")
+	_quest_event("crop", "wheat", 1)
+	if q0.have != 1: fails.append("görev ilerlemedi")
+	var m0 := medals
+	_quest_event("crop", "wheat", 1)
+	if quests[0] == q0 or medals != m0 + q0.medals or gems != q0.gems: fails.append("görev ödülü")
+	if quests.size() != QUEST_SLOTS: fails.append("tamamlanınca görev eksildi")
+	res = {"egg": 5}
+	var q1 = quests[1]
+	_sell("egg", 5)
+	if quests[1] == q1: fails.append("satış görevi tamamlanmadı")
+	quest_skip_at = 0.0
+	gems = 0
+	var q2 = quests[2]
+	if not _skip_quest(2) or quests[2] == q2: fails.append("ücretsiz silme")
+	var q3 = quests[3]
+	if _skip_quest(3) or quests[3] != q3: fails.append("bekleme süresi yok sayıldı")
+	gems = QUEST_SKIP_GEMS
+	if not _skip_quest(3) or gems != 0: fails.append("elmasla silme")
+	res = {}
+
 # ============================================================ çiçekler ve gölet (Aşama 4)
 func _flower_lv(t: String) -> Dictionary:
 	if not flv.has(t):
@@ -2289,6 +2591,7 @@ func _harvest_flower(e: Dictionary, pos: Vector3) -> void:
 	_burst(pos + Vector3(0, 0.4, 0), f.color, 14, 3.5)
 	_gain(int(round(f.sell * mult)), int(round(f.xp * (1.0 + Data.FLOWER_WET_BONUS * frac))), pos, f.icon)
 	_store(e.type, pos, int(round(frac * 2.0)))
+	_quest_event("flower", e.type, 1)
 	if frac > 0.95:
 		_float_text(pos + Vector3(0, 0.75, 0), "💐 ×%.0f" % (1.0 + Data.FLOWER_WET_BONUS), Color("#ffb3e6"))
 	e.ready = false
@@ -2390,6 +2693,7 @@ func _feed_cost_text(e: Dictionary) -> String:
 	return ("(ağıl %d) " % n if n > 1 else "") + " ".join(parts)
 
 func _feed_pen(e: Dictionary) -> void:
+	_quest_event("feed", e.type, 1)
 	var sp := _feed_split(e)
 	if sp.x > 0:
 		res.cereal -= sp.x
@@ -2580,6 +2884,8 @@ func _sell(r: String, n: int) -> void:
 	res[r] -= n
 	var gain_c: int = n * Data.RESOURCES[r].price
 	coins += gain_c
+	_quest_event("sell", r, n)
+	_quest_event("earn", "", gain_c)
 	hud_dirty = true
 	_sfx("harvest")
 	_toast("💰 %d %s satıldı: +%d 🪙" % [n, Data.RESOURCES[r].icon, gain_c])
@@ -2617,6 +2923,7 @@ func _deliver() -> void:
 	for r in order.need:
 		res[r] -= order.need[r]
 	medals += order.medals
+	_quest_event("order", "", 1)
 	var got: int = order.medals
 	_gain(order.coins, order.xp, farmer.position, "🏅")
 	_new_order()
