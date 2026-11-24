@@ -1,5 +1,8 @@
 # Çiftliğim 3D — Sürüm Notları
 
+## v0.14.3 · Erken Erişim
+- 🐖🐑 Domuz ve koyun artık gerçekten yürüyor: ineğin yürüme animasyonu kendi iskeletlerine, bacak boylarına göre uyarlandı (kayma ve sallanma yerine adım atıyorlar).
+
 ## v0.14.2 · Erken Erişim
 - 🚀 **Yüksek ve Ultra grafik çok daha hızlı**: gölge haritası ve gölge süzgeci yeniden ayarlandı. Ölçümde Yüksek'te FPS ~%55, Ultra'da ~%70 arttı; gölgeler yine yumuşak.
 - 🧪 Geliştirici aracı: `--bench` her grafik ayarında FPS, CPU ve GPU süresini ölçer.

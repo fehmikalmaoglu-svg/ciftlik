@@ -65,10 +65,73 @@ static func animal(type: String) -> Node3D:
 				n.set_meta("anim", ap)
 				n.set_meta("idle", cfg[2])
 				n.set_meta("walk", cfg[3] if cfg[3] != "" and ap.has_animation(cfg[3]) else "")
+				if str(n.get_meta("walk")) == "":
+					# kendi yürüyüşü yok: ineğin yürüyüşünü bu iskelete uyarla (aynı kemik adları)
+					var sks := n.find_children("*", "Skeleton3D", true, false)
+					var lib := _walk_lib(type, sks[0]) if sks.size() > 0 else null
+					if lib != null:
+						if not ap.has_animation_library("ret"):
+							ap.add_animation_library("ret", lib)
+						n.set_meta("walk", "ret/Walk")
 			return n
 	var m := Models.animal(type)
 	m.scale *= 1.25
 	return m
+
+## İnek yürüyüşünü başka bir dörtayaklı iskelete aktarır. Her kemik için dinlenme pozuna göre fark alınır:
+## dönüş = hedef_dinlenme × (inek_dinlenme⁻¹ × inek_poz); konum farkı gövde yüksekliği oranıyla ölçeklenir.
+static var _retarget := {}
+const STRIDE := 0.8
+static func _walk_lib(type: String, sk: Skeleton3D) -> AnimationLibrary:
+	if _retarget.has(type):
+		return _retarget[type]
+	var lib: AnimationLibrary = null
+	var cow := Assets.inst(A + "Cow.fbx", 1.0)
+	if cow != null:
+		var cap := Assets.anim_player(cow)
+		var cs := cow.find_children("*", "Skeleton3D", true, false)
+		if cap != null and cs.size() > 0 and cap.has_animation("Armature|WalkSlow"):
+			var csk: Skeleton3D = cs[0]
+			var src := cap.get_animation("Armature|WalkSlow")
+			var ratio := _body_h(sk) / maxf(_body_h(csk), 0.001)
+			var a := Animation.new()
+			a.length = src.length
+			a.loop_mode = Animation.LOOP_LINEAR
+			for t in src.get_track_count():
+				var path := src.track_get_path(t)
+				var bone := path.get_concatenated_subnames()
+				var ci := csk.find_bone(bone)
+				var ti := sk.find_bone(bone)
+				var typ := src.track_get_type(t)
+				if ci < 0 or ti < 0 or not typ in [Animation.TYPE_ROTATION_3D, Animation.TYPE_POSITION_3D]:
+					continue
+				var nt := a.add_track(typ)
+				a.track_set_path(nt, path)
+				a.track_set_interpolation_type(nt, src.track_get_interpolation_type(t))
+				var cr := csk.get_bone_rest(ci)
+				var tr := sk.get_bone_rest(ti)
+				for k in src.track_get_key_count(t):
+					var time := src.track_get_key_time(t, k)
+					var v = src.track_get_key_value(t, k)
+					if typ == Animation.TYPE_ROTATION_3D:
+						var d: Quaternion = cr.basis.get_rotation_quaternion().inverse() * Quaternion(v)
+						d = Quaternion.IDENTITY.slerp(d, STRIDE)   # kısa bacakta biraz daha kısa adım
+						a.rotation_track_insert_key(nt, time, (tr.basis.get_rotation_quaternion() * d).normalized())
+					else:
+						a.position_track_insert_key(nt, time, tr.origin + (Vector3(v) - cr.origin) * ratio)
+			lib = AnimationLibrary.new()
+			lib.add_animation("Walk", a)
+		cow.free()
+	_retarget[type] = lib
+	return lib
+
+## Ön bacak boyu (omuzdan toynağa): adım uzunluğu bununla orantılı olmalı.
+static func _body_h(sk: Skeleton3D) -> float:
+	var top := sk.find_bone("FrontUpLeg.L")
+	var end := sk.find_bone("FrontLowLeg.L_end")
+	if top < 0 or end < 0:
+		return 1.0
+	return sk.get_bone_global_rest(top).origin.distance_to(sk.get_bone_global_rest(end).origin)
 
 static func decor(type: String, conn: Dictionary) -> Node3D:
 	match type:

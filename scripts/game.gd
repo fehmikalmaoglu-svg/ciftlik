@@ -5550,6 +5550,18 @@ func _bench_tick(delta: float) -> void:
 		gfx.fps = 0
 		gfx.vs = false
 		print("BENCH ", RenderingServer.get_video_adapter_name(), " ", vp.get_visible_rect().size, " ents=", entities.size())
+		var t0 := Time.get_ticks_usec()
+		var js := JSON.stringify(_state_dict())
+		var t1 := Time.get_ticks_usec()
+		_simulate(0.1)
+		var t2 := Time.get_ticks_usec()
+		_animate_world(0.016)
+		var t3 := Time.get_ticks_usec()
+		_update_hud(0.016)
+		var t4 := Time.get_ticks_usec()
+		_update_hover()
+		var t5 := Time.get_ticks_usec()
+		print("BENCH süre: kayıt(json %d KB)=%.2fms  simülasyon=%.2fms  dünya-anim=%.2fms  hud=%.2fms  hover=%.2fms" % [js.length() / 1024, (t1 - t0) / 1000.0, (t2 - t1) / 1000.0, (t3 - t2) / 1000.0, (t4 - t3) / 1000.0, (t5 - t4) / 1000.0])
 		var cnt := {}
 		var ent_of := {}
 		for e in entities:
@@ -5574,6 +5586,7 @@ func _bench_tick(delta: float) -> void:
 	if bench.i >= 0 and bench.t > 1.5:
 		bench.n += 1
 		bench.dt += delta
+		bench.mx = maxf(float(bench.get("mx", 0.0)), delta)
 		bench.cpu += RenderingServer.viewport_get_measured_render_time_cpu(vp.get_viewport_rid()) + RenderingServer.get_frame_setup_time_cpu()
 		bench.gpu += RenderingServer.viewport_get_measured_render_time_gpu(vp.get_viewport_rid())
 		bench.proc += Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0
@@ -5583,12 +5596,12 @@ func _bench_tick(delta: float) -> void:
 	if bench.t > 4.5:
 		if bench.i >= 0:
 			var n: float = maxf(1.0, bench.n)
-			print("BENCH %-12s fps=%6.1f  oyun(cpu)=%5.2fms  çizim(cpu)=%5.2fms  gpu=%5.2fms  çağrı=%d  üçgen=%d  nesne=%d" % [BENCH_CASES[bench.i][0], n / bench.dt, bench.proc / n, bench.cpu / n, bench.gpu / n, bench.dc, bench.prim, bench.obj])
+			print("BENCH %-12s enkötü=%5.1fms fps=%6.1f  oyun(cpu)=%5.2fms  çizim(cpu)=%5.2fms  gpu=%5.2fms  çağrı=%d  üçgen=%d  nesne=%d" % [BENCH_CASES[bench.i][0], float(bench.get("mx", 0.0)) * 1000.0, n / bench.dt, bench.proc / n, bench.cpu / n, bench.gpu / n, bench.dc, bench.prim, bench.obj])
 		bench.i += 1
 		if bench.i >= BENCH_CASES.size():
 			get_tree().quit()
 			return
-		bench.merge({"t": 0.0, "n": 0, "dt": 0.0, "cpu": 0.0, "gpu": 0.0, "proc": 0.0}, true)
+		bench.merge({"t": 0.0, "n": 0, "dt": 0.0, "cpu": 0.0, "gpu": 0.0, "proc": 0.0, "mx": 0.0}, true)
 		var c: Array = BENCH_CASES[bench.i]
 		gfx.q = c[1]
 		_apply_gfx()
