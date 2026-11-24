@@ -359,6 +359,8 @@ var act_fx := 0.0           # parçacık zamanlayıcısı
 var night_f := 0.0
 var day_f_last := 1.0
 var fps_t := 0.0
+## --bench: her grafik ayarında FPS, CPU ve GPU süresini ölçer (geliştirici aracı).
+var bench := {}
 var fps_n := 0
 var clock_t := 0.0
 var sim_acc := 0.0
@@ -780,7 +782,13 @@ func _ready() -> void:
 	if args.has("--selftest"):
 		save_path = "user://selftest.json"
 	var loaded := false
-	if net_data != null:
+	for a in args:
+		if a.begins_with("--benchfile="):   # bir kaydın KOPYASINI salt okunur aç: hiçbir yere yazılmaz
+			save_path = ""
+			loaded = _load_dict(JSON.parse_string(FileAccess.get_file_as_string(a.substr(12))), true)
+	if loaded:
+		pass
+	elif net_data != null:
 		save_path = ""
 		loaded = _load_dict(net_data, false)
 		story_step = STORY.size()
@@ -5528,14 +5536,94 @@ func _save_gfx() -> void:
 	_profile_set("gfx", JSON.stringify(gfx))
 
 ## Ayarları uygular. window: pencere kipine de dokunsun mu (geliştirici çalıştırmalarında hayır).
+const BENCH_CASES := [
+	["q0", 0, ""], ["q1", 1, ""], ["q2", 2, ""], ["q3", 3, ""],
+	["q3 -ssr", 3, "ssr"], ["q3 -ssao", 3, "ssao"], ["q3 -msaa", 3, "msaa"], ["q3 -gölge", 3, "shadow"],
+	["q3 -çim", 3, "grass"], ["q3 -glow", 3, "glow"]]
+
+func _bench_tick(delta: float) -> void:
+	var vp := get_viewport()
+	if bench.is_empty():
+		bench = {"i": -1, "t": 99.0}
+		RenderingServer.viewport_set_measure_render_time(vp.get_viewport_rid(), true)
+		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
+		gfx.fps = 0
+		gfx.vs = false
+		print("BENCH ", RenderingServer.get_video_adapter_name(), " ", vp.get_visible_rect().size, " ents=", entities.size())
+		var cnt := {}
+		var ent_of := {}
+		for e in entities:
+			if e.has("group") and is_instance_valid(e.group):
+				ent_of[e.group] = "ent:" + str(e.kind) + ":" + str(e.get("type", ""))
+		var stack: Array = [[self, "kök"]]
+		while not stack.is_empty():
+			var it: Array = stack.pop_back()
+			var nd: Node = it[0]
+			var tag: String = ent_of.get(nd, it[1])
+			if nd.get_parent() == self and not ent_of.has(nd):
+				tag = nd.get_class() + ":" + str(nd.name).left(18)
+			if nd is GeometryInstance3D and nd.visible:
+				cnt[tag] = int(cnt.get(tag, 0)) + 1
+			for ch in nd.get_children():
+				stack.append([ch, tag])
+		var ks := cnt.keys()
+		ks.sort_custom(func(x, y): return cnt[x] > cnt[y])
+		for k in ks.slice(0, 25):
+			print("BENCH parça ", k, " = ", cnt[k])
+	bench.t += delta
+	if bench.i >= 0 and bench.t > 1.5:
+		bench.n += 1
+		bench.dt += delta
+		bench.cpu += RenderingServer.viewport_get_measured_render_time_cpu(vp.get_viewport_rid()) + RenderingServer.get_frame_setup_time_cpu()
+		bench.gpu += RenderingServer.viewport_get_measured_render_time_gpu(vp.get_viewport_rid())
+		bench.proc += Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0
+		bench.dc = Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)
+		bench.prim = Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME)
+		bench.obj = Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME)
+	if bench.t > 4.5:
+		if bench.i >= 0:
+			var n: float = maxf(1.0, bench.n)
+			print("BENCH %-12s fps=%6.1f  oyun(cpu)=%5.2fms  çizim(cpu)=%5.2fms  gpu=%5.2fms  çağrı=%d  üçgen=%d  nesne=%d" % [BENCH_CASES[bench.i][0], n / bench.dt, bench.proc / n, bench.cpu / n, bench.gpu / n, bench.dc, bench.prim, bench.obj])
+		bench.i += 1
+		if bench.i >= BENCH_CASES.size():
+			get_tree().quit()
+			return
+		bench.merge({"t": 0.0, "n": 0, "dt": 0.0, "cpu": 0.0, "gpu": 0.0, "proc": 0.0}, true)
+		var c: Array = BENCH_CASES[bench.i]
+		gfx.q = c[1]
+		_apply_gfx()
+		match c[2]:
+			"ssr": env.ssr_enabled = false
+			"ssao": env.ssao_enabled = false
+			"msaa": vp.msaa_3d = Viewport.MSAA_DISABLED
+			"shadow": sun.shadow_enabled = false
+			"glow": env.glow_enabled = false
+			"atlas4k": RenderingServer.directional_shadow_atlas_set_size(4096, true)
+			"softlow": RenderingServer.directional_soft_shadow_filter_set_quality(RenderingServer.SHADOW_QUALITY_SOFT_LOW)
+			"hard": RenderingServer.directional_soft_shadow_filter_set_quality(RenderingServer.SHADOW_QUALITY_HARD)
+			"split2": sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
+			"dist40": sun.directional_shadow_max_distance = 40.0
+			"4klow":
+				RenderingServer.directional_shadow_atlas_set_size(4096, true)
+				RenderingServer.directional_soft_shadow_filter_set_quality(RenderingServer.SHADOW_QUALITY_SOFT_LOW)
+			"grass":
+				for pc in grass_chunks:
+					grass_chunks[pc].visible = false
+		if c[2] != "shadow": sun.shadow_enabled = true
+		if c[2] != "grass":
+			for pc in grass_chunks:
+				grass_chunks[pc].visible = true
+
 func _apply_gfx(window := false) -> void:
 	var q: int = clampi(int(gfx.q), 0, 3)
 	var vp := get_viewport()
 	vp.msaa_3d = [Viewport.MSAA_DISABLED, Viewport.MSAA_2X, Viewport.MSAA_2X, Viewport.MSAA_4X][q]
-	RenderingServer.directional_shadow_atlas_set_size([2048, 4096, 8192, 8192][q], true)
-	RenderingServer.directional_soft_shadow_filter_set_quality([RenderingServer.SHADOW_QUALITY_HARD, RenderingServer.SHADOW_QUALITY_SOFT_LOW, RenderingServer.SHADOW_QUALITY_SOFT_HIGH, RenderingServer.SHADOW_QUALITY_SOFT_ULTRA][q])
+	# ölçüm (RX 6600, --bench): 8192 atlas + en yumuşak süzgeç tek başına GPU süresini ~2 katına çıkarıyordu;
+	# 4096 atlas 4 dilimle 40-50 m'de yeterince keskin, yumuşaklığı da sun.shadow_blur veriyor.
+	RenderingServer.directional_shadow_atlas_set_size([2048, 4096, 4096, 4096][q], true)
+	RenderingServer.directional_soft_shadow_filter_set_quality([RenderingServer.SHADOW_QUALITY_HARD, RenderingServer.SHADOW_QUALITY_SOFT_LOW, RenderingServer.SHADOW_QUALITY_SOFT_LOW, RenderingServer.SHADOW_QUALITY_SOFT_MEDIUM][q])
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS if q == 0 else DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
-	sun.directional_shadow_max_distance = [28.0, 34.0, 40.0, 55.0][q]
+	sun.directional_shadow_max_distance = [28.0, 34.0, 40.0, 48.0][q]
 	env.ssao_enabled = q >= 2
 	env.glow_enabled = q >= 1
 	env.ssr_enabled = q >= 2      # su ve parlak yüzeylerde gerçek yansıma
@@ -5686,7 +5774,7 @@ func _render_settings() -> void:
 	_set_row("Kalite", _seg("q", [["Düşük", 0], ["Orta", 1], ["Yüksek", 2], ["Ultra", 3]]))
 	var qi := Label.new()
 	qi.text = ["Gölgeler sert, çim seyrek, görüş kısa: zayıf bilgisayarlar için.", "Yumuşak gölge, orta çim; yansıma ve ortam gölgesi kapalı.",
-		"Yumuşak gölge, tam çim, ortam gölgesi ve suda yansıma.", "En yumuşak gölge, 4× kenar yumuşatma, uzak gölgeler."][clampi(int(gfx.q), 0, 3)]
+		"Yumuşak gölge, tam çim, ortam gölgesi ve suda yansıma.", "Daha yumuşak ve uzağa düşen gölgeler, 4× kenar yumuşatma."][clampi(int(gfx.q), 0, 3)]
 	qi.add_theme_font_size_override("font_size", 13)
 	qi.add_theme_color_override("font_color", Color("#8a7260"))
 	set_box.add_child(qi)
@@ -6422,6 +6510,8 @@ func _process(delta: float) -> void:
 		return
 	if not grass_dirty.is_empty():
 		_update_grass()
+	if OS.get_cmdline_user_args().has("--bench"):
+		_bench_tick(delta)
 	var dt := minf(0.1, delta)
 	if shot_path != "" and not playing:
 		shot_t += delta

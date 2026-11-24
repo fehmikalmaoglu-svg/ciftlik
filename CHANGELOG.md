@@ -1,5 +1,9 @@
 # Çiftliğim 3D — Sürüm Notları
 
+## v0.14.2 · Erken Erişim
+- 🚀 **Yüksek ve Ultra grafik çok daha hızlı**: gölge haritası ve gölge süzgeci yeniden ayarlandı. Ölçümde Yüksek'te FPS ~%55, Ultra'da ~%70 arttı; gölgeler yine yumuşak.
+- 🧪 Geliştirici aracı: `--bench` her grafik ayarında FPS, CPU ve GPU süresini ölçer.
+
 ## v0.14.1 · Erken Erişim
 - 🎵 Arka plan müziği değişti: gündüz **Shepherd Dog** (Zane Little Music), gece **A Small Fire Will Do** (Trex0n). İkisi de ücretsiz CC0 parçalar, kaynakları CREDITS.md'de.
 
