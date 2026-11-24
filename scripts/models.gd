@@ -646,10 +646,15 @@ static func _chicken() -> Node3D:
 	var g := node()
 	add(g, scl(ball(0.2, "#fafafa", 0, 0.3, 0, 1), 1, 0.9, 1.15))
 	add(g, rot(box(0.12, 0.2, 0.06, "#eeeeee", 0, 0.44, -0.22), -0.4))
+	var legs := []
 	for s in [-1.0, 1.0]:
 		add(g, scl(ball(0.1, "#f0f0f0", s * 0.17, 0.3, 0), 0.4, 0.7, 1.1))
-		add(g, cyl(0.015, 0.015, 0.16, 4, "#ffa000", s * 0.07, 0.08, 0))
-		add(g, box(0.06, 0.015, 0.08, "#ffa000", s * 0.07, 0.008, 0.03))
+		var hip := node(s * 0.07, 0.16, 0)   # bacak kalçadan döner (yürürken ileri-geri)
+		add(hip, cyl(0.015, 0.015, 0.16, 4, "#ffa000", 0, -0.08, 0))
+		add(hip, box(0.06, 0.015, 0.08, "#ffa000", 0, -0.152, 0.03))
+		add(g, hip)
+		legs.append(hip)
+	g.set_meta("legs", legs)
 	var head := node(0, 0.5, 0.17)
 	add(head, ball(0.11, "#fafafa", 0, 0, 0, 1))
 	add(head, box(0.03, 0.08, 0.12, "#e53935", 0, 0.11, 0))

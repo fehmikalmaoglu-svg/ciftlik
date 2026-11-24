@@ -4161,13 +4161,28 @@ func _animate_world(dt: float) -> void:
 				m.rotation.z = 0.0
 				m.rotation.x = 0.0
 				m.position.y = 0.0
+				if m.has_meta("legs"):
+					for lg in m.get_meta("legs"):
+						lg.rotation.x = 0.0
+					if m.has_meta("head"):
+						m.get_meta("head").position.z = 0.17
 			else:
 				var s := minf(d, dt * 0.45)
 				w.x += dx / d * s
 				w.z += dz / d * s
 				m.rotation.y = atan2(dx, dz)
-				if str(m.get_meta("walk", "")) == "":
-					# yürüme animasyonu yok (koyun, domuz, tavuk): adım adım zıpla ve yalpala
+				if m.has_meta("legs"):
+					# tavuk: bacaklar sırayla adım atar, baş ileri-geri gider, gövde hafif sallanır
+					var ph := clock_t * 16.0 + w.phase
+					var legs: Array = m.get_meta("legs")
+					legs[0].rotation.x = sin(ph) * 0.7
+					legs[1].rotation.x = -sin(ph) * 0.7
+					if m.has_meta("head"):
+						m.get_meta("head").position.z = 0.17 + sin(ph * 2.0) * 0.035
+					m.position.y = absf(sin(ph)) * 0.025
+					m.rotation.z = sin(ph) * 0.06
+				elif str(m.get_meta("walk", "")) == "":
+					# yürüme animasyonu yok: adım adım zıpla ve yalpala
 					m.position.y = absf(sin(clock_t * 11.0 + w.phase)) * 0.07
 					m.rotation.z = sin(clock_t * 11.0 + w.phase) * 0.09
 					m.rotation.x = -absf(sin(clock_t * 11.0 + w.phase)) * 0.06
