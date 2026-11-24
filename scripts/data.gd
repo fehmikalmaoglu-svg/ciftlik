@@ -174,5 +174,6 @@ static func season_icons(list: Array) -> String:
 		out += SEASONS[i].icon
 	return out
 
+## Seviye eğrisi: 9. seviyeden sonra da geliştirmeler (Sv 15'e kadar) açıldığı için biraz yumuşatıldı (40·lv^1.6 → 36·lv^1.5).
 static func xp_for_level(lv: int) -> int:
-	return int(round(40.0 * pow(lv, 1.6)))
+	return int(round(36.0 * pow(lv, 1.5)))

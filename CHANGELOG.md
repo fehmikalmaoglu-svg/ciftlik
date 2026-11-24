@@ -1,5 +1,11 @@
 # Çiftliğim 3D — Sürüm Notları
 
+## v0.15.0 · Erken Erişim
+- ⭐ **Çiftlik Geliştirmeleri** (🗺️ düğmesi / L): altın + madalya ile alınan 6 kalıcı yükseltme, her biri 3 kademe. Bereketli Toprak, Usta Bakıcı, Damla Sulama, Geniş Ambar, Budama Ustası, Pazarlık. Kademeler seviye 4'ten 15'e kadar sırayla açılır. Madalyalar artık bir işe yarıyor!
+- 🏘️ **Köy istekleri panosu**: görev panelinin altındaki düğmeden dört köylünün isteğini gör, pazara yürümeden ambardan teslim et (altın, XP, dostluk).
+- 🗺️ Genişletme ya da geliştirme alınabilecek kadar altının olunca oyun hatırlatır, 🗺️ düğmesi parlar.
+- 📈 Seviye eğrisi yumuşatıldı (yüksek seviyeler ~%30 daha az XP ister); biriken XP kayıt açılınca seviyeye dönüşür.
+
 ## v0.14.4 · Erken Erişim
 - 🐔 Tavuk da yürüyor: bacakları sırayla adım atıyor, başı ileri-geri gidiyor (önceden kayıyordu).
 

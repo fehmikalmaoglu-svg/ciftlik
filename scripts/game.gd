@@ -476,6 +476,23 @@ const HAPPY_DAY := 2.0   # tam mutluluk ~2 günde sıfırlanır
 const HEART_PTS := 10
 const HEARTS_MAX := 5
 var vill := {}           # id → {"pts", "r", "n", "done", "gd"}
+## Çiftlik geliştirmeleri: altın + madalya ile alınan kalıcı yükseltmeler (madalyanın harcandığı yer).
+## Seviye 6'dan sonra da hedef olsun diye kademeler 4..15 arasında açılır.
+const UPGRADES := [
+	{"id": "soil", "name": "Bereketli Toprak", "icon": "🌱", "per": "Ekin hasadında +%10 altın", "lv": 4},
+	{"id": "care", "name": "Usta Bakıcı", "icon": "🐄", "per": "Hayvanlar %10 hızlı üretir", "lv": 5},
+	{"id": "water", "name": "Damla Sulama", "icon": "💧", "per": "Toprak %15 yavaş kurur", "lv": 6},
+	{"id": "barn", "name": "Geniş Ambar", "icon": "📦", "per": "Ambara +60 yer", "lv": 7},
+	{"id": "orchard", "name": "Budama Ustası", "icon": "🍎", "per": "Meyve hasadında +%15 altın", "lv": 8},
+	{"id": "market", "name": "Pazarlık", "icon": "💰", "per": "Ambardan satışta +%8 altın", "lv": 9},
+]
+const UPG_MAX := 3
+const UPG_COST := [[1000, 10, 0], [3000, 25, 3], [7000, 50, 6]]   # kademe: [altın, madalya, +seviye]
+var upg := {}
+var nudged := {}         # bu oturumda gösterilen hatırlatmalar
+var nudge_t := 0.0
+var land_avail := false  # arazi/geliştirme alınabilir: 🗺️ düğmesi parlar
+var btn_land: Button
 var vill_nodes := {}     # id → Node3D
 var vill_open := ""      # açık köylü penceresi
 ## Değirmen: bir öğütme 6 tahıl alır, 5 vuruşun her isabeti 1 un verir.
@@ -1839,7 +1856,7 @@ func _simulate(dt: float) -> void:
 		weather_t -= dt
 		if weather_t <= 0.0:
 			_end_weather()
-	var drain := 0.0 if weather == "snow" else dt / Data.WATER_DUR * (3.0 if weather == "drought" else 1.0)
+	var drain := 0.0 if weather == "snow" else dt / Data.WATER_DUR * (3.0 if weather == "drought" else 1.0) * (1.0 - 0.15 * _upg("water"))
 	for e in entities:
 		match e.kind:
 			"plot":
@@ -1902,7 +1919,7 @@ func _simulate(dt: float) -> void:
 					var at: float = Data.ANIMALS[e.type].time
 					var step := minf(dt, e.food * at * Data.FEED_CYCLES)
 					e.food = maxf(0.0, e.food - step / (at * Data.FEED_CYCLES))
-					e.t += step / at * _happy_mult(e)
+					e.t += step / at * _happy_mult(e) * (1.0 + 0.1 * _upg("care"))
 					if e.t >= 1.0:
 						e.t = 0.0
 						if not _lay_egg(e):
@@ -1932,6 +1949,14 @@ func _gain(c: int, x: int, pos: Vector3, icon: String) -> void:
 		xp -= Data.xp_for_level(level)
 		level += 1
 		_on_level_up()
+
+## Seviye eğrisi değişince (ya da eski kayıtta) biriken XP seviyeye dönüşsün.
+func _xp_catchup() -> void:
+	while xp >= Data.xp_for_level(level):
+		xp -= Data.xp_for_level(level)
+		level += 1
+		_on_level_up()
+	hud_dirty = true
 
 func _on_level_up() -> void:
 	var names := []
@@ -2295,7 +2320,7 @@ func _barn_cap() -> int:
 				cap += Data.BARN_CAP
 			elif e.type == "silo":
 				cap += Data.SILO_CAP
-	return cap if _count_buildings("barn") > 0 else 0
+	return cap + 60 * _upg("barn") if _count_buildings("barn") > 0 else 0
 
 # ============================================================ oyun hissi
 ## Esneme-zıplama: bir eksende uzat, ötekinde bas, geri yaylan (alan ~sabit). Önceki tween öldürülür.
@@ -2668,7 +2693,7 @@ func _perform_local_in(item: Dictionary) -> bool:
 				e.crop = null
 				e.progress = 0.0
 				_refresh(e)
-				_gain(c.sell, c.xp, pos, c.icon)
+				_gain(int(round(c.sell * (1.0 + 0.1 * _upg("soil")))), c.xp, pos, c.icon)
 				_store(ck, pos)
 				_quest_event("crop", ck, 1)
 			elif e.kind == "tree":
@@ -2677,7 +2702,7 @@ func _perform_local_in(item: Dictionary) -> bool:
 				e.fruit_t = 0.0
 				_refresh(e)
 				_burst(pos + Vector3(0, 1.2, 0), t.fruit, 14, 3.0)
-				_gain(t.sell, t.xp, pos, t.icon)
+				_gain(int(round(t.sell * (1.0 + 0.15 * _upg("orchard")))), t.xp, pos, t.icon)
 				_store(e.type, pos, 0)
 				_quest_event("fruit", e.type, 1)
 			elif e.kind == "animal":
@@ -4352,8 +4377,9 @@ func _build_ui() -> void:
 	var bev := _icon_btn("🎪", "Mevsim etkinliği: yarışma, dereceler, kupalar")
 	bev.pressed.connect(_open_event)
 	ah.add_child(bev)
-	var bland := _icon_btn("🗺️", "Arazi: çiftliği genişlet  [L]")
+	var bland := _icon_btn("🗺️", "Arazi ve geliştirmeler: çiftliği büyüt, kalıcı yükseltmeler al  [L]")
 	bland.pressed.connect(_open_land)
+	btn_land = bland
 	ah.add_child(bland)
 	var bset := _icon_btn("⚙️", "Ayarlar: grafik, ses, tam ekran  (F11 tam ekran)")
 	bset.pressed.connect(_open_settings)
@@ -5465,6 +5491,8 @@ func _start_play(show_help := false) -> void:
 			var xz := a.substr(5).split(",")
 			farmer.position = Vector3(float(xz[0]), 0, float(xz[1]))
 			cam_target = farmer.position
+		elif a == "--board":   # geliştirici: köy istekleri panosu
+			_open_village_board()
 		elif a == "--land":   # geliştirici: arazi penceresini aç
 			_open_land()
 		elif a == "--settings":
@@ -6236,7 +6264,7 @@ func _state_dict() -> Dictionary:
 	var ents := []
 	for e in entities:
 		ents.append(_ent_dict(e))
-	return {"v": 1, "fv": SAVE_VER, "bv": 1, "sv": 2, "story": story_step, "sh": story_have, "fh": farm_h, "fg": fishgear, "vill": vill, "ev": ev, "tro": trophies, "name": farm_name, "gems": gems, "quests": quests, "qskip": quest_skip_at, "flv": flv, "season": season, "season_t": season_t, "year": year, "weather": weather, "weather_t": weather_t, "medals": medals, "res": res, "order": order, "coins": coins, "xp": xp, "level": level, "day_time": day_time, "day": day, "sel": sel, "muted": muted,
+	return {"v": 1, "fv": SAVE_VER, "bv": 1, "sv": 2, "story": story_step, "sh": story_have, "fh": farm_h, "fg": fishgear, "vill": vill, "upg": upg, "ev": ev, "tro": trophies, "name": farm_name, "gems": gems, "quests": quests, "qskip": quest_skip_at, "flv": flv, "season": season, "season_t": season_t, "year": year, "weather": weather, "weather_t": weather_t, "medals": medals, "res": res, "order": order, "coins": coins, "xp": xp, "level": level, "day_time": day_time, "day": day, "sel": sel, "muted": muted,
 		"saved_at": Time.get_unix_time_from_system(), "ents": ents, "fx": farmer.position.x, "fz": farmer.position.z}
 
 func _ent_dict(e: Dictionary) -> Dictionary:
@@ -6336,6 +6364,12 @@ func _load_dict(data, offline: bool) -> bool:
 	medals = int(data.get("medals", 0))
 	gems = int(data.get("gems", 0))
 	_load_fishgear(data.get("fg", {}))
+	upg = {}
+	var ug = data.get("upg", {})
+	if typeof(ug) == TYPE_DICTIONARY:
+		for u in UPGRADES:
+			if ug.has(u.id):
+				upg[u.id] = clampi(int(ug[u.id]), 0, UPG_MAX)
 	_load_vill(data.get("vill", {}))
 	_load_ev(data.get("ev", {}), data.get("tro", {}))
 	farm_h = int(data.get("fh", 0))
@@ -6434,6 +6468,7 @@ func _load_finish(data: Dictionary, offline: bool) -> void:
 		_add_default_buildings()   # binaların kayda girmediği eski sürüm
 	_fit_farm_h()
 	call_deferred("_story_catchup")
+	call_deferred("_xp_catchup")
 	if int(data.get("sv", 1)) < 2 and story_step > 0:
 		story_step = STORY.size() if story_step >= 9 else story_step + 1   # ambar adımı araya girdi
 	_recompute_boosts()
@@ -6574,6 +6609,7 @@ func _process(delta: float) -> void:
 	_update_villagers(dt)
 	_update_chat(dt)
 	_update_audio(dt)
+	_update_nudges(dt)
 	var frozen := _paused()
 	if not frozen:
 		sim_acc += dt
@@ -7555,6 +7591,7 @@ func _vill_new_day() -> void:
 		_vill_new_request(v.id)
 	net_quest_dirty = true
 	_vill_marks()
+	_render_quests()
 
 func _vill_reward(id: String) -> int:
 	var st: Dictionary = vill[id]
@@ -7590,6 +7627,7 @@ func _vill_deliver(id: String) -> bool:
 	_gain(c, 10, pos, _vdef(id).icon)
 	_quest_event("villager", id, 1)
 	_vill_add_pts(id, 5)
+	_render_quests()
 	_sfx("level")
 	net_quest_dirty = true
 	_vill_marks()
@@ -8081,6 +8119,154 @@ func _open_mill() -> void:
 	land_box.add_child(row)
 	land_dlg.visible = true
 
+func _upg(id: String) -> int:
+	return int(upg.get(id, 0))
+
+func _upg_def(id: String) -> Dictionary:
+	for u in UPGRADES:
+		if u.id == id:
+			return u
+	return {}
+
+## Sıradaki kademe [altın, madalya, seviye]; en üstteyse boş.
+func _upg_next(id: String) -> Array:
+	var u := _upg_def(id)
+	var k := _upg(id)
+	if u.is_empty() or k >= UPG_MAX:
+		return []
+	return [int(UPG_COST[k][0]), int(UPG_COST[k][1]), int(u.lv) + int(UPG_COST[k][2])]
+
+func _upg_ok(id: String) -> bool:
+	var nx := _upg_next(id)
+	return not nx.is_empty() and coins >= nx[0] and medals >= nx[1] and level >= nx[2]
+
+func _buy_upg(id: String) -> bool:
+	if net_role == "guest" or not _upg_ok(id):
+		return false
+	var nx := _upg_next(id)
+	_spend(nx[0])
+	medals -= nx[1]
+	upg[id] = _upg(id) + 1
+	var u := _upg_def(id)
+	_toast("%s %s → %d. kademe! %s" % [u.icon, u.name, upg[id], u.per], "level")
+	_sfx("level")
+	add_trauma(0.25)
+	if farmer != null:
+		_float_text(farmer.position + Vector3(0, 1.6, 0), "-%d 🪙  -%d 🏅" % [nx[0], nx[1]], Color("#ffb4a8"))
+	hud_dirty = true
+	nudge_t = 99.0
+	return true
+
+## Arazi penceresinin alt yarısı: kalıcı yükseltmeler (altın + madalya, seviyeyle açılır).
+func _land_upgrades() -> void:
+	land_box.add_child(HSeparator.new())
+	var h := Label.new()
+	h.text = "⭐ Çiftlik Geliştirmeleri   ·   sende %d 🏅" % medals
+	h.add_theme_font_size_override("font_size", 19)
+	land_box.add_child(h)
+	var sc := ScrollContainer.new()
+	sc.custom_minimum_size = Vector2(0, 250)
+	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	var lst := VBoxContainer.new()
+	lst.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	lst.add_theme_constant_override("separation", 6)
+	sc.add_child(lst)
+	land_box.add_child(sc)
+	for u in UPGRADES:
+		var k := _upg(u.id)
+		var nx := _upg_next(u.id)
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 8)
+		var l := Label.new()
+		l.text = "%s %s  %s\n%s" % [u.icon, u.name, "★".repeat(k) + "☆".repeat(UPG_MAX - k), u.per + ("  (şimdi ×%d)" % k if k > 0 else "")]
+		l.add_theme_font_size_override("font_size", 14)
+		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(l)
+		var id: String = u.id
+		var bt: Button
+		if nx.is_empty():
+			bt = _small_btn(" ✔ Tamam ", func(): pass, false)
+		elif level < nx[2]:
+			bt = _small_btn(" 🔒 Sv %d " % nx[2], func(): pass, false)
+		else:
+			bt = _small_btn(" %d 🪙  %d 🏅 " % [nx[0], nx[1]], func():
+				if _buy_upg(id):
+					_open_land(), _upg_ok(id), _upg_ok(id))
+			if not _upg_ok(id):
+				bt.tooltip_text = "🪙 Altın yetmiyor" if coins < nx[0] else "🏅 Madalya yetmiyor (görevlerden kazanılır)"
+		row.add_child(bt)
+		lst.add_child(row)
+
+## Köy istekleri panosu: dört köylünün isteği; pazara yürümeden ambardan teslim edilir.
+func _open_village_board() -> void:
+	shop_open = false
+	vill_open = ""
+	ev_open = false
+	_vill_ensure()
+	for c in land_box.get_children():
+		land_box.remove_child(c)
+		c.queue_free()
+	var t := Label.new()
+	t.text = "🏘️ Köy İstekleri"
+	t.add_theme_font_size_override("font_size", 26)
+	land_box.add_child(t)
+	var d := Label.new()
+	d.text = "Köylüler her sabah yeni bir şey ister. Ambarından teslim et: altın, XP ve dostluk kazanırsın. 5 kalpte kalıcı yetenek açılır."
+	d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	d.add_theme_color_override("font_color", Color("#7a5a3a"))
+	land_box.add_child(d)
+	for v in VILLAGERS:
+		var st: Dictionary = vill[v.id]
+		var r: String = st.r
+		var have := int(res.get(r, 0))
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 8)
+		var l := Label.new()
+		var want := "✔ Bugünkü isteği tamam" if st.done else "%d %s %s istiyor  (ambarda %d)  ·  %d 🪙" % [int(st.n), Data.RESOURCES[r].icon, Data.RESOURCES[r].name, have, _vill_reward(v.id)]
+		l.text = "%s %s  %s\n%s" % [v.icon, v.name, _hearts_text(v.id), want]
+		l.add_theme_font_size_override("font_size", 14)
+		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(l)
+		var id: String = v.id
+		var can := not bool(st.done) and have >= int(st.n)
+		row.add_child(_small_btn(" Teslim et ", func():
+			if _vill_deliver(id):
+				_open_village_board(), can, can))
+		land_box.add_child(row)
+	land_box.add_child(_small_btn("  Kapat  ", func(): land_dlg.visible = false))
+	land_dlg.visible = true
+
+func _vill_pending() -> int:
+	var n := 0
+	for v in VILLAGERS:
+		if vill.has(v.id) and not bool(vill[v.id].done):
+			n += 1
+	return n
+
+## Birkaç saniyede bir: genişleme ya da geliştirme alınabiliyorsa bir kez hatırlat, 🗺️ düğmesini parlat.
+func _update_nudges(dt: float) -> void:
+	if btn_land != null:
+		btn_land.modulate = Color.WHITE.lerp(Color(1.5, 1.35, 0.55), 0.5 + 0.5 * sin(clock_t * 5.0)) if land_avail else Color.WHITE
+	nudge_t += dt
+	if nudge_t < 6.0 or net_role == "guest" or loading:
+		return
+	nudge_t = 0.0
+	var nx := _expand_next()
+	var can_exp := not nx.is_empty() and coins >= int(nx[1]) and level >= int(nx[2])
+	var can_up := ""
+	for u in UPGRADES:
+		if _upg_ok(u.id):
+			can_up = u.id
+			break
+	land_avail = can_exp or can_up != ""
+	if can_exp and not nudged.has("exp%d" % int(nx[0])):
+		nudged["exp%d" % int(nx[0])] = true
+		_toast("🗺️ Çiftliğini %d×%d yapabilirsin! Sağ üstteki parlayan 🗺️ düğmesi (L)." % [int(nx[0]) * 2, int(nx[0]) * 2], "level")
+	elif can_up != "" and not nudged.has("u%s%d" % [can_up, _upg(can_up)]):
+		nudged["u%s%d" % [can_up, _upg(can_up)]] = true
+		var u := _upg_def(can_up)
+		_toast("⭐ Yeni geliştirme alınabilir: %s %s. 🗺️ düğmesinde (L)." % [u.icon, u.name], "level")
+
 func _mill_start() -> bool:
 	if mill_state != "" or level < MILL_LEVEL or int(res.get("cereal", 0)) < MILL_IN:
 		return false
@@ -8267,7 +8453,7 @@ func _build_land_ui() -> void:
 	cc.set_anchors_preset(Control.PRESET_FULL_RECT)
 	land_dlg.add_child(cc)
 	var p := _panel(22)
-	p.custom_minimum_size = Vector2(400, 0)
+	p.custom_minimum_size = Vector2(470, 0)
 	cc.add_child(p)
 	land_box = VBoxContainer.new()
 	land_box.add_theme_constant_override("separation", 10)
@@ -8286,7 +8472,7 @@ func _open_land() -> void:
 		c.queue_free()
 	var nx := _expand_next()
 	var t := Label.new()
-	t.text = "🗺️ Arazi"
+	t.text = "🗺️ Arazi ve Geliştirmeler"
 	t.add_theme_font_size_override("font_size", 26)
 	land_box.add_child(t)
 	var d := Label.new()
@@ -8324,6 +8510,7 @@ func _open_land() -> void:
 		var w0 := Label.new()
 		w0.text = "🎉 Çiftliğin en büyük boyda: %d×%d." % [farm_h * 2, farm_h * 2]
 		land_box.add_child(w0)
+		_land_upgrades()
 		land_box.add_child(_small_btn("  Kapat  ", func(): land_dlg.visible = false, true, true))
 		land_dlg.visible = true
 		return
@@ -8343,6 +8530,7 @@ func _open_land() -> void:
 			_open_land(), ok, true))
 	row.add_child(_small_btn("  Kapat  ", func(): land_dlg.visible = false))
 	land_box.add_child(row)
+	_land_upgrades()
 	land_dlg.visible = true
 
 func _selftest_story(fails: Array) -> void:
@@ -8508,6 +8696,7 @@ func _selftest_build(fails: Array) -> void:
 	_selftest_feel(fails)
 	_selftest_pause(fails)
 	_selftest_savever(fails)
+	_selftest_upg(fails)
 	var rb := _refund_of(tiles.get(key(sp.x, sp.y)))
 	var c2 := coins
 	if not _perform({"x": sp.x, "z": sp.y, "tool": "remove", "arg": null}) or _count_buildings("barn") != b0: fails.append("bina kaldırma")
@@ -9222,6 +9411,11 @@ func _render_quests() -> void:
 			cl.add_theme_color_override("font_color", Color("#2f7d6e"))
 			row.add_child(cl)
 		quest_box.add_child(row)
+	if net_role != "guest" and not _story_on() and not vill.is_empty():
+		var pend := _vill_pending()
+		var vb := _small_btn("🏘️ Köy istekleri: %d bekliyor  ›" % pend if pend > 0 else "🏘️ Köy istekleri: bugün hepsi tamam ✔", _open_village_board, true, pend > 0)
+		vb.add_theme_font_size_override("font_size", 14)
+		quest_box.add_child(vb)
 	quest_panel.reset_size()
 
 func _selftest_quests(fails: Array) -> void:
@@ -9292,6 +9486,35 @@ func _harvest_flower(e: Dictionary, pos: Vector3) -> void:
 			_toast("%s %s seviye %d! Tüm %s tarhları +%%%d kazanç" % [f.icon, f.name, fl.lv, f.name, int(round((Data.flower_mult(fl.lv) - 1.0) * 100.0))], "level")
 			if tool == "garden":
 				_render_shelf()
+
+func _selftest_upg(fails: Array) -> void:
+	var keep := [coins, medals, level, upg.duplicate()]
+	upg = {}
+	level = 4
+	coins = 100000
+	medals = 500
+	if not _buy_upg("soil") or _upg("soil") != 1: fails.append("geliştirme alınamadı")
+	if coins != 100000 - 1000 or medals != 490: fails.append("geliştirme bedeli %d %d" % [coins, medals])
+	if _buy_upg("soil"): fails.append("geliştirme seviyesiz alındı")
+	if _buy_upg("market"): fails.append("kilitli geliştirme alındı")
+	level = 99
+	var cap0 := _barn_cap()
+	_buy_upg("barn")
+	if cap0 > 0 and _barn_cap() != cap0 + 60: fails.append("ambar geliştirmesi")
+	for i in 5:
+		_buy_upg("soil")
+	if _upg("soil") != UPG_MAX: fails.append("geliştirme sınırı %d" % _upg("soil"))
+	medals = 0
+	if _buy_upg("care"): fails.append("madalyasız geliştirme")
+	var js = JSON.parse_string(JSON.stringify(_state_dict()))
+	if int(js.upg.soil) != UPG_MAX: fails.append("geliştirme kaydı")
+	_open_land()
+	_open_village_board()
+	land_dlg.visible = false
+	coins = keep[0]
+	medals = keep[1]
+	level = keep[2]
+	upg = keep[3]
 
 func _selftest_savever(fails: Array) -> void:
 	if int(_state_dict().get("fv", 0)) != SAVE_VER: fails.append("kayıt sürümü yazılmıyor")
@@ -9732,7 +9955,7 @@ func _sell(r: String, n: int) -> void:
 		_render_barn()
 		return
 	res[r] -= n
-	var gain_c: int = n * Data.RESOURCES[r].price
+	var gain_c := int(round(n * int(Data.RESOURCES[r].price) * (1.0 + 0.08 * _upg("market"))))
 	coins += gain_c
 	_quest_event("sell", r, n)
 	_quest_event("earn", "", gain_c)
