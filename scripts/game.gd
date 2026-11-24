@@ -825,6 +825,9 @@ func _ready() -> void:
 	if args.has("--night"):
 		day_time = 0.88
 	for a in args:
+		if a.begins_with("--time="):   # geliştirici: gün saati 0..1
+			day_time = float(a.substr(7))
+	for a in args:
 		if a.begins_with("--cam="):
 			cam_dist = float(a.substr(6))
 		elif a.begins_with("--season="):
@@ -3172,6 +3175,7 @@ func _update_camera(dt: float) -> void:
 	cam.position = cam_target + Vector3(sin(cam_yaw) * cp * cam_dist, sin(cam_pitch) * cam_dist, cos(cam_yaw) * cp * cam_dist)
 	cam.look_at(cam_target + Vector3(0, 0.5 + look_up, 0), Vector3.UP)
 	_update_shake(dt)
+	_update_shadow_splits()
 
 # ============================================================ girdi
 ## Fare ışınının araziye (tepeler dahil) çarptığı nokta.
@@ -4070,6 +4074,8 @@ func _update_day(dt: float) -> void:
 	wm.set_shader_parameter("night", night_f * (1.0 - wx_f))
 	# gündüz güneş, gece ay ışık verir; ufukta geçişte gölge yumuşakça kaybolur
 	var qang := ang if elev >= 0.0 else ang + PI
+	# güneş açısı küçük adımlarla: her karede kıpırdayan ışık gölge kenarlarında piksel titremesi yapıyordu
+	qang = snappedf(qang, 0.0025)
 	var s_elev := maxf(sin(qang), 0.15)
 	var off := Vector3(cos(qang) * 30.0, s_elev * 35.0, 12.0 if elev >= 0.0 else 16.0)
 	sun.look_at_from_position(off, Vector3.ZERO, Vector3.UP)
@@ -5670,6 +5676,26 @@ func _bench_tick(delta: float) -> void:
 			for pc in grass_chunks:
 				grass_chunks[pc].visible = true
 
+## Gölge dilimleri kameraya göre: kamera 5-60 m uzakta, yakın dilimi kameranın dibine harcamak boşa.
+## Dilimler görülen zeminin (kamera uzaklığı çevresi) üstüne toplanır; aynı atlasla çok daha keskin gölge.
+var shadow_cap := 50.0
+var shadow_last := -1.0
+func _update_shadow_splits() -> void:
+	if sun == null or absf(cam_dist - shadow_last) < 0.25:
+		return
+	shadow_last = cam_dist
+	if OS.get_cmdline_user_args().has("--oldsplits"):
+		sun.directional_shadow_max_distance = [28.0, 34.0, 40.0, 48.0][clampi(int(gfx.q), 0, 3)]
+		sun.directional_shadow_split_1 = 0.08
+		sun.directional_shadow_split_2 = 0.22
+		sun.directional_shadow_split_3 = 0.5
+		return
+	var maxd := clampf(cam_dist * 1.6 + 12.0, 22.0, shadow_cap)
+	sun.directional_shadow_max_distance = maxd
+	sun.directional_shadow_split_1 = clampf(cam_dist * 0.72 / maxd, 0.05, 0.6)
+	sun.directional_shadow_split_2 = clampf(cam_dist * 0.98 / maxd, 0.1, 0.75)
+	sun.directional_shadow_split_3 = clampf(cam_dist * 1.32 / maxd, 0.2, 0.9)
+
 func _apply_gfx(window := false) -> void:
 	var q: int = clampi(int(gfx.q), 0, 3)
 	var vp := get_viewport()
@@ -5677,9 +5703,19 @@ func _apply_gfx(window := false) -> void:
 	# ölçüm (RX 6600, --bench): 8192 atlas + en yumuşak süzgeç tek başına GPU süresini ~2 katına çıkarıyordu;
 	# 4096 atlas 4 dilimle 40-50 m'de yeterince keskin, yumuşaklığı da sun.shadow_blur veriyor.
 	RenderingServer.directional_shadow_atlas_set_size([2048, 4096, 4096, 4096][q], true)
-	RenderingServer.directional_soft_shadow_filter_set_quality([RenderingServer.SHADOW_QUALITY_HARD, RenderingServer.SHADOW_QUALITY_SOFT_LOW, RenderingServer.SHADOW_QUALITY_SOFT_LOW, RenderingServer.SHADOW_QUALITY_SOFT_MEDIUM][q])
+	# dilimler kameraya göre ayarlandığı için (_update_shadow_splits) 4096 yeterince keskin; süzgeç kenarı pürüzsüzleştirir
+	RenderingServer.directional_soft_shadow_filter_set_quality([RenderingServer.SHADOW_QUALITY_HARD, RenderingServer.SHADOW_QUALITY_SOFT_LOW, RenderingServer.SHADOW_QUALITY_SOFT_HIGH, RenderingServer.SHADOW_QUALITY_SOFT_ULTRA][q])
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS if q == 0 else DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
-	sun.directional_shadow_max_distance = [28.0, 34.0, 40.0, 48.0][q]
+	shadow_cap = [30.0, 40.0, 50.0, 60.0][q]
+	sun.shadow_blur = [1.6, 1.4, 1.0, 0.8][q]   # iyi süzgeçte az bulanıklık: keskin ama pürüzsüz kenar
+	for a in OS.get_cmdline_user_args():   # geliştirici karşılaştırması
+		if a.begins_with("--shfilter="):
+			RenderingServer.directional_soft_shadow_filter_set_quality(int(a.substr(11)))
+		elif a.begins_with("--shblur="):
+			sun.shadow_blur = float(a.substr(9))
+		elif a.begins_with("--shatlas="):
+			RenderingServer.directional_shadow_atlas_set_size(int(a.substr(10)), true)
+	_update_shadow_splits()
 	env.ssao_enabled = q >= 2
 	env.glow_enabled = q >= 1
 	env.ssr_enabled = q >= 2      # su ve parlak yüzeylerde gerçek yansıma
@@ -5830,7 +5866,7 @@ func _render_settings() -> void:
 	_set_row("Kalite", _seg("q", [["Düşük", 0], ["Orta", 1], ["Yüksek", 2], ["Ultra", 3]]))
 	var qi := Label.new()
 	qi.text = ["Gölgeler sert, çim seyrek, görüş kısa: zayıf bilgisayarlar için.", "Yumuşak gölge, orta çim; yansıma ve ortam gölgesi kapalı.",
-		"Yumuşak gölge, tam çim, ortam gölgesi ve suda yansıma.", "Daha yumuşak ve uzağa düşen gölgeler, 4× kenar yumuşatma."][clampi(int(gfx.q), 0, 3)]
+		"Yumuşak gölge, tam çim, ortam gölgesi ve suda yansıma.", "En yumuşak, keskin gölgeler ve 4× kenar yumuşatma."][clampi(int(gfx.q), 0, 3)]
 	qi.add_theme_font_size_override("font_size", 13)
 	qi.add_theme_color_override("font_color", Color("#8a7260"))
 	set_box.add_child(qi)

@@ -1,5 +1,10 @@
 # Çiftliğim 3D — Sürüm Notları
 
+## v0.15.1 · Erken Erişim
+- 🌗 **Gölgeler HD ve titremesiz**: gölge dilimleri artık kameranın baktığı yere göre ayarlanıyor (önce kameranın dibine harcanıyordu); çit gölgelerindeki merdiven/piksel görüntüsü gitti. Yüksek ve Ultra'da daha iyi gölge süzgeci.
+- ✨ Güneş artık küçük adımlarla dönüyor: gölge kenarlarındaki sürekli kıpırtı/titreme kesildi.
+- ⚡ Ultra hâlâ eski (8192) gölgeden ~%20 hızlı.
+
 ## v0.15.0 · Erken Erişim
 - ⭐ **Çiftlik Geliştirmeleri** (🗺️ düğmesi / L): altın + madalya ile alınan 6 kalıcı yükseltme, her biri 3 kademe. Bereketli Toprak, Usta Bakıcı, Damla Sulama, Geniş Ambar, Budama Ustası, Pazarlık. Kademeler seviye 4'ten 15'e kadar sırayla açılır. Madalyalar artık bir işe yarıyor!
 - 🏘️ **Köy istekleri panosu**: görev panelinin altındaki düğmeden dört köylünün isteğini gör, pazara yürümeden ambardan teslim et (altın, XP, dostluk).
