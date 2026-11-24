@@ -1,5 +1,14 @@
 # Çiftliğim 3D — Sürüm Notları
 
+## v0.14.0 · Erken Erişim
+- 🔎 **Arayüz boyutu** ayarı (Küçük / Normal / Büyük / Çok büyük); küçük yazılar büyütüldü, arayüz her çözünürlükte orantılı ölçekleniyor.
+- 🎵 **Müzik ve ortam sesleri**: gündüz ve gece müziği yumuşakça geçiş yapıyor; gündüz kuşlar, gece cırcır böcekleri, yağmurda yağmur sesi. Ayarlarda ayrı Müzik / Efektler / Ortam kaydırıcıları.
+- 🔊 Ses kaydırıcıları kulağa daha doğal (alt uçta birden kesilmiyor), toplam ses cızırdamasın diye sınırlayıcı eklendi; aynı efekt arka arkaya çalınca perdesi hafifçe değişiyor.
+- ✨ **Oyun hissi**: ekim, hasat, yerleştirme ve inşa sırasında nesneler zıplıyor; büyük inşaat ve seviye atlamada hafif ekran sallantısı (Ayarlar → Ekran sallantısı ile kapatılabilir); kazanılan altın sayacı zıplıyor.
+- ⏸ Tek oyunculuda menü veya Ayarlar açıkken oyun **duraklıyor** (bitkiler, hayvanlar, saat beklemede).
+- 💾 Kayıtlar artık sürüm numarası taşıyor; eski kayıtlar otomatik güncellenir. Oyunun daha yeni bir sürümüyle kaydedilmiş kariyer açılmaz ve **üstüne asla yazılmaz**.
+- 🌐 Online: yakalanan balığın ağırlığı türün gerçek aralığıyla sınırlı; sohbet ve emote seline karşı istek sınırı.
+
 ## v0.13.2 · Erken Erişim
 - 📐 Nesneler artık çapraz durmuyor: korkuluk, hayvan, ağaç, dekor hep karelere düz (0°, 90°, 180°, 270°) yerleşir. Eski kayıtlardaki çapraz nesneler de yüklenince düzelir.
 - 🌷 Çiçeklik yenilendi: ahşap saksı kutusu, içinde taç yapraklı, yapraklı gerçek çiçekler.

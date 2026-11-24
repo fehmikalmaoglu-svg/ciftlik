@@ -456,6 +456,12 @@ var snow_nodes := []
 var snowman: Node3D
 var ev_open := false
 var stable_rects := []
+## Kayıt biçimi sürümü: her yapısal değişiklikte bir artır ve _migrate_save'e bir adım ekle.
+## "v": 1 eski sürümler için korunur (eski oyun yeni kaydı reddedip üstüne yazmasın diye değişmez).
+const SAVE_VER := 3
+var save_too_new := false
+## Online istek sınırı: misafir başına son sohbet / emote zamanı (ms).
+var net_rl := {}
 var net_from := 0            # şu an işlenen misafir isteğinin gönderen kimliği (0: ev sahibi)
 var net_fake_online := false # test: çevrim içi gibi davran
 var place_at := Vector2i(-9999, -9999)
@@ -539,6 +545,19 @@ var btn_sound: Button
 # ses
 var sounds := {}
 var players: Array = []
+## Ses kanalları: Master ← Music / SFX / Ambience. Müzik ve ortam döngüleri tools/make_audio.py ile üretilir.
+var music_day: AudioStreamPlayer
+var music_night: AudioStreamPlayer
+var amb := {}            # "birds" / "crickets" / "rain" → AudioStreamPlayer
+var amb_gain := {}
+## Oyun hissi: kamera sarsıntısı (trauma², gerçek zamanla söner) ve zıplama tween'leri.
+var trauma := 0.0
+var shake_t := 0.0
+const POP := {   # eylem → [yatay ölçek, dikey ölçek, kamera trauma]
+	"plow": [1.12, 0.88, 0.0], "plant": [1.18, 0.82, 0.0], "water": [1.08, 0.92, 0.0], "harvest": [1.2, 0.8, 0.0],
+	"flower": [1.2, 0.8, 0.0], "feed": [1.15, 0.85, 0.0], "decor": [1.22, 0.78, 0.0], "tree": [1.25, 0.75, 0.0],
+	"animal": [1.25, 0.75, 0.0], "coop": [1.25, 0.75, 0.12], "pond": [1.2, 0.8, 0.12], "build": [1.3, 0.7, 0.22],
+	"turn": [1.1, 0.9, 0.0], "move": [1.2, 0.8, 0.0]}       # yumuşak geçiş için şimdiki doğrusal kazanç
 var player_i := 0
 
 # hata ayıklama: --shot=yol.png, --fresh, --night
@@ -576,7 +595,7 @@ static func _pc_center(pc: Vector2i) -> Vector3:
 const CHANNEL := "Erken Erişim"
 var update_info := {}
 ## Ayarlar (profile.json "gfx"): kalite 0..3, tam ekran, vsync, çözünürlük %, FPS sınırı, ses %, gece parlaklığı %.
-const GFX_DEFAULT := {"gv": 2, "q": 2, "fs": true, "vs": true, "scale": 100, "fps": 0, "vol": 80, "sfx": 100, "night": 50, "showfps": false}
+const GFX_DEFAULT := {"gv": 2, "q": 2, "fs": true, "vs": true, "scale": 100, "fps": 0, "vol": 80, "sfx": 100, "night": 50, "showfps": false, "ui": 90, "mus": 55, "amb": 70, "shake": true}
 const QUALITY_NAMES := ["Düşük", "Orta", "Yüksek", "Ultra"]
 var gfx := GFX_DEFAULT.duplicate()
 var grass_frac := 1.0
@@ -1897,6 +1916,7 @@ func _gain(c: int, x: int, pos: Vector3, icon: String) -> void:
 	hud_dirty = true
 	if c > 0:
 		_float_text(pos, "+%d 🪙" % c, Color("#ffe066"))
+		_pop_ui(lbl_coins, 1.18 if c < 100 else 1.35)
 	if x > 0:
 		_float_text(pos + Vector3(0, -0.3, 0), "+%d XP" % x, Color("#b9ff7a"))
 	_float_text(pos + Vector3(0, 0.4, 0), icon, Color.WHITE)
@@ -1916,6 +1936,8 @@ func _on_level_up() -> void:
 		msg += "\nYeni: " + ", ".join(names)
 	_toast(msg, "level")
 	_sfx("level")
+	add_trauma(0.45)
+	_pop3(farmer, 1.3, 0.7, 0.35)
 	var cols := ["#ffd54f", "#ff5c8a", "#4fc3f7", "#81c784"]
 	for i in 4:
 		_burst(farmer.position + Vector3(0, 1.2, 0), cols[i], 14, 5.0)
@@ -2173,7 +2195,7 @@ func _open_ctx(e) -> void:
 	if not can_rm:
 		var w := Label.new()
 		w.text = "📦 İçi dolu son ambar kaldırılamaz"
-		w.add_theme_font_size_override("font_size", 12)
+		w.add_theme_font_size_override("font_size", 13)
 		w.add_theme_color_override("font_color", Color("#c62828"))
 		ctx_box.add_child(w)
 	ctx_menu.visible = true
@@ -2266,6 +2288,48 @@ func _barn_cap() -> int:
 			elif e.type == "silo":
 				cap += Data.SILO_CAP
 	return cap if _count_buildings("barn") > 0 else 0
+
+# ============================================================ oyun hissi
+## Esneme-zıplama: bir eksende uzat, ötekinde bas, geri yaylan (alan ~sabit). Önceki tween öldürülür.
+func _pop3(n: Node3D, sx: float, sy: float, dur := 0.24) -> void:
+	if n.has_meta("pop_tw"):
+		var old = n.get_meta("pop_tw")
+		if old is Tween and old.is_valid():
+			old.kill()
+	n.scale = Vector3(sx, sy, sx)
+	var tw := n.create_tween()
+	tw.tween_property(n, "scale", Vector3.ONE, dur).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	n.set_meta("pop_tw", tw)
+
+func _pop_ui(c: Control, s := 1.25) -> void:
+	if c == null:
+		return
+	if c.has_meta("pop_tw"):
+		var old = c.get_meta("pop_tw")
+		if old is Tween and old.is_valid():
+			old.kill()
+	c.pivot_offset = c.size / 2.0
+	c.scale = Vector2(s, s)
+	var tw := c.create_tween()
+	tw.tween_property(c, "scale", Vector2.ONE, 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	c.set_meta("pop_tw", tw)
+
+func add_trauma(a: float) -> void:
+	trauma = clampf(trauma + a, 0.0, 1.0)   # vuruşlar toplanır, sıfırlamaz
+
+## Kamera ofseti (yalnız görüntü): üst üste binen sinüsler, trauma² ile; gerçek zamanla söner.
+func _update_shake(dt: float) -> void:
+	if trauma <= 0.0:
+		if cam.h_offset != 0.0 or cam.v_offset != 0.0:
+			cam.h_offset = 0.0
+			cam.v_offset = 0.0
+		return
+	var real_dt := dt / maxf(Engine.time_scale, 0.0001)
+	trauma = maxf(trauma - 1.4 * real_dt, 0.0)
+	shake_t += real_dt * 30.0
+	var k := trauma * trauma * (1.0 if bool(gfx.get("shake", true)) else 0.0) * clampf(cam_dist / 18.0, 0.5, 1.5)
+	cam.h_offset = 0.35 * k * sin(shake_t * 1.7)
+	cam.v_offset = 0.25 * k * sin(shake_t * 2.3)
 
 # ============================================================ online: sohbet, sahiplik, ortak görev
 func _online() -> bool:
@@ -2543,6 +2607,17 @@ func _perform(item: Dictionary) -> bool:
 	return ok
 
 func _perform_local(item: Dictionary) -> bool:
+	var act0 = _resolve(item.tool, item.arg, item.x, item.z)
+	var ok := _perform_local_in(item)
+	if ok and act0 != null and POP.has(act0):
+		var e = tiles.get(key(item.x, item.z))
+		if e != null and e.has("group") and is_instance_valid(e.group):
+			_pop3(e.group, POP[act0][0], POP[act0][1])
+		if float(POP[act0][2]) > 0.0 and not net_applying:
+			add_trauma(POP[act0][2])
+	return ok
+
+func _perform_local_in(item: Dictionary) -> bool:
 	var x: int = item.x
 	var z: int = item.z
 	var arg = item.arg
@@ -3063,6 +3138,7 @@ func _update_camera(dt: float) -> void:
 	var cp := cos(cam_pitch)
 	cam.position = cam_target + Vector3(sin(cam_yaw) * cp * cam_dist, sin(cam_pitch) * cam_dist, cos(cam_yaw) * cp * cam_dist)
 	cam.look_at(cam_target + Vector3(0, 0.5 + look_up, 0), Vector3.UP)
+	_update_shake(dt)
 
 # ============================================================ girdi
 ## Fare ışınının araziye (tepeler dahil) çarptığı nokta.
@@ -3786,10 +3862,77 @@ func _build_sounds() -> void:
 		"bite": _synth([[300, 160, "sine", 0.12, 0.35, 0.0], [520, 300, "sine", 0.1, 0.3, 0.1]]),
 		"level": _synth([[523, 528, "tri", 0.22, 0.3, 0.0], [659, 665, "tri", 0.22, 0.3, 0.11], [784, 791, "tri", 0.22, 0.3, 0.22], [1046, 1056, "tri", 0.3, 0.3, 0.33]]),
 	}
+	_setup_buses()
 	for i in 6:
 		var p := AudioStreamPlayer.new()
+		p.bus = "SFX"
 		add_child(p)
 		players.append(p)
+	music_day = _loop_player("res://assets/audio/music_day.wav", "Music")
+	music_night = _loop_player("res://assets/audio/music_night.wav", "Music")
+	for k in ["birds", "crickets", "rain"]:
+		amb[k] = _loop_player("res://assets/audio/amb_%s.wav" % k, "Ambience")
+	amb_gain = {"music_day": 0.0, "music_night": 0.0, "birds": 0.0, "crickets": 0.0, "rain": 0.0}
+
+func _setup_buses() -> void:
+	for b in ["Music", "SFX", "Ambience"]:
+		if AudioServer.get_bus_index(b) == -1:
+			var i := AudioServer.bus_count
+			AudioServer.add_bus(i)
+			AudioServer.set_bus_name(i, b)
+			AudioServer.set_bus_send(i, "Master")
+	# toplam ses 0 dBFS'i aşıp cızırdamasın diye ana kanala sınırlayıcı (güvenlik ağı)
+	if AudioServer.get_bus_effect_count(0) == 0:
+		var lim := AudioEffectHardLimiter.new()
+		lim.ceiling_db = -0.5
+		AudioServer.add_bus_effect(0, lim)
+
+## Dikişsiz döngü çalan oynatıcı (sessiz başlar, _update_audio açar).
+func _loop_player(path: String, bus: String) -> AudioStreamPlayer:
+	var p := AudioStreamPlayer.new()
+	p.bus = bus
+	p.volume_db = -80.0
+	add_child(p)
+	if ResourceLoader.exists(path):
+		var st = load(path)
+		if st is AudioStreamWAV:
+			st.loop_mode = AudioStreamWAV.LOOP_FORWARD
+			st.loop_begin = 0
+			st.loop_end = int(st.get_length() * st.mix_rate)
+		p.stream = st
+	return p
+
+## Kaydırıcı 0..100 → dB. Kare eğri: kulak sesi logaritmik duyar, doğrusal kaydırıcı en altta birden kesilir.
+static func _slider_db(v) -> float:
+	var x := clampf(float(v) / 100.0, 0.0, 1.0)
+	return linear_to_db(maxf(x * x, 0.00001))
+
+## Her kare: gündüz/gece müziği çapraz geçiş, kuş / cırcır / yağmur sesleri hava ve saate göre.
+func _update_audio(dt: float) -> void:
+	if music_day == null:
+		return
+	AudioServer.set_bus_mute(0, muted)
+	var dayish := clampf(day_f_last, 0.0, 1.0)
+	var raining := weather == "rain"
+	var want := {
+		"music_day": dayish,
+		"music_night": 1.0 - dayish,
+		"birds": dayish * (0.0 if season == 3 or raining else 1.0),
+		"crickets": (1.0 - dayish) * (0.0 if season == 3 or raining else 1.0),
+		"rain": 1.0 if raining else 0.0,
+	}
+	var k := 1.0 - exp(-dt * 0.8)   # kare hızından bağımsız yumuşatma
+	for key in want:
+		amb_gain[key] = lerpf(float(amb_gain[key]), float(want[key]), k)
+		var p: AudioStreamPlayer = music_day if key == "music_day" else (music_night if key == "music_night" else amb[key])
+		if p.stream == null:
+			continue
+		var g: float = amb_gain[key]
+		p.volume_db = linear_to_db(maxf(g, 0.00001))
+		if g > 0.002 and not p.playing:
+			p.play(0.0 if key.begins_with("music") else randf() * maxf(0.0, p.stream.get_length() - 1.0))
+		elif g <= 0.001 and p.playing:
+			p.stop()
 
 func _synth(segs: Array) -> AudioStreamWAV:
 	var rate := 22050
@@ -3837,6 +3980,7 @@ func _sfx(kind: String) -> void:
 	var p: AudioStreamPlayer = players[player_i]
 	player_i = (player_i + 1) % players.size()
 	p.stream = sounds[kind]
+	p.pitch_scale = randf_range(0.94, 1.06) if kind != "level" else 1.0
 	p.play()
 
 # ============================================================ gün/gece
@@ -4126,7 +4270,7 @@ func _build_ui() -> void:
 	xv.alignment = BoxContainer.ALIGNMENT_CENTER
 	sh.add_child(xv)
 	lbl_xp = Label.new()
-	lbl_xp.add_theme_font_size_override("font_size", 12)
+	lbl_xp.add_theme_font_size_override("font_size", 13)
 	lbl_xp.add_theme_color_override("font_color", Color("#8a7260"))
 	xv.add_child(lbl_xp)
 	bar_xp = ProgressBar.new()
@@ -4885,7 +5029,19 @@ func net_req(t: String, a: String, x: int, z: int) -> void:
 	_net_req_in(t, a, x, z)
 	net_from = 0
 
+## Misafir başına en az aralık: sohbet 700 ms, emote 400 ms.
+func _net_rate_ok(sid: int, t: String) -> bool:
+	var now := Time.get_ticks_msec()
+	var k := "%d%s" % [sid, t]
+	var gap := 700 if t == "@chat" else 400
+	if now - int(net_rl.get(k, -100000)) < gap:
+		return false
+	net_rl[k] = now
+	return true
+
 func _net_req_in(t: String, a: String, x: int, z: int) -> void:
+	if (t == "@chat" or t == "@emote") and not _net_rate_ok(multiplayer.get_remote_sender_id(), t):
+		return   # sel gibi mesaj: sessizce düşür
 	if t == "@chat":
 		var sid := multiplayer.get_remote_sender_id()
 		var m := a.strip_edges().left(80)
@@ -4943,7 +5099,8 @@ func _net_req_in(t: String, a: String, x: int, z: int) -> void:
 		return
 	if t == "@fish":
 		if not _fish_def(a).is_empty():
-			_fish_reward(a, clampf(x / 10.0, 0.1, 25.0))
+			var fw: Array = _fish_def(a).w
+			_fish_reward(a, clampf(x / 10.0, float(fw[0]), float(fw[1])))   # ağırlık türün aralığında
 			if net_players.has(multiplayer.get_remote_sender_id()):
 				_toast("🎣 %s %s yakaladı!" % [net_players[multiplayer.get_remote_sender_id()].name, _fish_def(a).name], "hint")
 		return
@@ -5290,6 +5447,12 @@ func _start_play(show_help := false) -> void:
 	if (show_help and shot_path == "") or OS.get_cmdline_user_args().has("--showhelp"):
 		help.visible = true
 
+## Tek kişilikte menü ya da ayarlar açıkken oyun zamanı durur (büyüme, gün, mevsim). Online'da dünya akmaya devam eder.
+func _paused() -> bool:
+	if net_role != "" or save_path == "":
+		return false
+	return not playing or (set_layer != null and set_layer.visible)
+
 func _show_menu() -> void:
 	playing = false
 	_clear_queue()
@@ -5391,10 +5554,14 @@ func _apply_gfx(window := false) -> void:
 		var want := DisplayServer.WINDOW_MODE_FULLSCREEN if gfx.fs else DisplayServer.WINDOW_MODE_WINDOWED
 		if DisplayServer.window_get_mode() != want:
 			DisplayServer.window_set_mode(want)
-	AudioServer.set_bus_volume_db(0, linear_to_db(maxf(float(gfx.vol) / 100.0, 0.0001)))
-	for p in players:
-		p.volume_db = linear_to_db(maxf(float(gfx.sfx) / 100.0, 0.0001))
+	_setup_buses()
+	AudioServer.set_bus_volume_db(0, _slider_db(gfx.vol))
+	AudioServer.set_bus_volume_db(AudioServer.get_bus_index("SFX"), _slider_db(gfx.sfx))
+	AudioServer.set_bus_volume_db(AudioServer.get_bus_index("Music"), _slider_db(gfx.get("mus", 55)))
+	AudioServer.set_bus_volume_db(AudioServer.get_bus_index("Ambience"), _slider_db(gfx.get("amb", 70)))
 	fps_lbl.visible = bool(gfx.showfps)
+	# arayüz pencereyle birlikte ölçeklenir (temel 1280×720); oyuncu üstüne kendi çarpanını seçer
+	get_window().content_scale_factor = clampf(float(gfx.get("ui", 90)) / 100.0, 0.6, 1.6)
 
 func _build_settings() -> void:
 	set_layer = CanvasLayer.new()
@@ -5501,7 +5668,7 @@ func _render_settings() -> void:
 		c.queue_free()
 	var top := HBoxContainer.new()
 	var t := Label.new()
-	t.text = "⚙️ Ayarlar"
+	t.text = "⚙️ Ayarlar" + ("   ⏸" if _paused() else "")
 	t.add_theme_font_size_override("font_size", 28)
 	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top.add_child(t)
@@ -5512,6 +5679,7 @@ func _render_settings() -> void:
 	_set_row("Dikey eşitleme", _seg("vs", [["Açık", true], ["Kapalı", false]]))
 	_set_row("FPS sınırı", _seg("fps", [["30", 30], ["60", 60], ["120", 120], ["Sınırsız", 0]]))
 	_set_row("FPS göster", _seg("showfps", [["Açık", true], ["Kapalı", false]]))
+	_set_row("Arayüz boyutu", _seg("ui", [["Küçük", 75], ["Normal", 90], ["Büyük", 110], ["Çok büyük", 130]]))
 	_set_head("🎨 Grafik")
 	_set_row("Kalite", _seg("q", [["Düşük", 0], ["Orta", 1], ["Yüksek", 2], ["Ultra", 3]]))
 	var qi := Label.new()
@@ -5522,9 +5690,12 @@ func _render_settings() -> void:
 	set_box.add_child(qi)
 	_set_row("Çözünürlük", _slider("scale", 50, 100))
 	_set_row("Gece parlaklığı", _slider("night", 0, 100))
+	_set_row("Ekran sallantısı", _seg("shake", [["Açık", true], ["Kapalı", false]]))
 	_set_head("🔊 Ses")
 	_set_row("Ana ses", _slider("vol", 0, 100))
+	_set_row("Müzik", _slider("mus", 0, 100))
 	_set_row("Efektler", _slider("sfx", 0, 100))
+	_set_row("Ortam (kuş, cırcır, yağmur)", _slider("amb", 0, 100))
 	var foot := HBoxContainer.new()
 	var v := Label.new()
 	v.text = "v%s · %s" % [_version(), CHANNEL]
@@ -5599,7 +5770,7 @@ func _render_menu(page: String, arg := 0) -> void:
 			var cur := _slot_info(slot) if slot > 0 else {}
 			if not cur.is_empty():
 				var sub := Label.new()
-				sub.text = "%s · Seviye %d · 🪙 %d" % [cur.name, cur.level, cur.coins]
+				sub.text = "%s · Seviye %d · 🪙 %d%s" % [cur.name, cur.level, cur.coins, "   ·   ⏸ Oyun duraklatıldı" if _paused() else ""]
 				sub.add_theme_color_override("font_color", Color("#8a7260"))
 				menu_box.add_child(sub)
 				menu_box.add_child(_menu_btn("▶  Devam Et", func(): _start_play(), true))
@@ -5947,7 +6118,7 @@ func _state_dict() -> Dictionary:
 	var ents := []
 	for e in entities:
 		ents.append(_ent_dict(e))
-	return {"v": 1, "bv": 1, "sv": 2, "story": story_step, "sh": story_have, "fh": farm_h, "fg": fishgear, "vill": vill, "ev": ev, "tro": trophies, "name": farm_name, "gems": gems, "quests": quests, "qskip": quest_skip_at, "flv": flv, "season": season, "season_t": season_t, "year": year, "weather": weather, "weather_t": weather_t, "medals": medals, "res": res, "order": order, "coins": coins, "xp": xp, "level": level, "day_time": day_time, "day": day, "sel": sel, "muted": muted,
+	return {"v": 1, "fv": SAVE_VER, "bv": 1, "sv": 2, "story": story_step, "sh": story_have, "fh": farm_h, "fg": fishgear, "vill": vill, "ev": ev, "tro": trophies, "name": farm_name, "gems": gems, "quests": quests, "qskip": quest_skip_at, "flv": flv, "season": season, "season_t": season_t, "year": year, "weather": weather, "weather_t": weather_t, "medals": medals, "res": res, "order": order, "coins": coins, "xp": xp, "level": level, "day_time": day_time, "day": day, "sel": sel, "muted": muted,
 		"saved_at": Time.get_unix_time_from_system(), "ents": ents, "fx": farmer.position.x, "fz": farmer.position.z}
 
 func _ent_dict(e: Dictionary) -> Dictionary:
@@ -5994,6 +6165,12 @@ func _load() -> bool:
 	if not FileAccess.file_exists(save_path):
 		return false
 	var data = JSON.parse_string(FileAccess.get_file_as_string(save_path))
+	if typeof(data) == TYPE_DICTIONARY and _save_ver(data) > SAVE_VER:
+		# daha yeni bir sürümün kaydı: açma ve asla üstüne yazma
+		save_too_new = true
+		save_path = ""
+		call_deferred("_toast", "⚠️ Bu kariyer oyunun daha yeni bir sürümüyle kaydedilmiş. Kayda dokunulmadı; oyunu güncelle.", "warn")
+		return false
 	if typeof(data) == TYPE_DICTIONARY and _load_dict(data, true):
 		if save_path.begins_with("user://career_"):
 			_backup_rotate(save_path)   # her oturum başında bir yedek
@@ -6005,9 +6182,33 @@ func _load() -> bool:
 		return true
 	return false
 
+## Kaydın biçim sürümü. "fv" yoksa eski alanlardan çıkar: sv 2 → 2, yoksa 1.
+static func _save_ver(data: Dictionary) -> int:
+	if data.has("fv"):
+		return int(data.fv)
+	return 2 if int(data.get("sv", 1)) >= 2 else 1
+
+## Eski kaydı adım adım bugünkü biçime getirir (her adım yalnız bir sürüm ilerletir).
+func _migrate_save(data: Dictionary) -> Dictionary:
+	var v := _save_ver(data)
+	if v < 2:
+		# 1 → 2: ambar hikâye adımı araya girdi (ayrıntı _load_dict'te "sv" ile), binalar "bv" ile
+		v = 2
+	if v < 3:
+		# 2 → 3: çapraz (45°) dönüşler 90° katlarına; eksik hayvan alanları varsayılanla
+		for en in data.get("ents", []):
+			if typeof(en) == TYPE_DICTIONARY and en.has("r"):
+				en.r = fposmod(snappedf(float(en.r), PI / 2.0), TAU)
+		v = 3
+	data.fv = v
+	return data
+
 func _load_dict(data, offline: bool) -> bool:
 	if typeof(data) != TYPE_DICTIONARY or int(data.get("v", 0)) != 1:
 		return false
+	if offline and _save_ver(data) > SAVE_VER:
+		return false
+	data = _migrate_save(data)
 	coins = int(data.coins)
 	xp = int(data.xp)
 	level = int(data.level)
@@ -6226,16 +6427,18 @@ func _process(delta: float) -> void:
 			get_viewport().get_texture().get_image().save_png(shot_path)
 			get_tree().quit()
 	if not playing:
-		sim_acc += dt
-		if sim_acc > 0.1:
-			_simulate(sim_acc)
-			sim_acc = 0.0
+		if not _paused():
+			sim_acc += dt
+			if sim_acc > 0.1:
+				_simulate(sim_acc)
+				sim_acc = 0.0
 		cam_follow = false
 		cam_yaw += dt * 0.04
 		cam_target = cam_target.lerp(Vector3(0, 0, 0), minf(1.0, dt * 0.8))
 		cam_dist = lerpf(cam_dist, 34.0, minf(1.0, dt * 0.8))
 		_update_camera(dt)
-		_update_day(dt)
+		if not _paused():
+			_update_day(dt)
 		_update_lamps(dt)
 		_animate_world(dt)
 		_update_parts(dt)
@@ -6250,16 +6453,20 @@ func _process(delta: float) -> void:
 	_update_bake(dt)
 	_update_villagers(dt)
 	_update_chat(dt)
-	sim_acc += dt
-	if sim_acc > 0.1:
-		_simulate(sim_acc)
-		sim_acc = 0.0
+	_update_audio(dt)
+	var frozen := _paused()
+	if not frozen:
+		sim_acc += dt
+		if sim_acc > 0.1:
+			_simulate(sim_acc)
+			sim_acc = 0.0
 	_update_farmer(dt)
 	if net_role == "host" or net_role == "guest":
 		_net_tick(dt)
 	_update_gates(dt)
 	_update_camera(dt)
-	_update_day(dt)
+	if not frozen:
+		_update_day(dt)
 	_update_lamps(dt)
 	_animate_world(dt)
 	_update_parts(dt)
@@ -6292,6 +6499,13 @@ func _process(delta: float) -> void:
 					_set_tool(a.substr(7), true)
 				elif a == "--wheel":
 					_open_wheel(Vector2(640, 380))
+				elif a == "--pickcheck":   # geliştirici: ölçekli arayüzde ekran merkezi doğru yere mi isabet ediyor
+					var vc := get_viewport().get_visible_rect().size / 2.0
+					var hp = _pick_point(vc)
+					var look := cam_target + Vector3(0, 0.5, 0)
+					var dir := (look - cam.position).normalized()
+					var want := cam.position + dir * (-cam.position.y / dir.y)
+					print("PICK ", hp, " beklenen ", want, " fark ", (Vector3(hp.x, 0, hp.z) - Vector3(want.x, 0, want.z)).length() if hp != null else -1.0, " ölçek ", get_window().content_scale_factor, " görünür ", get_viewport().get_visible_rect().size)
 				elif a == "--zoo":   # geliştirici: hayvan boyları ve çiçeklik
 					level = maxi(level, 6)
 					var z0 := _free_spot(9, 5) + Vector2i(0, 2)
@@ -6959,7 +7173,7 @@ func _open_fish_shop() -> void:
 	var hint := Label.new()
 	hint.text = "Göle tıkla: çiftçi kıyıya yürür, oltayı atar. ❗ çıkınca tıkla, sonra mini oyunda balığı yeşil alanda tut. Yayın balığı geceleri çıkar."
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	hint.add_theme_font_size_override("font_size", 12)
+	hint.add_theme_font_size_override("font_size", 13)
 	hint.add_theme_color_override("font_color", Color("#8a7260"))
 	land_box.add_child(hint)
 	land_box.add_child(_small_btn("  Kapat  ", func():
@@ -7171,7 +7385,7 @@ func _open_event() -> void:
 	var nx := Label.new()
 	var nxt = EVENTS[(season + 1) % 4]
 	nx.text = "Sonraki mevsim: %s %s" % [nxt.icon, nxt.name]
-	nx.add_theme_font_size_override("font_size", 12)
+	nx.add_theme_font_size_override("font_size", 13)
 	nx.add_theme_color_override("font_color", Color("#8a7260"))
 	land_box.add_child(nx)
 	land_box.add_child(_small_btn("  Kapat  ", func():
@@ -7350,7 +7564,7 @@ func _open_villager(id: String) -> void:
 			for r in v.loves + v.likes:
 				names.append(Data.RESOURCES[r].icon)
 			nl.text = "Ambarında sevdiği bir şey yok. Sevdikleri: %s" % " ".join(names)
-			nl.add_theme_font_size_override("font_size", 12)
+			nl.add_theme_font_size_override("font_size", 13)
 			gr.add_child(nl)
 		land_box.add_child(gr)
 	var pk := Label.new()
@@ -7534,7 +7748,7 @@ func _open_oven() -> void:
 	var tip := Label.new()
 	tip.text = "Un değirmenden, yumurta kümesten, balık gölden, süt inekten, meyve ağaçlardan gelir. Fırın ürünleri pazar siparişlerinde de istenir."
 	tip.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	tip.add_theme_font_size_override("font_size", 12)
+	tip.add_theme_font_size_override("font_size", 13)
 	tip.add_theme_color_override("font_color", Color("#8a7260"))
 	land_box.add_child(tip)
 	land_box.add_child(_small_btn("  Kapat  ", func(): land_dlg.visible = false, true, true))
@@ -7676,7 +7890,7 @@ func _build_bake_ui() -> void:
 	var h := Label.new()
 	h.text = "Her tık ısıyı artırır, fırın kendiliğinden soğur · Esc: vazgeç"
 	h.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	h.add_theme_font_size_override("font_size", 12)
+	h.add_theme_font_size_override("font_size", 13)
 	h.add_theme_color_override("font_color", Color("#8a7260"))
 	v.add_child(h)
 
@@ -7887,7 +8101,7 @@ func _build_mill_ui() -> void:
 	var h := Label.new()
 	h.text = "Tıkla / Boşluk · Esc: vazgeç"
 	h.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	h.add_theme_font_size_override("font_size", 12)
+	h.add_theme_font_size_override("font_size", 13)
 	h.add_theme_color_override("font_color", Color("#8a7260"))
 	v.add_child(h)
 
@@ -8170,6 +8384,10 @@ func _selftest_build(fails: Array) -> void:
 	_selftest_coop(fails)
 	_selftest_backup(fails)
 	_selftest_grid_rot(fails)
+	_selftest_audio(fails)
+	_selftest_feel(fails)
+	_selftest_pause(fails)
+	_selftest_savever(fails)
 	var rb := _refund_of(tiles.get(key(sp.x, sp.y)))
 	var c2 := coins
 	if not _perform({"x": sp.x, "z": sp.y, "tool": "remove", "arg": null}) or _count_buildings("barn") != b0: fails.append("bina kaldırma")
@@ -8814,7 +9032,7 @@ func _render_quests() -> void:
 		sp.add_child(sv)
 		var sh := Label.new()
 		sh.text = "⭐ Hikâye · %d / %d" % [story_step + 1, STORY.size()]
-		sh.add_theme_font_size_override("font_size", 12)
+		sh.add_theme_font_size_override("font_size", 13)
 		sh.add_theme_color_override("font_color", Color("#a0731b"))
 		sv.add_child(sh)
 		var sl := Label.new()
@@ -8833,7 +9051,7 @@ func _render_quests() -> void:
 		sv.add_child(spb)
 		var sr := Label.new()
 		sr.text = "%d / %d   ·   ödül: %d 🪙  +%d XP" % [story_have, st.need, st.coins, st.xp]
-		sr.add_theme_font_size_override("font_size", 12)
+		sr.add_theme_font_size_override("font_size", 13)
 		sr.add_theme_color_override("font_color", Color("#8a7260"))
 		sv.add_child(sr)
 		quest_box.add_child(sp)
@@ -8855,7 +9073,7 @@ func _render_quests() -> void:
 		var ii := i
 		var x := _small_btn("✕", func(): _skip_quest(ii))
 		x.custom_minimum_size = Vector2(26, 24)
-		x.add_theme_font_size_override("font_size", 11)
+		x.add_theme_font_size_override("font_size", 13)
 		x.tooltip_text = "Görevi sil (günde 1 ücretsiz, sonra %d 💎)" % QUEST_SKIP_GEMS
 		top.add_child(x)
 		row.add_child(top)
@@ -8869,7 +9087,7 @@ func _render_quests() -> void:
 		row.add_child(pb)
 		var rw := Label.new()
 		rw.text = "🏅 %d   💎 %d   +%d XP" % [q.medals, q.gems, q.xp]
-		rw.add_theme_font_size_override("font_size", 12)
+		rw.add_theme_font_size_override("font_size", 13)
 		rw.add_theme_color_override("font_color", Color("#9a6a00"))
 		row.add_child(rw)
 		if q.get("co", false):
@@ -8880,7 +9098,7 @@ func _render_quests() -> void:
 				cl.text = "🤝 Ortak · 2× ödül · sen %d · arkadaşın %d (ikiniz de en az %d)" % [mine, theirs, _co_each(q)]
 			else:
 				cl.text = "🤝 Ortak görev · 2× ödül (arkadaş yokken tek başına da biter)"
-			cl.add_theme_font_size_override("font_size", 11)
+			cl.add_theme_font_size_override("font_size", 13)
 			cl.add_theme_color_override("font_color", Color("#2f7d6e"))
 			row.add_child(cl)
 		quest_box.add_child(row)
@@ -8954,6 +9172,80 @@ func _harvest_flower(e: Dictionary, pos: Vector3) -> void:
 			_toast("%s %s seviye %d! Tüm %s tarhları +%%%d kazanç" % [f.icon, f.name, fl.lv, f.name, int(round((Data.flower_mult(fl.lv) - 1.0) * 100.0))], "level")
 			if tool == "garden":
 				_render_shelf()
+
+func _selftest_savever(fails: Array) -> void:
+	if int(_state_dict().get("fv", 0)) != SAVE_VER: fails.append("kayıt sürümü yazılmıyor")
+	if _save_ver({"v": 1}) != 1 or _save_ver({"v": 1, "sv": 2}) != 2: fails.append("eski sürüm tanıma")
+	var m := _migrate_save({"v": 1, "sv": 2, "ents": [{"k": "decor", "r": PI / 4.0 + 0.01}]})
+	if int(m.fv) != SAVE_VER or absf(fposmod(float(m.ents[0].r), PI / 2.0)) > 0.001: fails.append("kayıt göçü")
+	# daha yeni kayıt: yüklenmez ve üstüne yazılmaz
+	var p := "user://_selftest_new.json"
+	var f := FileAccess.open(p, FileAccess.WRITE)
+	f.store_string(JSON.stringify({"v": 1, "fv": SAVE_VER + 1, "coins": 5}))
+	f.close()
+	var sp0 := save_path
+	var tn0 := save_too_new
+	save_path = p
+	if _load() or save_path != "" or not save_too_new: fails.append("yeni sürüm kaydı reddedilmedi")
+	save_path = sp0
+	save_too_new = tn0
+	if FileAccess.get_file_as_string(p).find("\"fv\":%d" % (SAVE_VER + 1)) == -1: fails.append("yeni kayda dokunuldu")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(p))
+	net_rl.clear()
+	if not _net_rate_ok(7, "@chat") or _net_rate_ok(7, "@chat") or not _net_rate_ok(7, "@emote") or not _net_rate_ok(8, "@chat"): fails.append("istek sınırı")
+	net_rl.clear()
+
+func _selftest_pause(fails: Array) -> void:
+	var keep := [playing, save_path, season_t, day_time]
+	save_path = "user://selftest.json"
+	playing = false
+	if not _paused(): fails.append("menüde duraklamadı")
+	var st := season_t
+	var dtm := day_time
+	for i in 30:
+		_process(0.1)
+	if season_t != st or day_time != dtm: fails.append("duraklatmada zaman aktı")
+	net_role = "host"
+	if _paused(): fails.append("online'da duraklama olmamalı")
+	net_role = ""
+	playing = keep[0]
+	save_path = keep[1]
+
+func _selftest_feel(fails: Array) -> void:
+	trauma = 0.0
+	add_trauma(0.7)
+	add_trauma(0.7)
+	if trauma != 1.0: fails.append("trauma sınırı")
+	for i in 60:
+		_update_shake(1.0 / 60.0)
+	if trauma > 0.0 or cam.h_offset != 0.0: fails.append("sarsıntı sönmedi %.2f" % trauma)
+	_update_shake(0.016)
+	if cam.h_offset != 0.0: fails.append("sarsıntı ofseti kaldı")
+	var sp := _free_spot(1, 1)
+	if sp.x != 999:
+		coins += 100
+		_perform_local({"tool": "decor", "arg": "rock", "x": sp.x, "z": sp.y})
+		var e = tiles.get(key(sp.x, sp.y))
+		if e == null or e.group.scale.is_equal_approx(Vector3.ONE): fails.append("yerleştirme zıplaması")
+		if e != null:
+			_remove_entity(e)
+
+func _selftest_audio(fails: Array) -> void:
+	for b in ["Music", "SFX", "Ambience"]:
+		if AudioServer.get_bus_index(b) == -1: fails.append("ses kanalı yok: " + b)
+	if players.is_empty() or players[0].bus != "SFX": fails.append("efektler SFX kanalında değil")
+	if music_day == null or music_day.stream == null or music_night.stream == null: fails.append("müzik yüklenmedi")
+	for k in ["birds", "crickets", "rain"]:
+		if amb.get(k) == null or amb[k].stream == null or amb[k].stream.loop_mode != AudioStreamWAV.LOOP_FORWARD: fails.append("ortam sesi " + k)
+	if absf(_slider_db(50) - linear_to_db(0.25)) > 0.01 or _slider_db(0) > -90.0: fails.append("ses eğrisi")
+	var w0 := weather
+	weather = "rain"
+	for i in 120:
+		_update_audio(0.1)
+	if float(amb_gain.rain) < 0.9 or float(amb_gain.birds) > 0.1: fails.append("yağmur sesi %.2f kuş %.2f" % [amb_gain.rain, amb_gain.birds])
+	weather = w0
+	for i in 120:
+		_update_audio(0.1)
 
 func _selftest_grid_rot(fails: Array) -> void:
 	for i in 20:
