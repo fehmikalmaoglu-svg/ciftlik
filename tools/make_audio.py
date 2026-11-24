@@ -1,4 +1,4 @@
-"""Çiftliğim 3D: müzik ve ortam seslerini koddan üretir (telifsiz, tamamen sentez).
+"""Çiftliğim 3D: ortam seslerini koddan üretir (telifsiz, tamamen sentez).
 
 Kullanım: python tools/make_audio.py   ->  assets/audio/*.wav
 Döngüler dikişsiz olsun diye her parçanın sonu başıyla çapraz geçişlenir.
@@ -115,6 +115,33 @@ def song(chords, bpm, bars_per_chord, octave, melody_density, seed, pad_gain, br
     return buf
 
 
+def soft(chords, bpm, seed, density, low=0):
+    """Yumuşak ambiyans müziği: yavaş açılan geniş pad, sürekli hafif bas, seyrek ve yumuşak sinüs ezgi (vuruş yok)."""
+    r = np.random.default_rng(seed)
+    beat = 60.0 / bpm
+    dur = beat * 8
+    buf = np.zeros(int(dur * len(chords) * SR))
+    penta = [0, 2, 4, 7, 9]
+    last = 4
+    t = 0.0
+    for root, q in chords:
+        third = 3 if q == "m" else 4
+        for iv in [0, third, 7, 12, 12 + third]:
+            f = midi(root - 12 + low + iv)
+            for det in (-0.6, 0.6):
+                add(buf, 0.10 * tone(f + det, dur + 1.2, "sine", a=1.2, r=1.2), t)
+        add(buf, 0.18 * tone(midi(root - 24 + low), dur + 0.8, "sine", a=0.8, r=1.0), t)
+        for k in range(int(dur / beat)):
+            if r.random() < density:
+                last = int(np.clip(last + r.choice([-1, 1, 0, 2, -2]), 2, 9))
+                note = 60 + low + penta[last % 5] + 12 * (last // 5)
+                if (note - root) % 12 in (1, 6, 10):
+                    note += 1
+                add(buf, 0.16 * tone(midi(note), beat * 2.5, "sine", a=0.12, r=1.0), t + k * beat)
+        t += dur
+    return buf
+
+
 def rain(sec=6.0):
     n0 = int(sec * SR)
     n = n0 + int(0.3 * SR)
@@ -164,12 +191,7 @@ def birds(sec=10.0):
 
 if __name__ == "__main__":
     C, D, E, F, G, A = 60, 62, 64, 65, 67, 69
-    day = song([(C, ""), (A - 12, "m"), (F - 12, ""), (G - 12, ""), (C, ""), (E - 12, "m"), (F - 12, ""), (G - 12, "")],
-               bpm=84, bars_per_chord=2, octave=4, melody_density=0.55, seed=11, pad_gain=1.0, brightness=3.2)
-    save("music_day.wav", day, 0.6)
-    night = song([(A - 12, "m"), (F - 12, ""), (C, ""), (G - 12, ""), (A - 12, "m"), (D - 12, "m"), (F - 12, ""), (E - 12, "m")],
-                 bpm=66, bars_per_chord=2, octave=4, melody_density=0.32, seed=23, pad_gain=1.3, brightness=2.2)
-    save("music_night.wav", night, 0.5)
+    # müzik artık üretilmiyor: assets/audio/music_*.ogg (CC0, bkz. CREDITS.md)
     save("amb_rain.wav", rain(), 0.55)
     save("amb_crickets.wav", crickets(), 0.4)
     save("amb_birds.wav", birds(), 0.45)

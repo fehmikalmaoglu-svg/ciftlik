@@ -3868,8 +3868,8 @@ func _build_sounds() -> void:
 		p.bus = "SFX"
 		add_child(p)
 		players.append(p)
-	music_day = _loop_player("res://assets/audio/music_day.wav", "Music")
-	music_night = _loop_player("res://assets/audio/music_night.wav", "Music")
+	music_day = _loop_player("res://assets/audio/music_day.ogg", "Music")
+	music_night = _loop_player("res://assets/audio/music_night.ogg", "Music")
 	for k in ["birds", "crickets", "rain"]:
 		amb[k] = _loop_player("res://assets/audio/amb_%s.wav" % k, "Ambience")
 	amb_gain = {"music_day": 0.0, "music_night": 0.0, "birds": 0.0, "crickets": 0.0, "rain": 0.0}
@@ -3899,6 +3899,8 @@ func _loop_player(path: String, bus: String) -> AudioStreamPlayer:
 			st.loop_mode = AudioStreamWAV.LOOP_FORWARD
 			st.loop_begin = 0
 			st.loop_end = int(st.get_length() * st.mix_rate)
+		elif st is AudioStreamOggVorbis:
+			st.loop = true
 		p.stream = st
 	return p
 

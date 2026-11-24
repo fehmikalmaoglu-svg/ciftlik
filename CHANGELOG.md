@@ -1,5 +1,8 @@
 # Çiftliğim 3D — Sürüm Notları
 
+## v0.14.1 · Erken Erişim
+- 🎵 Arka plan müziği değişti: gündüz **Shepherd Dog** (Zane Little Music), gece **A Small Fire Will Do** (Trex0n). İkisi de ücretsiz CC0 parçalar, kaynakları CREDITS.md'de.
+
 ## v0.14.0 · Erken Erişim
 - 🔎 **Arayüz boyutu** ayarı (Küçük / Normal / Büyük / Çok büyük); küçük yazılar büyütüldü, arayüz her çözünürlükte orantılı ölçekleniyor.
 - 🎵 **Müzik ve ortam sesleri**: gündüz ve gece müziği yumuşakça geçiş yapıyor; gündüz kuşlar, gece cırcır böcekleri, yağmurda yağmur sesi. Ayarlarda ayrı Müzik / Efektler / Ortam kaydırıcıları.
