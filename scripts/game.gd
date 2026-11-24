@@ -4173,7 +4173,7 @@ func _animate_world(dt: float) -> void:
 				m.rotation.y = atan2(dx, dz)
 				if m.has_meta("legs"):
 					# tavuk: bacaklar sırayla adım atar, baş ileri-geri gider, gövde hafif sallanır
-					var ph := clock_t * 16.0 + w.phase
+					var ph: float = clock_t * 16.0 + w.phase
 					var legs: Array = m.get_meta("legs")
 					legs[0].rotation.x = sin(ph) * 0.7
 					legs[1].rotation.x = -sin(ph) * 0.7

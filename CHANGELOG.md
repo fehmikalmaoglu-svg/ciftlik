@@ -1,5 +1,8 @@
 # Çiftliğim 3D — Sürüm Notları
 
+## v0.14.4 · Erken Erişim
+- 🐔 Tavuk da yürüyor: bacakları sırayla adım atıyor, başı ileri-geri gidiyor (önceden kayıyordu).
+
 ## v0.14.3 · Erken Erişim
 - 🐖🐑 Domuz ve koyun artık gerçekten yürüyor: ineğin yürüme animasyonu kendi iskeletlerine, bacak boylarına göre uyarlandı (kayma ve sallanma yerine adım atıyorlar).
 
