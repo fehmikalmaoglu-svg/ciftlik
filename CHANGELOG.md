@@ -1,5 +1,19 @@
 # Çiftliğim 3D — Sürüm Notları
 
+## v0.22.0 · Erken Erişim
+- 🏡 **Serbest çiftlik**: hazır çiftlik kalktı. Teyzenin mirasıyla (500 🪙, çapa, 20 buğday tohumu) başlıyorsun. Çiftliğini nereye kuracağını sen seçiyorsun.
+- 🗺️ **Parsel parsel arazi**: beğendiğin yere yürü, 🗺️ Arazi (L) penceresinden bulunduğun 8×8 m'lik parseli al. Bulunduğun parsel sarı bir çerçeveyle gösterilir.
+  - Seviye şartı yok. Fiyat, arazin büyüdükçe artar.
+  - Kasabaya yakın yer pahalı; uzak ova, yayla ve karlı kuzey ucuz.
+  - Parseller bitişik olmak zorunda değil: başka bir biyomda ikinci çiftliğini kurabilirsin.
+- 🌿 Aldığın parsel düzleşir, üstündeki ağaç ve kayalar kalkar. Çit, kapı ve tabelayı sen kurarsın; arazinin sınırı ince bir çizgi ve köşe kazıklarıyla görünür. Su olan ve çok engebeli yerler satılmaz.
+- ⭐ **Hikâye artık öneri**: sol üstteki ⭐ Öneri yol gösterir; "Geç" ile bırakıp kendi bildiğin gibi oynayabilirsin.
+- 🎒 **Eski kariyerler**: ilk açılışta hazır çiftlik kalkar.
+  - Yapılar, süsler, ağaçlar, bahçe ve kümes çantaya girer; oradan istediğin yere bedava kurarsın.
+  - Hayvanlar ve ekili tohumlar tam fiyatıyla altın olarak geri döner.
+  - Altın, seviye, ambar ve görevlerin aynen kalır.
+  - Kayıt dosyan önce yedeklenir.
+
 ## v0.21.0 · Erken Erişim
 - 🌍 **Sonsuz dünya**: haritanın sınırı ve görünmez duvarı kalktı. İstediğin yöne yürü, dünya önünde kurulmaya devam eder.
 - 🎲 Her yeni kariyerin kendine özel bir dünyası (tohumu) var. Eski kayıtlar da kendi dünyasını alır; çiftliğin, pazar, Yeşilköy ve göl olduğu gibi yerinde.

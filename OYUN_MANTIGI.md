@@ -1,4 +1,4 @@
-# Çiftliğim 3D — Oyun Mantığı (v0.21.0)
+# Çiftliğim 3D — Oyun Mantığı (v0.22.0)
 
 > Bu belge oyunun **şu anki** halini anlatır. İstediğin yeri değiştir, sil, ekle.
 > Her bölümün altında **✏️ Notların** alanı var; fikirlerini oraya yazıp bana geri ver.
@@ -8,7 +8,7 @@
 
 ## 1. Oyunun özü
 
-Rahat (cozy) bir çiftlik oyunu. Oyuncu teyzesinden kalan, otlarla kaplı bir araziye gelir. Araziyi temizler, tarla sürer, ekin eker, hayvan besler. Ürünleri ambarda biriktirip satar, köylülerin isteklerini karşılar. Kazandığı parayla çiftliğini büyütür ve süsler.
+Rahat (cozy) bir çiftlik oyunu. Oyuncu teyzesinden kalan mirasla (500 altın, çapa, 20 buğday tohumu) kasabaya gelir. Çiftliğini kuracağı yeri kendisi seçer, parsel parsel arazi alır, tarla sürer, ekin eker, hayvan besler. Ürünleri ambarda biriktirip satar, köylülerin isteklerini karşılar. Kazandığı parayla çiftliğini büyütür ve süsler.
 
 - **Tür:** 3D, yukarıdan bakışlı, tıkla-yürü çiftlik oyunu
 - **Kayıt:** Birden çok kariyer (kayıt yuvası), otomatik kayıt
@@ -23,7 +23,7 @@ Rahat (cozy) bir çiftlik oyunu. Oyuncu teyzesinden kalan, otlarla kaplı bir ar
 
 | Alan | Açıklama |
 |---|---|
-| **Çiftlik** | Ortada, çitle çevrili kare alan. Başlangıçta 16×16 m, genişletmeyle 40×40 m'ye kadar büyür. Güney kapısında çiftliğin adını taşıyan tabela var. |
+| **Çiftlik** | Hazır çiftlik yok (v0.22). Oyuncu 8×8 m'lik parselleri istediği yerde satın alır: eski çiftlik yerinde (kasabanın kuzeyindeki açıklık) ya da başlangıç bölgesinin dışında, herhangi bir biyomda. Çit, kapı ve tabelayı oyuncu kendisi kurar; arazinin sınırı ince bir çizgi ve köşe kazıklarıyla görünür. |
 | **Kasaba Pazarı** | Çiftlik kapısından çıkan toprak yolun hemen güneyinde. Çeşmeli bir meydan, 4 tezgâh ve 4 köylü (Fırıncı Zeynep, Balıkçı Rıza, Çiçekçi Leyla, Muhtar Hasan). |
 | **Yeşilköy** | Pazarın güneyinde. Ana yol, iki cadde ve iki yan yol üzerinde 18 ev; uçlarda ahırlar ve silolar; ortada büyük ağaçlı meydan. |
 | **Göl** | Çiftliğin doğusunda. Kıyısında balıkçı tezgâhı ve kano var. |
@@ -33,7 +33,7 @@ Rahat (cozy) bir çiftlik oyunu. Oyuncu teyzesinden kalan, otlarla kaplı bir ar
 
 - **Sonsuz dünya (v0.21):** Sınır yok, görünmez duvar yok. Dünya oyuncunun çevresinde 50×50 m'lik karolar halinde yüklenir. Yakın karolarda gerçek modeller var, uzakta ucuz biçimler. Ağır hesap arka plan iş parçacığında yapılır.
 - **Tohum:** Her yeni kariyer kendi dünya tohumunu alır ve kayda yazılır. Eski kariyerler 1 numaralı dünyayı kullanır. Ağ oyununda misafir, ev sahibinin dünyasını görür.
-- **Başlangıç bölgesi (±100 m):** Elle yapılmış çiftlik, pazar, Yeşilköy, göl, kamp ve değirmen burada. Kenarda sonsuz araziye dikişsiz karışır. Çevresindeki ~250 m hep ılıman çayırdır.
+- **Başlangıç bölgesi (±100 m):** Eski çiftlik yeri, pazar, Yeşilköy, göl, kamp ve değirmen burada. Kenarda sonsuz araziye dikişsiz karışır. Çevresindeki ~250 m hep ılıman çayırdır.
 - **6 biyom**, yumuşak geçişlerle:
   - **Ilıman çayırlar:** hafif tepeler, meşe ve huş, çalı, çiçek.
   - **Orman kıyısı:** sık huş, meşe ve çam; eğrelti, mantar, kütük.
@@ -185,16 +185,12 @@ Hasat edilen her şey **ambara** kaynak olarak girer.
   - 🪙 **Altın:** Ana para.
   - 🏅 **Madalya:** Görev ve siparişlerden gelir; geliştirmelerde harcanır.
   - 💎 **Elmas:** Nadir; görev silme ve geliştirmelerde harcanır.
-- **Arazi genişletme:** Çiftlik 6 adımda büyür.
-
-  | Adım | Boyut | Altın | Seviye |
-  |---|---|---|---|
-  | 1 | 20×20 m | 300 | 2 |
-  | 2 | 24×24 m | 700 | 3 |
-  | 3 | 28×28 m | 1500 | 5 |
-  | 4 | 32×32 m | 3000 | 7 |
-  | 5 | 36×36 m | 5500 | 9 |
-  | 6 | 40×40 m | 9000 | 12 |
+- **Arazi (🗺️ Arazi, L):** Bulunduğun 8×8 m'lik parseli satın alırsın. Seviye şartı yok.
+  - Fiyat: (100 + 60·n + 8·n²) × bölge çarpanı (n = sahip olduğun parsel sayısı). İlk parsel 100–150 altın.
+  - Bölge çarpanı: eski çiftlik yeri ×1.5, çayır ×1.0, orman ×0.9, göl vadisi ×1.15, ova ×0.85, yayla ×0.75, karlı kuzey ×0.7.
+  - Kasaba, pazar ve köy toprağı satılmaz. Suyu olan ya da çok engebeli (3 m'den yüksek, 2.5 m'den fazla eğimli) parsel satılmaz.
+  - Alınan parsel düzleşir; içindeki ağaç, kaya ve otlar kalkar. Parseller bitişik olmak zorunda değil; başka biyomda ikinci bir çiftlik kurulabilir.
+- **Eski kariyerler (v0.21 ve öncesi):** İlk açılışta hazır çiftlik kalkar. Kaldırılabilen her şey (yapılar, süsler, ağaçlar, bahçe, kümes) çantaya girer. Hayvanlar ve ekili tohumlar tam fiyatıyla altın olarak döner. Altın, seviye, ambar ve görevler kalır. Kayıt dosyası önce ".v021" adıyla yedeklenir.
 
 - **Çiftlik geliştirmeleri** (her biri 3 kademe; altın + madalya ile alınır):
   - Bereketli Toprak 🌱: Ekin hasadında +%10 altın
@@ -210,8 +206,9 @@ Hasat edilen her şey **ambara** kaynak olarak girer.
 
 ## 9. Görevler
 
-### 9.1 Hikâye (yeni kariyer, 11 adım)
-1. Araziyi temizle
+### 9.1 Öneriler (yeni kariyer, 11 adım, isteğe bağlı)
+Sol üstte ⭐ Öneri olarak görünür; "Geç" düğmesiyle bırakılıp serbest oynanabilir (o zaman günlük görevler başlar).
+1. Çiftliğine yer seç: ilk parselini al
 2. Ambar kur
 3. Tarla sür
 4. Buğday ek

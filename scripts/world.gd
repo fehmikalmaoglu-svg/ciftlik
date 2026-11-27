@@ -67,6 +67,39 @@ static var _far: Array = []     # uzak ağaç biçimleri: yuvarlak, çam, karlı
 static var _cum := []           # biyom başına birikimli ağırlıklar
 ## Oyuncunun kullandığı hücreler: true dönerse oraya doğa konmaz.
 static var exclude := Callable()
+## Oyuncunun parselleri (game.gd ile aynı ızgara): içi düzleşir (y=0), kenarı 5 m'de yumuşar.
+const PARCEL_O := -20
+const PARCEL_S := 8
+static var _flat := {}
+
+static func set_land(land: Dictionary) -> void:
+	_flat = land.duplicate()
+	if not _n.is_empty():
+		var nz := _n.duplicate()
+		nz.flat = _flat
+		_n = nz   # iş parçacıkları eski takımı tutar; yenisi ayrı sözlük
+
+## Bir alanın karolarını hemen yeniden kurar (parsel alındı: düzleşme ve doğa temizliği).
+static func refresh(rect: Rect2) -> void:
+	var r := rect.grow(6.0)
+	for k in tiles.keys():
+		var t: Dictionary = tiles[k]
+		if Rect2(k.x * TILE, k.y * TILE, TILE, TILE).intersects(r):
+			_apply(_job(k, t.lod, seed, _n))
+
+static func _flat_f(x: float, z: float, fl: Dictionary) -> float:
+	var px := floori((x - PARCEL_O) / PARCEL_S)
+	var pz := floori((z - PARCEL_O) / PARCEL_S)
+	var best := 0.0
+	for dz in 3:
+		for dx in 3:
+			var pc := Vector2i(px + dx - 1, pz + dz - 1)
+			if fl.has(pc):
+				var x0 := PARCEL_O + pc.x * PARCEL_S
+				var z0 := PARCEL_O + pc.y * PARCEL_S
+				var d := Vector2(maxf(maxf(x0 - x, x - x0 - PARCEL_S), 0.0), maxf(maxf(z0 - z, z - z0 - PARCEL_S), 0.0)).length()
+				best = maxf(best, 1.0 - smoothstep(0.0, 5.0, d))
+	return best
 
 static func setup(g: Node3D, s: int, gmat: Material, wmat: Material) -> void:
 	ground_mat = gmat
@@ -98,7 +131,7 @@ static func _reseed(s: int) -> void:
 		n.fractal_type = FastNoiseLite.FRACTAL_FBM if oct > 1 else FastNoiseLite.FRACTAL_NONE
 		n.fractal_octaves = oct
 		return n
-	_n = {"t": mk.call(1, 1.0 / 900.0, 2), "m": mk.call(2, 1.0 / 750.0, 2), "e": mk.call(3, 1.0 / 650.0, 2),
+	_n = {"flat": _flat, "t": mk.call(1, 1.0 / 900.0, 2), "m": mk.call(2, 1.0 / 750.0, 2), "e": mk.call(3, 1.0 / 650.0, 2),
 		"f": mk.call(4, 1.0 / 320.0, 2), "h": mk.call(5, 1.0 / 170.0, 3), "r": mk.call(6, 1.0 / 260.0, 2), "l": mk.call(7, 1.0 / 110.0, 2)}
 
 ## Tohum değişti (başka kariyer, misafir): bütün karoları yeniden kur.
@@ -204,6 +237,11 @@ static func h_w(x: float, z: float, w: Array, nz: Dictionary) -> float:
 		var l: float = nz.l.get_noise_2d(x, z)
 		var thr: float = 0.42 - 0.3 * w[2] + 0.2 * (w[3] + w[4] + w[5])
 		y = lerpf(y, -1.4, smoothstep(thr, thr + 0.12, l) * away)
+	var fl: Dictionary = nz.get("flat", {})
+	if not fl.is_empty():
+		var ff := _flat_f(x, z, fl)
+		if ff > 0.0:
+			y = lerpf(y, 0.0, ff)
 	return y
 
 static func _color(w: Array, y: float, slope: float) -> Color:
