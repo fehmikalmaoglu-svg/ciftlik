@@ -1,5 +1,19 @@
 # Çiftliğim 3D — Sürüm Notları
 
+## v0.21.0 · Erken Erişim
+- 🌍 **Sonsuz dünya**: haritanın sınırı ve görünmez duvarı kalktı. İstediğin yöne yürü, dünya önünde kurulmaya devam eder.
+- 🎲 Her yeni kariyerin kendine özel bir dünyası (tohumu) var. Eski kayıtlar da kendi dünyasını alır; çiftliğin, pazar, Yeşilköy ve göl olduğu gibi yerinde.
+- 🌲 **6 biyom**, aralarında yumuşak geçişlerle:
+  - Ilıman çayırlar
+  - Orman kıyısı
+  - Göl vadisi
+  - Güneşli ova (ayçiçekleri)
+  - Yüksek yayla (karlı tepeler)
+  - Karlı kuzey (kuzeye gittikçe artar)
+- 🏞️ Dışarıda göller var. Suya, ağaçlara ve büyük kayalara girilmez, yol bulma etraflarından dolaşır.
+- ⚡ Arazi arka planda hazırlanır, yürürken takılma olmaz. Yakın ağaçlar gerçek model, uzaktakiler hafif biçimde çizilir. Uzak görüş grafik kalitesine bağlıdır.
+- ☁️ Bulutlar artık nereye gidersen seninle geliyor.
+
 ## v0.20.0 · Erken Erişim
 - 💬 **Yeşilköy'lülerle konuş**: köylülere tıkla. Yürüyenler durup sana döner ve başlarının üstünde bir laf eder. Meydanda ve ev önlerinde sohbet eden 8 köylünün artık adı ve mesleği var: Postacı Kemal, Terzi Ayşe, Sütçü Fatma, Demirci Mehmet, Öğretmen Elif, Doktor Selin, Marangoz Ali, Bekçi Yusuf.
 - 📜 **Köy işleri**: 12 adımlık bir hikâye zinciri. Köylüleri birbiriyle tanıştır, ambarından yün, süt, tahıl, çiçek, meyve, ceviz, poğaça, yumurta ve turta götür. Her iş altın ve XP verir.

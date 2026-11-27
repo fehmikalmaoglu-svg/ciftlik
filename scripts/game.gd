@@ -32,7 +32,7 @@ func _net_port() -> int:
 			return int(a.substr(10))
 	return NET_PORT
 const NET_COLORS := ["#4a90d9", "#9c5bd6", "#e0912f", "#2fae8f", "#d94a8c"]
-const WALK_LIM := 94     # çiftçinin gezebileceği alan (±), görünen arazinin içi
+const WALK_LIM := 94     # elle yapılmış başlangıç bölgesi (±); dışında World karar verir
 const BLOCK_DECOR := ["fence", "rock", "lantern", "hay", "scarecrow", "bush", "flowers", "tr_spring", "tr_summer", "tr_autumn", "tr_winter",
 	"mossrock", "berrybush", "stump", "barrels", "crates", "bench", "logstack", "lamppost", "cart", "birch", "xmastree", "giftstack", "sled", "candycane", "market", "cherry"]
 const QUEST_SKIP_COOLDOWN := 24.0 * 3600.0
@@ -316,6 +316,8 @@ var cursor_edge: MeshInstance3D
 var grid: MeshInstance3D
 var windmill: Node3D
 var clouds: Array = []
+var far_clouds: Array = []
+var world_seed := 1
 var lamp_lights: Array = []
 var frame_root: Node3D
 var wild_root: Node3D       # çit dışındaki yabani doğa
@@ -726,6 +728,8 @@ static func bar(p: float) -> String:
 
 func height_at(x: float, z: float) -> float:
 	var d := maxf(absf(x), absf(z))
+	if d >= World.CORE:
+		return World.h(x, z)
 	var outside := smoothstep(21.5, 30.0, d)
 	var h := (sin(x * 0.15) + cos(z * 0.13) + sin((x + z) * 0.07)) * 1.3 + 1.2
 	h = maxf(0.0, h) * outside * smoothstep(10.0, 15.0, Vector2(x - MARKET.x, z - MARKET.z).length())
@@ -733,7 +737,11 @@ func height_at(x: float, z: float) -> float:
 	if z > 15.0:   # köy yolu düz
 		h *= smoothstep(2.5, 7.0, absf(x))
 	var pd := Vector2(x - POND_X, z - POND_Z).length()
-	return lerpf(-0.7, h, smoothstep(POND_R - 0.6, POND_R + 2.5, pd))
+	h = lerpf(-0.7, h, smoothstep(POND_R - 0.6, POND_R + 2.5, pd))
+	var b := smoothstep(86.0, World.CORE, d)
+	if b > 0.0:
+		h = lerpf(h, World.h(x, z), b * (1.0 - Town.mask(x, z)))
+	return h
 
 # ============================================================ başlat
 func _ready() -> void:
@@ -753,7 +761,10 @@ func _ready() -> void:
 	await get_tree().process_frame
 	_build_env()
 	_build_terrain()
-	_build_far_land()
+	World.setup(self, 1, ground_mat, Models.water())
+	World.exclude = func(x: int, z: int) -> bool: return tiles.has(key(x, z))
+	World.update(Vector3.ZERO, true)
+	_build_horizon()
 	_load_step(0.35)
 	await get_tree().process_frame
 	_build_surroundings()
@@ -1092,124 +1103,23 @@ func _build_terrain_rest() -> void:
 		if i % 2 == 0:
 			add_child(Models.ball(0.07, "#f8bbd0", lp.position.x, -0.04, lp.position.z))
 
-## Uzak arazi: tepeler büyür, ufukta karlı dağlar yükselir.
+## Uzak arazi artık World'de; eski adı tıklama/ışın kodu için kalıyor.
 func far_height(x: float, z: float) -> float:
-	var r := Vector2(x, z).length()
-	var h := height_at(x, z)
-	var roll := (sin(x * 0.045 + 1.3) + cos(z * 0.05 + 0.4) + sin((x - z) * 0.03)) * 3.2 + 3.0
-	h += maxf(0.0, roll) * smoothstep(102.0, 145.0, r)
-	var ridge := 1.0 - absf(sin(x * 0.028 + cos(z * 0.021) * 2.0) * cos(z * 0.026 - 0.7))
-	h += pow(ridge, 2.0) * 58.0 * smoothstep(165.0, 240.0, r) + smoothstep(200.0, 320.0, r) * 30.0
-	return h
+	return height_at(x, z)
 
-func _build_far_land() -> void:
-	var size := 760.0
-	var seg := 152
-	var step := size / seg
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+## Ufuk bulutları kamerayla birlikte gezer: hep uzakta görünürler.
+func _build_horizon() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 21
-	var fy := func(x: float, z: float) -> float:
-		var d := maxf(absf(x), absf(z))
-		return far_height(x, z) - 0.35 * (1.0 - smoothstep(100.0, 108.0, d))
-	for j in seg:
-		for i in seg:
-			var x0 := -size / 2.0 + i * step
-			var z0 := -size / 2.0 + j * step
-			if maxf(absf(x0 + step / 2.0), absf(z0 + step / 2.0)) < 97.0:
-				continue
-			var a := Vector3(x0, fy.call(x0, z0), z0)
-			var b := Vector3(x0 + step, fy.call(x0 + step, z0), z0)
-			var c := Vector3(x0, fy.call(x0, z0 + step), z0 + step)
-			var d := Vector3(x0 + step, fy.call(x0 + step, z0 + step), z0 + step)
-			for tri in [[a, b, c], [b, d, c]]:
-				var hy: float = (tri[0].y + tri[1].y + tri[2].y) / 3.0
-				var nrm: Vector3 = (tri[1] - tri[0]).cross(tri[2] - tri[0]).normalized()
-				var slope := 1.0 - absf(nrm.y)
-				var col := Color("#63ab40").lerp(Color("#3f7f34"), smoothstep(2.0, 14.0, hy))
-				col = col.lerp(Color("#8c8a7e"), clampf(smoothstep(18.0, 30.0, hy) + slope * 1.6 - 0.4, 0.0, 1.0))
-				col = col.lerp(Color("#f1f4f7"), smoothstep(44.0, 52.0, hy + slope * 6.0))
-				var v := rng.randf() * 0.07 - 0.035
-				col = col.lightened(v) if v > 0.0 else col.darkened(-v)
-				_tri(st, tri[0], tri[1], tri[2], col)
-	var land := MeshInstance3D.new()
-	land.mesh = st.commit()
-	land.material_override = ground_mat
-	land.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	add_child(land)
-	# uzak orman: iki ağaç biçimi, MultiMesh ile ucuz
-	var shapes := [_far_tree_mesh(true), _far_tree_mesh(false)]
-	for si in 2:
-		var pts := []
-		for k in 1400:
-			var ang := rng.randf() * TAU
-			var r := rng.randf_range(100.0, 210.0)
-			var x := cos(ang) * r
-			var z := sin(ang) * r
-			if maxf(absf(x), absf(z)) < 98.0:
-				continue
-			var hy := far_height(x, z)
-			if hy > (26.0 if si == 0 else 16.0):
-				continue
-			if rng.randf() > 0.55 + 0.45 * smoothstep(2.0, 10.0, hy):
-				continue
-			pts.append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3.ONE * rng.randf_range(1.6, 3.2)), Vector3(x, hy - 0.4, z)))
-		var mm := MultiMesh.new()
-		mm.transform_format = MultiMesh.TRANSFORM_3D
-		mm.mesh = shapes[si]
-		mm.instance_count = pts.size()
-		for i in pts.size():
-			mm.set_instance_transform(i, pts[i])
-		var mi := MultiMeshInstance3D.new()
-		mi.multimesh = mm
-		mi.material_override = ground_mat
-		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		add_child(mi)
-	# ufuk bulutları
 	for i in 14:
 		var cl := Models.cloud()
 		var ang := rng.randf() * TAU
 		var r := rng.randf_range(150.0, 240.0)
 		cl.position = Vector3(cos(ang) * r, rng.randf_range(32.0, 55.0), sin(ang) * r)
+		cl.set_meta("off", cl.position)
 		cl.scale *= rng.randf_range(2.5, 4.5)
 		add_child(cl)
-
-func _far_tree_mesh(pine: bool) -> ArrayMesh:
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var trunk := Color("#6d4c33")
-	var n := 6
-	var ring := func(r: float, y: float) -> Array:
-		var a := []
-		for i in n:
-			var t := TAU * i / n
-			a.append(Vector3(cos(t) * r, y, sin(t) * r))
-		return a
-	var tb: Array = ring.call(0.12, 0.0)
-	var tt: Array = ring.call(0.1, 0.6)
-	for i in n:
-		var j := (i + 1) % n
-		_tri(st, tb[i], tt[i], tb[j], trunk)
-		_tri(st, tb[j], tt[i], tt[j], trunk)
-	if pine:
-		for lay in [[0.75, 0.5, 1.6, "#2f6d3a"], [0.55, 1.3, 2.3, "#3a7d41"]]:
-			var base: Array = ring.call(lay[0], lay[1])
-			var tip := Vector3(0, lay[2], 0)
-			for i in n:
-				var j := (i + 1) % n
-				_tri(st, base[i], tip, base[j], Color(lay[3]))
-				_tri(st, base[j], Vector3(0, lay[1], 0), base[i], Color(lay[3]).darkened(0.2))
-	else:
-		var col := Color("#4f9a3e")
-		var mid: Array = ring.call(0.8, 1.25)
-		var top := Vector3(0, 2.0, 0)
-		var bot := Vector3(0, 0.55, 0)
-		for i in n:
-			var j := (i + 1) % n
-			_tri(st, mid[i], top, mid[j], col)
-			_tri(st, mid[j], bot, mid[i], col.darkened(0.25))
-	return st.commit()
+		far_clouds.append(cl)
 
 func _tri(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, col: Color) -> void:
 	var nrm := (b - a).cross(c - a).normalized()
@@ -3279,7 +3189,7 @@ func _update_farmer(dt: float) -> void:
 			else:
 				np = farmer.position
 				move_target = null
-		farmer.position = Vector3(clampf(np.x, -WALK_LIM, WALK_LIM), farmer.position.y, clampf(np.z, -WALK_LIM, WALK_LIM))
+		farmer.position = Vector3(np.x, farmer.position.y, np.z)
 		farmer.rotation.y = lerp_angle(farmer.rotation.y, atan2(dir.x, dir.z), minf(1.0, dt * 14.0))
 		moving = true
 	farmer.position.y = maxf(0.0, height_at(farmer.position.x, farmer.position.z))
@@ -3459,8 +3369,6 @@ func _pick_point(mp: Vector2):
 func _walk_to(p) -> void:
 	if p == null:
 		return
-	p.x = clampf(p.x, -WALK_LIM + 0.1, WALK_LIM - 0.1)
-	p.z = clampf(p.z, -WALK_LIM + 0.1, WALK_LIM - 0.1)
 	p.y = 0.0
 	var tx := floori(p.x)
 	var tz := floori(p.z)
@@ -3497,7 +3405,7 @@ func _player_fence(x: int, z: int) -> bool:
 
 func _walkable(x: int, z: int) -> bool:
 	if x < -WALK_LIM or x >= WALK_LIM or z < -WALK_LIM or z >= WALK_LIM:
-		return false
+		return World.walkable(x, z)   # başlangıç bölgesinin dışı: göl, ağaç, kaya
 	if frame_block.has(Vector2i(x, z)) or Town.blocks.has(Vector2i(x, z)):
 		return false
 	if absf(x + 0.5 - STALL.x) < 1.3 and absf(z + 0.5 - STALL.z) < 1.3:   # balıkçı tezgâhı
@@ -3692,8 +3600,10 @@ func _pan_camera(v: Vector2) -> void:
 	var fwd := Vector3(-sin(cam_yaw), 0, -cos(cam_yaw))
 	var right := Vector3(cos(cam_yaw), 0, -sin(cam_yaw))
 	cam_target += right * v.x - fwd * v.y
-	cam_target.x = clampf(cam_target.x, -WALK_LIM, WALK_LIM)
-	cam_target.z = clampf(cam_target.z, -WALK_LIM, WALK_LIM)
+	if farmer != null:   # kamera çiftçiden fazla uzaklaşmaz (dünya onun çevresinde yüklenir)
+		var off := Vector2(cam_target.x - farmer.position.x, cam_target.z - farmer.position.z).limit_length(150.0)
+		cam_target.x = farmer.position.x + off.x
+		cam_target.z = farmer.position.z + off.y
 	cam_target.y = 0.0
 	cam_follow = false
 
@@ -4415,10 +4325,19 @@ func _animate_world(dt: float) -> void:
 	var blades: Node3D = windmill.get_meta("blades")
 	mill_spin = move_toward(mill_spin, 0.0, dt * 1.5)
 	blades.rotation.z += dt * (0.8 + mill_spin)
-	for c in clouds:
+	for c in clouds:   # bulutlar kameranın çevresinde döner (dünya sonsuz)
 		c.position.x += dt * 0.6
-		if c.position.x > 65.0:
-			c.position.x = -65.0
+		if c.position.x - cam_target.x > 110.0:
+			c.position.x -= 220.0
+		elif c.position.x - cam_target.x < -110.0:
+			c.position.x += 220.0
+		if c.position.z - cam_target.z > 70.0:
+			c.position.z -= 140.0
+		elif c.position.z - cam_target.z < -70.0:
+			c.position.z += 140.0
+	for c in far_clouds:
+		var o: Vector3 = c.get_meta("off")
+		c.position = Vector3(cam_target.x + o.x, o.y, cam_target.z + o.z)
 	for e in entities:
 		if e.kind == "pond" and e.ready:
 			e.icon.position.y = 0.9 + absf(sin(clock_t * 3.0 + e.x)) * 0.25
@@ -5498,7 +5417,7 @@ func _net_sync_dict() -> Dictionary:
 	for e in entities:
 		ents.append(_ent_dict(e))
 	return {"coins": coins, "xp": xp, "level": level, "day_time": day_time, "day": day, "season": season, "season_t": season_t,
-		"year": year, "weather": weather, "weather_t": weather_t, "fh": farm_h, "res": res, "ents": ents, "q": _net_quest_dict(), "order": order, "fg": fishgear, "vill": vill, "town": town_q, "bag": bag, "ev": {"e": ev, "t": trophies}}
+		"year": year, "weather": weather, "weather_t": weather_t, "fh": farm_h, "res": res, "ents": ents, "q": _net_quest_dict(), "order": order, "fg": fishgear, "vill": vill, "town": town_q, "seed": world_seed, "bag": bag, "ev": {"e": ev, "t": trophies}}
 
 @rpc("authority", "reliable")
 func net_sync(d: Dictionary) -> void:
@@ -5541,6 +5460,8 @@ func net_sync(d: Dictionary) -> void:
 		_load_vill(d.vill)
 		if vill_open != "" and land_dlg.visible:
 			_open_villager(vill_open)
+	if d.has("seed"):
+		_set_world_seed(int(d.seed))
 	if d.has("town"):
 		_load_town(d.town)
 		if town_open != "" and land_dlg.visible:
@@ -5763,6 +5684,47 @@ func _start_play(show_help := false) -> void:
 			var xz := a.substr(5).split(",")
 			farmer.position = Vector3(float(xz[0]), 0, float(xz[1]))
 			cam_target = farmer.position
+		elif a == "--worldbench":   # geliştirici: karo kurma süreleri
+			for lod in 3:
+				var tj := 0
+				var ta := 0
+				for i in 6:
+					var t0 := Time.get_ticks_usec()
+					var jr := World._job(Vector2i(20 + i, 30 + lod), lod, World.seed, World._n)
+					var t1 := Time.get_ticks_usec()
+					World._apply(jr)
+					tj += t1 - t0
+					ta += Time.get_ticks_usec() - t1
+				print("WORLDBENCH lod%d iş=%.2f ms  sahne=%.2f ms" % [lod, tj / 6000.0, ta / 6000.0])
+			for list in World.FLORA:
+				for e in list:
+					var tri := 0
+					for part in World._model(e[0]):
+						var m: Mesh = part[0]
+						for si in m.get_surface_count():
+							var ar: Array = m.surface_get_arrays(si)
+							tri += (ar[Mesh.ARRAY_INDEX].size() if ar[Mesh.ARRAY_INDEX] != null else ar[Mesh.ARRAY_VERTEX].size()) / 3
+					print("WORLDTRI ", e[0].get_file(), " ", tri)
+			var t1 := Time.get_ticks_usec()
+			for i in 2000:
+				World.h(1000.0 + i * 1.3, 1500.0)
+			print("WORLDBENCH h() %.2f us" % ((Time.get_ticks_usec() - t1) / 2000.0))
+		elif a.begins_with("--biome="):   # geliştirici: en yakın biyom ortasına ışınlan
+			var want := int(a.substr(8))
+			var found := false
+			for rr in range(4, 120):
+				for k in rr * 8:
+					var ang := TAU * k / (rr * 8)
+					var q := Vector2(cos(ang), sin(ang)) * rr * 100.0
+					var w := World.weights(q.x, q.y)
+					if float(w[want]) > 0.97 and World.h(q.x, q.y) > 0.2:
+						farmer.position = Vector3(q.x, 0, q.y)
+						cam_target = farmer.position
+						found = true
+						break
+				if found:
+					break
+			print("BIOME ", want, " at ", farmer.position)
 		elif a.begins_with("--talk="):   # geliştirici: Yeşilköy köylüsüyle konuş
 			_town_click.call_deferred(a.substr(7))
 		elif a == "--buildshow":   # geliştirici: süs yapıları diz
@@ -6007,6 +5969,7 @@ func _apply_gfx(window := false) -> void:
 	env.ssr_fade_in = 0.1
 	env.ssr_fade_out = 1.5
 	cam.far = [280.0, 360.0, 520.0, 520.0][q]
+	World.set_radius([4, 5, 6, 6][q])
 	grass_frac = [0.35, 0.65, 1.0, 1.0][q]
 	for pc in grass_chunks:
 		var gm: MultiMesh = grass_chunks[pc].multimesh
@@ -6584,7 +6547,7 @@ func _state_dict() -> Dictionary:
 	var ents := []
 	for e in entities:
 		ents.append(_ent_dict(e))
-	return {"v": 1, "fv": SAVE_VER, "bv": 1, "sv": 2, "story": story_step, "sh": story_have, "fh": farm_h, "fg": fishgear, "vill": vill, "town": town_q, "upg": upg, "bag": bag, "ev": ev, "tro": trophies, "name": farm_name, "gems": gems, "quests": quests, "qskip": quest_skip_at, "flv": flv, "season": season, "season_t": season_t, "year": year, "weather": weather, "weather_t": weather_t, "medals": medals, "res": res, "order": order, "coins": coins, "xp": xp, "level": level, "day_time": day_time, "day": day, "sel": sel, "muted": muted,
+	return {"v": 1, "fv": SAVE_VER, "bv": 1, "sv": 2, "story": story_step, "sh": story_have, "fh": farm_h, "fg": fishgear, "vill": vill, "town": town_q, "seed": world_seed, "upg": upg, "bag": bag, "ev": ev, "tro": trophies, "name": farm_name, "gems": gems, "quests": quests, "qskip": quest_skip_at, "flv": flv, "season": season, "season_t": season_t, "year": year, "weather": weather, "weather_t": weather_t, "medals": medals, "res": res, "order": order, "coins": coins, "xp": xp, "level": level, "day_time": day_time, "day": day, "sel": sel, "muted": muted,
 		"saved_at": Time.get_unix_time_from_system(), "ents": ents, "fx": farmer.position.x, "fz": farmer.position.z}
 
 func _ent_dict(e: Dictionary) -> Dictionary:
@@ -6693,6 +6656,7 @@ func _load_dict(data, offline: bool) -> bool:
 	_load_bag(data.get("bag", {}))
 	_load_vill(data.get("vill", {}))
 	_load_town(data.get("town", {}))
+	_set_world_seed(int(data.get("seed", 1)))   # eski kayıtlar: 1 numaralı dünya
 	_load_ev(data.get("ev", {}), data.get("tro", {}))
 	farm_h = int(data.get("fh", 0))
 	if farm_h <= 0:
@@ -6855,6 +6819,11 @@ func _new_story_game() -> void:
 
 func _new_game() -> void:
 	farm_h = 12
+	var sd := randi() % 2000000000 + 1
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--seed="):   # geliştirici: belirli dünya
+			sd = int(a.substr(7))
+	_set_world_seed(sd)
 	story_step = STORY.size()
 	_add_default_buildings()
 	for z in range(-6, 12):
@@ -6917,6 +6886,7 @@ func _process(delta: float) -> void:
 		if not _paused():
 			_update_day(dt)
 		Town.tick(dt, [])
+		World.update(cam_target, shot_path != "")
 		_update_lamps(dt)
 		_animate_world(dt)
 		_update_parts(dt)
@@ -6947,6 +6917,7 @@ func _process(delta: float) -> void:
 	if not frozen:
 		_update_day(dt)
 	Town.tick(dt, [farmer.position])
+	World.update(cam_target, shot_path != "")
 	_update_lamps(dt)
 	_animate_world(dt)
 	_update_parts(dt)
@@ -8526,6 +8497,13 @@ func _land_upgrades() -> void:
 
 ## Köy istekleri panosu: dört köylünün isteği; pazara yürümeden ambardan teslim edilir.
 # ============================================================ Yeşilköy işleri
+## Dünya tohumu: değişirse karolar yeniden kurulur (yakın halka hemen).
+func _set_world_seed(s: int) -> void:
+	world_seed = maxi(1, s)
+	World.reset(world_seed)
+	if farmer != null:
+		World.update(farmer.position)
+
 func _load_town(d) -> void:
 	town_q = {"step": 0, "d": {"id": "", "r": "", "n": 0, "done": true, "day": -1}}
 	if typeof(d) == TYPE_DICTIONARY:
@@ -9201,6 +9179,7 @@ func _selftest_build(fails: Array) -> void:
 	_selftest_mill(fails)
 	_selftest_bake(fails)
 	_selftest_town(fails)
+	_selftest_world(fails)
 	_selftest_events(fails)
 	_selftest_pets(fails)
 	_selftest_coop(fails)
@@ -9369,6 +9348,48 @@ func _selftest_events(fails: Array) -> void:
 	res = keep[6]
 	_ev_check()
 	_ev_refresh_world()
+
+func _selftest_world(fails: Array) -> void:
+	var keep := world_seed
+	World.update(farmer.position, true)
+	if World.tiles.size() < 80: fails.append("dünya karoları yüklenmedi (%d)" % World.tiles.size())
+	if World.biome(150.0, -150.0) != 0 or World.biome(-200.0, 120.0) != 0: fails.append("başlangıç ılıman değil")
+	var h1 := World.h(812.0, -433.0)
+	if absf(h1 - World.h(812.0, -433.0)) > 0.0001: fails.append("dünya yüksekliği tutarsız")
+	if absf(height_at(100.0, 37.0) - World.h(100.0, 37.0)) > 0.001 or absf(height_at(99.99, 37.0) - World.h(99.99, 37.0)) > 0.01:
+		fails.append("başlangıç kenarı dikişli")
+	var seen := {}
+	for i in 40:
+		for j in 40:
+			seen[World.biome(-8000.0 + i * 400.0, -8000.0 + j * 400.0)] = true
+	if seen.size() < 6: fails.append("biyom çeşidi az: %s" % str(seen.keys()))
+	_set_world_seed(777)
+	var h2 := World.h(812.0, -433.0)
+	_set_world_seed(keep)
+	World.update(farmer.position, true)
+	if absf(h2 - h1) < 0.0001: fails.append("tohum etkisiz")
+	if absf(World.h(812.0, -433.0) - h1) > 0.0001: fails.append("tohum geri dönmedi")
+	# göl suyu yürünmez, kuru yer yürünür
+	var wet := Vector2i(99999, 0)
+	var dry := Vector2i(99999, 0)
+	for i in 120:
+		for j in 120:
+			var x := -300 + i * 5
+			var z := -300 + j * 5
+			if absi(x) < 110 and absi(z) < 110:
+				continue
+			var y := World.h(x + 0.5, z + 0.5)
+			if y < World.WATER_Y - 0.4 and wet.x == 99999:
+				wet = Vector2i(x, z)
+			elif y > 0.5 and dry.x == 99999 and not World.tiles.get(Vector2i(floori(x / World.TILE), floori(z / World.TILE)), {"block": {}}).block.has(Vector2i(x, z)):
+				dry = Vector2i(x, z)
+	if wet.x != 99999 and _walkable(wet.x, wet.y): fails.append("göl yürünür")
+	if dry.x == 99999 or not _walkable(dry.x, dry.y): fails.append("dış dünya yürünmez")
+	if _walkable(5000, 5000): fails.append("yüklenmemiş karo yürünür")
+	var trees := 0
+	for k in World.tiles:
+		trees += World.tiles[k].block.size()
+	if trees < 50: fails.append("dünyada ağaç/kaya az (%d)" % trees)
 
 func _selftest_town(fails: Array) -> void:
 	var keep_res := res.duplicate()
