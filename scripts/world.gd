@@ -50,7 +50,7 @@ const FLORA := [
 const FLORA_N := [150, 210, 170, 170, 150, 120]
 const CAND := 260
 ## Gerçek ağaç modelleri bu uzaklığa kadar (karo merkezine göre); ötesi ucuz biçim.
-const NEAR_TREES := 55.0
+const NEAR_TREES := 70.0
 
 static var seed := 0
 static var _n := {}
@@ -242,6 +242,10 @@ static func h_w(x: float, z: float, w: Array, nz: Dictionary) -> float:
 		var ff := _flat_f(x, z, fl)
 		if ff > 0.0:
 			y = lerpf(y, 0.0, ff)
+	# köy düzlüğü çekirdeğin sınırını aşar (kuzey ucu): dış karolar da aynı düzlüğe insin, dikiş kalmasın
+	var tm := Town.mask(x, z)
+	if tm > 0.0:
+		y = lerpf(y, 0.0, tm)
 	return y
 
 static func _color(w: Array, y: float, slope: float) -> Color:
@@ -663,7 +667,7 @@ static func _far_tree(pine: bool, col: Color) -> ArrayMesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var trunk := Color("#6d4c33")
-	var n := 6
+	var n := 8
 	var ring := func(r: float, y: float) -> Array:
 		var a := []
 		for i in n:
@@ -693,13 +697,28 @@ static func _far_tree(pine: bool, col: Color) -> ArrayMesh:
 				add.call(base[i], tip, base[j], lay[3])
 				add.call(base[j], Vector3(0, lay[1], 0), base[i], (lay[3] as Color).darkened(0.2))
 	else:
-		var mid: Array = ring.call(0.8, 1.25)
-		var top := Vector3(0, 2.0, 0)
-		var bot := Vector3(0, 0.55, 0)
+		# yuvarlak taç: birkaç halkalı top, yumuşak (merkezden) normallerle; uzakta elmas gibi durmaz
+		var cen := Vector3(0, 1.3, 0)
+		var rings := [[0.42, 0.62], [0.82, 0.95], [0.9, 1.42], [0.62, 1.86], [0.0, 2.08]]
+		var soft := func(a: Vector3, b: Vector3, c: Vector3, cl: Color) -> void:
+			for q in [a, b, c]:
+				st.set_color(cl.darkened(clampf(0.45 - (q.y - 0.6) * 0.3, 0.0, 0.35)))
+				st.set_normal((q - cen).normalized().lerp(Vector3.UP, 0.35).normalized())
+				st.add_vertex(q)
+		var bot := Vector3(0, 0.56, 0)
+		var prev: Array = ring.call(rings[0][0], rings[0][1])
 		for i in n:
-			var j := (i + 1) % n
-			add.call(mid[i], top, mid[j], col)
-			add.call(mid[j], bot, mid[i], col.darkened(0.25))
+			soft.call(prev[(i + 1) % n], bot, prev[i], col)
+		for k in range(1, rings.size()):
+			var cur: Array = ring.call(rings[k][0], rings[k][1])
+			for i in n:
+				var j := (i + 1) % n
+				if rings[k][0] > 0.0:
+					soft.call(prev[i], cur[i], prev[j], col)
+					soft.call(prev[j], cur[i], cur[j], col)
+				else:
+					soft.call(prev[i], cur[i], prev[j], col)
+			prev = cur
 	return st.commit()
 
 static func set_radius(r: int) -> void:

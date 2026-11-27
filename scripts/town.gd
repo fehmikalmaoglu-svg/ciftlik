@@ -12,6 +12,14 @@ const STREETS := [56.0, 80.0]     # doğu–batı caddeleri (z)
 const STREET_HALF := 41.0          # caddelerin yarı uzunluğu (x)
 const PLAZA := Vector2(0, 56)       # kavşak meydanı
 const PLAZA_R := 5.5
+const RING_OUT := 9.5                # göbek çevresindeki dönel kavşağın dış kenarı
+const RING_C := 6.5                  # dönel kavşakta araç yolunun orta çizgisi (şerit = +1 dışarı)
+## Otoparklar: köy girişinde, pazar yerine yürüme mesafesinde (x, z, en, boy).
+const LOTS := [Rect2(5.0, 38.5, 10.0, 9.0), Rect2(-15.0, 38.5, 10.0, 9.0)]
+const BAY_W := 2.0
+const BAY_L := 3.6
+const ASPHALT := "#8d8782"
+const WALK_COL := "#d9cbab"
 const HOUSES := ["house_01", "house_02", "house_05", "house_06", "house_07", "house_11", "house_12", "house_13",
 	"house_03", "house_04", "house_08", "house_09", "house_10", "house_14", "house_15", "house_16"]
 const TREES := ["tree_01", "tree_02", "tree_03", "tree_05", "tree_06", "tree_07", "tree_10"]
@@ -169,14 +177,17 @@ static func mask(x: float, z: float) -> float:
 	return 1.0 - smoothstep(0.0, 8.0, Vector2(dx, dz).length())
 
 static func on_road(x: float, z: float) -> bool:
-	if z > 36.0 and z < RECT.end.y and absf(x) < 2.2:
+	if z > 36.0 and z < RECT.end.y and absf(x) < 3.6:
 		return true
 	for sz in STREETS:
-		if absf(z - sz) < 2.0 and absf(x) < STREET_HALF:
+		if absf(z - sz) < 3.4 and absf(x) < STREET_HALF:
 			return true
-	if absf(absf(x) - SIDE_X) < 2.0 and z > STREETS[0] - 2.0 and z < STREETS[1] + 2.0:
+	if absf(absf(x) - SIDE_X) < 3.4 and z > STREETS[0] - 3.4 and z < STREETS[1] + 3.4:
 		return true
-	return Vector2(x, z).distance_to(PLAZA) < PLAZA_R
+	for l in LOTS:
+		if (l as Rect2).grow(0.6).has_point(Vector2(x, z)):
+			return true
+	return Vector2(x, z).distance_to(PLAZA) < RING_OUT + 1.2
 
 static func available() -> bool:
 	return Assets.enabled and ResourceLoader.exists(DIR + "house_07.res")
@@ -215,6 +226,22 @@ static func _put(g: Node, root: Node3D, file: String, x: float, z: float, face: 
 	if not shadow:
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	root.add_child(mi)
+	var ab := m.get_aabb()
+	if file.begins_with("tree_") and ab.position.y > 0.3:
+		# Set 02'nin bazı ağaçları yalnızca taç: havada kalmasın diye gövde ekle
+		var tr := MeshInstance3D.new()
+		var cm := CylinderMesh.new()
+		var h := ab.position.y + 0.45
+		cm.top_radius = 0.13
+		cm.bottom_radius = 0.2
+		cm.height = h
+		cm.radial_segments = 7
+		cm.rings = 1
+		tr.mesh = cm
+		tr.material_override = Visuals.bark_mat()
+		tr.position = Vector3(ab.get_center().x, h / 2.0, ab.get_center().z)
+		tr.visibility_range_end = vis
+		mi.add_child(tr)
 	if block:
 		var a := m.get_aabb()
 		var hx := a.size.x * s / 2.0 - 0.35
@@ -304,7 +331,7 @@ static func _drive(root: Node3D, file: String, paint: String, center: Array, pha
 	for i in n:
 		tot += (pts[(i + 1) % n] as Vector2).distance_to(pts[i])
 	root.add_child(v)
-	movers.append({"node": v, "pts": pts, "len": tot, "s": phase * tot, "speed": speed, "v": speed})
+	movers.append({"node": v, "pts": pts, "len": tot, "s": phase * tot, "speed": speed, "v": speed, "id": movers.size(), "dir": Vector2.ZERO})
 
 static func _at(pts: Array, s: float) -> Array:
 	var n := pts.size()
@@ -416,15 +443,16 @@ static func _people(g: Node, root: Node3D) -> void:
 		return
 	var r := RandomNumberGenerator.new()
 	r.seed = 77
-	var e := 2.0   # yol kenarı (arabaların şeridinden uzak)
+	var e := 2.85   # kaldırımın ortası (arabaların şeridinden uzak)
+	var ro := RING_OUT + 0.6
 	var routes := [
-		[[Vector2(e, 38), Vector2(e, PLAZA.y - PLAZA_R - 0.6)], 1],
-		[[Vector2(-e, 38), Vector2(-e, PLAZA.y - PLAZA_R - 0.6)], 1],
-		[[Vector2(e, PLAZA.y + PLAZA_R + 0.6), Vector2(e, 92)], 2],
-		[[Vector2(-e, PLAZA.y + PLAZA_R + 0.6), Vector2(-e, 92)], 2],
-		[[Vector2(PLAZA_R + 0.8, STREETS[0] - e), Vector2(37, STREETS[0] - e)], 1],
-		[[Vector2(-PLAZA_R - 0.8, STREETS[0] + e), Vector2(-37, STREETS[0] + e)], 1],
-		[[Vector2(PLAZA_R + 0.8, STREETS[0] + e), Vector2(30, STREETS[0] + e)], 1],
+		[[Vector2(e, 38), Vector2(e, PLAZA.y - ro)], 1],
+		[[Vector2(-e, 38), Vector2(-e, PLAZA.y - ro)], 1],
+		[[Vector2(e, PLAZA.y + ro), Vector2(e, 92)], 2],
+		[[Vector2(-e, PLAZA.y + ro), Vector2(-e, 92)], 2],
+		[[Vector2(ro, STREETS[0] - e), Vector2(37, STREETS[0] - e)], 1],
+		[[Vector2(-ro, STREETS[0] + e), Vector2(-37, STREETS[0] + e)], 1],
+		[[Vector2(ro, STREETS[0] + e), Vector2(30, STREETS[0] + e)], 1],
 		[[Vector2(-4, STREETS[1] - e), Vector2(-37, STREETS[1] - e)], 1],
 		[[Vector2(4, STREETS[1] + e), Vector2(37, STREETS[1] + e)], 1],
 	]
@@ -507,47 +535,180 @@ static func tick(dt: float, who: Array) -> void:
 			if Vector2(p.x, p.z).distance_to(ahead) < 2.6:
 				want = 0.0
 		for o in movers:
-			if o != m and is_instance_valid(o.node) and Vector2(o.node.position.x, o.node.position.z).distance_to(ahead) < 2.2:
+			if o == m or not is_instance_valid(o.node):
+				continue
+			var op := Vector2(o.node.position.x, o.node.position.z)
+			if op.distance_to(ahead) > 2.4 and op.distance_to(cur[0] + cur[1] * 1.6) > 1.8:
+				continue
+			var od: Vector2 = o.get("dir", Vector2.ZERO)
+			# aynı yöne giden öndekini izle; kesişmede sırası önce olana yol ver (karşılıklı bekleme olmaz)
+			if od.dot(cur[1]) > 0.5 or int(o.id) < int(m.id):
 				want = 0.0
 		m.v = move_toward(m.v, want, dt * 6.0)
 		m.s = fmod(m.s + m.v * dt, m.len)
 		var now: Array = _at(m.pts, m.s)
+		m.dir = now[1]
 		node.position = Vector3(now[0].x, 0.0, now[0].y)
-		var target := atan2(-now[1].y, now[1].x)
+		var target := atan2(-now[1].y, now[1].x) + PI   # modellerin burnu -x yönünde
 		node.rotation.y = lerp_angle(node.rotation.y, target, minf(1.0, dt * 8.0))
 
-## Yollar: zemin üçgenlerinin tırtıklı kenarı yerine düz şeritler (köy alanı düz, y = 0).
+## Yollar: asfalt şeritler, kesik orta çizgi, iki yanda kaldırım, meydanda dönel kavşak, girişte otoparklar.
 static func _roads(root: Node3D) -> void:
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color("#c8a26b")
-	mat.roughness = 1.0
-	var strip := func(cx: float, cz: float, w: float, d: float) -> void:
+	var asphalt := StandardMaterial3D.new()
+	asphalt.albedo_color = Color(ASPHALT)
+	asphalt.roughness = 0.95
+	var walk := StandardMaterial3D.new()
+	walk.albedo_color = Color(WALK_COL)
+	walk.roughness = 1.0
+	var paint := StandardMaterial3D.new()
+	paint.albedo_color = Color("#f4f1e8")
+	paint.roughness = 0.9
+	var box := func(cx: float, cz: float, w: float, d: float, y: float, h: float, mat: Material) -> void:
+		if w <= 0.05 or d <= 0.05:
+			return
 		var mi := MeshInstance3D.new()
 		var bm := BoxMesh.new()
-		bm.size = Vector3(w, 0.03, d)
+		bm.size = Vector3(w, h, d)
 		mi.mesh = bm
 		mi.material_override = mat
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		mi.position = Vector3(cx, 0.015, cz)
+		mi.position = Vector3(cx, y - h / 2.0, cz)
 		root.add_child(mi)
-	strip.call(0.0, (37.0 + RECT.end.y) / 2.0, 4.4, RECT.end.y - 37.0)
+	# x boyunca [x0, x1] aralığını kesişme boşluklarıyla parçalara ayır
+	var spans := func(x0: float, x1: float, gaps: Array) -> Array:
+		var out := [[x0, x1]]
+		for gp in gaps:
+			var nx := []
+			for sp in out:
+				if gp[1] <= sp[0] or gp[0] >= sp[1]:
+					nx.append(sp)
+				else:
+					if gp[0] > sp[0]:
+						nx.append([sp[0], gp[0]])
+					if gp[1] < sp[1]:
+						nx.append([gp[1], sp[1]])
+			out = nx
+		return out
+	var road_top := 0.035
+	# ana yol (çiftlikten köyün kuzey ucuna)
+	box.call(0.0, (37.0 + RECT.end.y) / 2.0, 4.4, RECT.end.y - 37.0, road_top, 0.05, asphalt)
 	for sz in STREETS:
-		strip.call(0.0, sz, STREET_HALF * 2.0, 4.0)
+		box.call(0.0, sz, STREET_HALF * 2.0, 4.0, road_top + 0.002, 0.05, asphalt)
 	for sx in [-1.0, 1.0]:
-		strip.call(sx * SIDE_X, (STREETS[0] + STREETS[1]) / 2.0, 4.0, STREETS[1] - STREETS[0] - 4.0)
+		box.call(sx * SIDE_X, (STREETS[0] + STREETS[1]) / 2.0, 4.0, STREETS[1] - STREETS[0] + 4.0, road_top + 0.001, 0.05, asphalt)
+	# dönel kavşak: halka asfalt + çimenli göbek (meydan)
+	var ring := MeshInstance3D.new()
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var segs := 48
+	for i in segs:
+		var a0 := i * TAU / segs
+		var a1 := (i + 1) * TAU / segs
+		var p0 := Vector3(cos(a0) * (PLAZA_R - 0.2), 0, sin(a0) * (PLAZA_R - 0.2))
+		var p1 := Vector3(cos(a1) * (PLAZA_R - 0.2), 0, sin(a1) * (PLAZA_R - 0.2))
+		var q0 := Vector3(cos(a0) * RING_OUT, 0, sin(a0) * RING_OUT)
+		var q1 := Vector3(cos(a1) * RING_OUT, 0, sin(a1) * RING_OUT)
+		st.set_normal(Vector3.UP)
+		for v in [p0, q0, q1, p0, q1, p1]:
+			st.add_vertex(v)
+	ring.mesh = st.commit()
+	ring.material_override = asphalt
+	ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	ring.position = Vector3(PLAZA.x, road_top + 0.004, PLAZA.y)
+	root.add_child(ring)
 	var pl := MeshInstance3D.new()
 	var cm := CylinderMesh.new()
 	cm.top_radius = PLAZA_R
-	cm.bottom_radius = PLAZA_R
-	cm.height = 0.04
-	cm.radial_segments = 32
+	cm.bottom_radius = PLAZA_R + 0.1
+	cm.height = 0.08
+	cm.radial_segments = 40
 	pl.mesh = cm
-	var pm := mat.duplicate()
+	var pm := walk.duplicate()
 	pm.albedo_color = Color("#d6b47e")
 	pl.material_override = pm
 	pl.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	pl.position = Vector3(PLAZA.x, 0.02, PLAZA.y)
+	pl.position = Vector3(PLAZA.x, 0.04, PLAZA.y)
 	root.add_child(pl)
+	# kesik orta çizgiler (kesişme ve kavşak içinde yok)
+	var dash := func(x0: float, x1: float, z: float, along_x: bool, gaps: Array) -> void:
+		for sp in spans.call(x0, x1, gaps):
+			var t: float = sp[0] + 1.0
+			while t + 1.2 < sp[1] - 0.5:
+				if along_x:
+					box.call(t + 0.6, z, 1.2, 0.14, road_top + 0.012, 0.01, paint)
+				else:
+					box.call(z, t + 0.6, 0.14, 1.2, road_top + 0.012, 0.01, paint)
+				t += 3.0
+	for sz in STREETS:
+		var gaps := [[-SIDE_X - 3.0, -SIDE_X + 3.0], [SIDE_X - 3.0, SIDE_X + 3.0], [-3.0, 3.0]]
+		if absf(sz - PLAZA.y) < 1.0:
+			gaps.append([-RING_OUT - 0.5, RING_OUT + 0.5])
+		dash.call(-STREET_HALF, STREET_HALF, sz, true, gaps)
+	var mgaps := [[PLAZA.y - RING_OUT - 0.5, PLAZA.y + RING_OUT + 0.5]]
+	for sz in STREETS:
+		mgaps.append([sz - 3.0, sz + 3.0])
+	dash.call(37.0, RECT.end.y, 0.0, false, mgaps)
+	for sx in [-1.0, 1.0]:
+		dash.call(STREETS[0] + 2.0, STREETS[1] - 2.0, sx * SIDE_X, false, [])
+	# kaldırımlar (yolların iki yanında 1.3 m, kesişmelerde ara)
+	var kw := 1.3
+	var ky := 0.07
+	for sz in STREETS:
+		var gaps := [[-SIDE_X - 2.0 - kw, -SIDE_X + 2.0 + kw], [SIDE_X - 2.0 - kw, SIDE_X + 2.0 + kw], [-2.2 - kw, 2.2 + kw]]
+		if absf(sz - PLAZA.y) < 1.0:
+			gaps.append([-RING_OUT - 0.4, RING_OUT + 0.4])
+		for side in [-1.0, 1.0]:
+			var g2 := gaps.duplicate()
+			for sp in spans.call(-STREET_HALF, STREET_HALF, g2):
+				box.call((sp[0] + sp[1]) / 2.0, sz + side * (2.0 + kw / 2.0), sp[1] - sp[0], kw, ky, 0.08, walk)
+	var zg := [[PLAZA.y - RING_OUT - 0.4, PLAZA.y + RING_OUT + 0.4]]
+	for sz in STREETS:
+		zg.append([sz - 2.0 - kw, sz + 2.0 + kw])
+	for side in [-1.0, 1.0]:
+		for sp in spans.call(37.0, RECT.end.y, zg):
+			box.call(side * (2.2 + kw / 2.0), (sp[0] + sp[1]) / 2.0, kw, sp[1] - sp[0], ky, 0.08, walk)
+	for sx in [-1.0, 1.0]:
+		for side in [-1.0, 1.0]:
+			box.call(sx * SIDE_X + side * (2.0 + kw / 2.0), (STREETS[0] + STREETS[1]) / 2.0, kw, STREETS[1] - STREETS[0] - 4.0 - 2.0 * kw, ky, 0.08, walk)
+	# otoparklar: asfalt zemin, beyaz park yeri çizgileri
+	for l in LOTS:
+		var lr: Rect2 = l
+		box.call(lr.get_center().x, lr.get_center().y, lr.size.x, lr.size.y, road_top + 0.003, 0.05, asphalt)
+		var nb := int(lr.size.x / BAY_W)
+		for row in [0, 1]:
+			var z0 := lr.position.y if row == 0 else lr.end.y - BAY_L
+			for k in nb + 1:
+				box.call(lr.position.x + k * BAY_W, z0 + BAY_L / 2.0, 0.1, BAY_L, road_top + 0.012, 0.01, paint)
+			box.call(lr.get_center().x, z0 + (BAY_L if row == 0 else 0.0), lr.size.x, 0.1, road_top + 0.012, 0.01, paint)
+		# büyük P levhası (yola bakar)
+		var px := lr.position.x + 0.4 if lr.position.x > 0.0 else lr.end.x - 0.4
+		var pz := lr.position.y - 0.5
+		box.call(px, pz, 0.12, 0.12, 2.4, 2.4, _vm("pole", Color("#34373d"), 0.4))
+		box.call(px, pz, 0.9, 0.12, 2.9, 0.9, _vm("psign", Color("#2f6fd0")))
+		var lb := Label3D.new()
+		lb.text = "P"
+		lb.font_size = 96
+		lb.pixel_size = 0.006
+		lb.outline_size = 0
+		lb.position = Vector3(px, 2.45, pz - 0.08)
+		lb.double_sided = true
+		root.add_child(lb)
+
+## Bir otoparkın i. park yeri (sıra 0: güney, 1: kuzey) — merkez.
+static func bay(lot: int, row: int, i: int) -> Vector2:
+	var lr: Rect2 = LOTS[lot]
+	var z := lr.position.y + BAY_L / 2.0 if row == 0 else lr.end.y - BAY_L / 2.0
+	return Vector2(lr.position.x + BAY_W * (i + 0.5), z)
+
+## Dönel kavşaklı tur yolu: göbeğe kuzeyden (+z) girip `exit_a` açısında çıkar, saat yönünde (yukarıdan bakınca) döner.
+static func _ring_arc(from_a: float, to_a: float) -> Array:
+	var pts := []
+	var a := from_a
+	while a > to_a + 0.01:
+		pts.append(PLAZA + Vector2(cos(a), sin(a)) * RING_C)
+		a -= deg_to_rad(15.0)
+	pts.append(PLAZA + Vector2(cos(to_a), sin(to_a)) * RING_C)
+	return pts
 
 ## Yönü (dx, dz) olan bakışın y-dönüşü.
 static func _yaw(dx: float, dz: float) -> float:
@@ -583,11 +744,7 @@ static func build(g: Node) -> Array:
 				# bahçe ağacı
 				var tf: String = TREES[r.randi() % TREES.size()]
 				_put(g, root, tf, hx + r.randf_range(-3.0, 3.0), z + row * 6.4, r.randf() * TAU, r.randf_range(0.75, 1.0), true, 140.0)
-	# köy girişi: ana yolun iki yanında yola bakan evler
-	for sx in [-1.0, 1.0]:
-		var file: String = HOUSES[hi % HOUSES.size()]
-		hi += 1
-		_put(g, root, file, sx * 9.0, 44.5, _yaw(-sx, 0), _fit(file, 8.6))
+	# köy girişi: ana yolun iki yanında otoparklar (_roads içinde çizilir)
 	# köy uçlarında ahırlar, silolar, barakalar
 	for sx in [-1.0, 1.0]:
 		_put(g, root, "farmbuilding_0%d" % (1 if sx < 0 else 2), sx * 49.0, 50.0, _yaw(-sx, 0), _fit("farmbuilding_01", 11.0))
@@ -604,9 +761,9 @@ static func build(g: Node) -> Array:
 		var bx := PLAZA.x + cos(a) * 3.6
 		var bz := PLAZA.y + sin(a) * 3.6
 		_put(g, root, "bench_a001", bx, bz, _yaw(PLAZA.x - bx, PLAZA.y - bz), 0.85, true, 110.0, false)
-	_put(g, root, "bonfire_a001", -6.0, 41.0, 0.0, 0.9, true, 110.0, false)
-	_put(g, root, "table_a001", 6.2, 52.0, 0.4, 0.85, true, 110.0, false)
-	_put(g, root, "chair_a001", 7.2, 52.5, 2.0, 0.85, false, 90.0, false)
+	_put(g, root, "bonfire_a001", -9.0, 50.5, 0.0, 0.9, true, 110.0, false)
+	_put(g, root, "table_a001", 11.5, 50.6, 0.4, 0.85, true, 110.0, false)
+	_put(g, root, "chair_a001", 12.5, 51.1, 2.0, 0.85, false, 90.0, false)
 	_put(g, root, "rocks_01", -52.0, 92.0, 0.6, 1.0)
 	_put(g, root, "rocks_04", 53.0, 42.0, 2.1, 0.9)
 	# sokak lambaları: ana yol ve caddeler
@@ -625,32 +782,40 @@ static func build(g: Node) -> Array:
 	var zl := 40.0
 	while zl < 94.0:
 		var sx := -1.0 if int(zl) % 24 < 12 else 1.0
-		if absf(zl - PLAZA.y) > PLAZA_R + 1.0:
+		if absf(zl - PLAZA.y) > RING_OUT + 1.0 and absf(zl - STREETS[1]) > 3.5:
 			lamp.call(sx * 2.9, zl, -sx, 0.0, "lamp_1")
 		zl += 12.0
 	for sz in STREETS:
 		for lx in [-34.0, -24.5, -11.0, 11.0, 24.5, 34.0]:
 			var sgn := 1.0 if int(lx) % 2 == 0 else -1.0
 			lamp.call(lx, sz + sgn * 2.8, 0.0, -sgn, "lamp_3")
-	for sx in [-1.0, 1.0]:   # meydanın kısa direkli lambaları
-		lamp.call(PLAZA.x + sx * (PLAZA_R + 0.9), PLAZA.y + 3.0, -sx, 0.0, "lamp_4")
+	for sx in [-1.0, 1.0]:   # göbeğin kısa direkli lambaları
+		lamp.call(PLAZA.x + sx * 4.7, PLAZA.y, sx, 0.0, "lamp_4")
 	# park etmiş araçlar, durakta otobüs, ahırların önünde kamyonlar
-	_park(g, root, "car_1", PAINTS[0], 3.4, 67.0, false)
-	_park(g, root, "car_3", PAINTS[1], -3.4, 72.0, false, true)
-	_park(g, root, "car_5", PAINTS[4], 3.4, 84.0, false)
-	_park(g, root, "car_2", PAINTS[2], 24.5, 53.2, true)
-	_park(g, root, "car_6", PAINTS[5], -11.5, 82.9, true, true)
-	_park(g, root, "car_4", PAINTS[3], -24.5, 53.1, true)
-	_park(g, root, "policecar", "#22397a", -3.4, 49.5, false, true)
-	_park(g, root, "bus", "#f2b632", -3.6, 42.0, false, true)
+	# otoparklardaki araçlar (bazı yerler boş)
+	var lot_cars := [["car_1", PAINTS[0]], ["car_3", PAINTS[1]], ["car_5", PAINTS[4]], ["car_2", PAINTS[2]], ["policecar", "#22397a"],
+		["car_6", PAINTS[5]], ["car_4", PAINTS[3]], ["car_1", PAINTS[7]], ["car_3", PAINTS[6]]]
+	var ci := 0
+	for lot in LOTS.size():
+		for row in [0, 1]:
+			for k in int((LOTS[lot] as Rect2).size.x / BAY_W):
+				if r.randf() < 0.45 or ci >= lot_cars.size():
+					continue
+				var bp := bay(lot, row, k)
+				_park(g, root, lot_cars[ci][0], lot_cars[ci][1], bp.x, bp.y, false, row == 1)
+				ci += 1
+	_park(g, root, "bus", "#f2b632", -19.0, 41.0, true)   # durakta otobüs, otoparkın yanında
 	_park(g, root, "truck_1", "#c0392b", -42.0, 46.0, false)
 	_park(g, root, "truck_2", "#2e7d5b", 42.0, 89.0, false, true)
-	# tur atan arabalar: doğu ve batı halkaları
+	# tur atan arabalar: iki tek yönlü halka; ikisi de ana yoldan güneye inip dönel kavşaktan geçer
 	movers.clear()
-	var east := [Vector2(0, 62.0), Vector2(0, STREETS[1]), Vector2(SIDE_X, STREETS[1]), Vector2(SIDE_X, STREETS[0]), Vector2(PLAZA_R + 0.6, STREETS[0]), Vector2(3.9, 60.0)]
-	var west := []
-	for p in east:
-		west.push_front(Vector2(-p.x, p.y))
+	var top := PI / 2.0   # göbeğin kuzeyi (+z)
+	var east := [Vector2(0, STREETS[1])]
+	east.append_array(_ring_arc(top, 0.0))
+	east.append_array([Vector2(SIDE_X, STREETS[0]), Vector2(SIDE_X, STREETS[1])])
+	var west := [Vector2(0, STREETS[1])]
+	west.append_array(_ring_arc(top, -PI))
+	west.append_array([Vector2(-SIDE_X, STREETS[0]), Vector2(-SIDE_X, STREETS[1])])
 	_drive(root, "car_4", PAINTS[6], east, 0.0, 4.2)
 	_drive(root, "car_2", PAINTS[1], east, 0.5, 3.8)
 	_drive(root, "car_6", PAINTS[0], west, 0.2, 4.0)

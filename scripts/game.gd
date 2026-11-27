@@ -604,6 +604,8 @@ var menu_box: VBoxContainer
 var load_layer: CanvasLayer
 var load_bar: ProgressBar
 var del_armed := {}
+## Yeni kariyer sayfasında yazılan ad (karakter seçerken kaybolmasın).
+var new_nm := "Çiftliğim"
 var shot_t := 0.0
 
 # ============================================================ yardımcılar
@@ -726,7 +728,7 @@ static func _pc_center(pc: Vector2i) -> Vector3:
 const CHANNEL := "Erken Erişim"
 var update_info := {}
 ## Ayarlar (profile.json "gfx"): kalite 0..3, tam ekran, vsync, çözünürlük %, FPS sınırı, ses %, gece parlaklığı %.
-const GFX_DEFAULT := {"gv": 2, "q": 2, "fs": true, "vs": true, "scale": 100, "fps": 0, "vol": 80, "sfx": 100, "night": 50, "showfps": false, "ui": 90, "mus": 55, "amb": 70, "shake": true}
+const GFX_DEFAULT := {"gv": 2, "q": 2, "fs": true, "vs": true, "scale": 100, "fps": 0, "vol": 80, "sfx": 100, "night": 50, "showfps": false, "ui": 90, "mus": 55, "amb": 70, "shake": true, "look": "man"}
 const QUALITY_NAMES := ["Düşük", "Orta", "Yüksek", "Ultra"]
 var gfx := GFX_DEFAULT.duplicate()
 var grass_frac := 1.0
@@ -843,7 +845,7 @@ func height_at(x: float, z: float) -> float:
 	h = lerpf(-0.7, h, smoothstep(POND_R - 0.6, POND_R + 2.5, pd))
 	var b := smoothstep(86.0, World.CORE, d)
 	if b > 0.0:
-		h = lerpf(h, World.h(x, z), b * (1.0 - Town.mask(x, z)))
+		h = lerpf(h, World.h(x, z), b)   # World.h köy düzlüğünü kendisi içerir
 	return h
 
 # ============================================================ başlat
@@ -890,6 +892,7 @@ func _ready() -> void:
 	_build_menu()
 	_build_settings()
 	_load_gfx()
+	_swap_farmer()
 	_check_update()
 	_load_step(0.8)
 	await get_tree().process_frame
@@ -992,7 +995,7 @@ func _ready() -> void:
 		_show_menu()
 	if net_role == "guest":
 		_net_signals()
-		rpc_id(1, "net_ready", player_name)
+		rpc_id(1, "net_ready", _net_tag(player_name, str(gfx.get("look", ""))))
 		if args.has("--nettest"):
 			_net_selftest()
 		_toast("🤝 %s çiftliğine katıldın! Ambar ve arazi alımı çiftlik sahibinde." % farm_name, "level")
@@ -1402,7 +1405,7 @@ func _build_outskirts() -> void:
 				_prop(root, fl, r.randf_range(1.0, 1.5), x, z, r.randf() * TAU, false)
 	# çalı, kaya, kütük, mantar, uzun ot
 	var sets := [[WILD_BUSH, 150, 1.2, 2.0, true], [WILD_ROCK, 80, 1.0, 1.8, true], [WILD_WOOD, 36, 1.1, 1.5, true],
-		[WILD_MUSH, 50, 1.0, 1.4, false], [WILD_GRASS, 420, 1.1, 1.8, false], [BIG_TREES, 190, 1.6, 2.6, true]]
+		[WILD_MUSH, 50, 1.0, 1.4, false], [WILD_GRASS, 200, 1.0, 1.5, false], [BIG_TREES, 190, 1.6, 2.6, true]]
 	for st in sets:
 		for i in st[1]:
 			var x := r.randf_range(-92, 92)
@@ -1490,6 +1493,9 @@ func _refresh_parcels() -> void:
 	_build_wild_ring()
 
 func _build_grass() -> void:
+	grass_noise = FastNoiseLite.new()
+	grass_noise.seed = 11
+	grass_noise.frequency = 0.09
 	var sh := Shader.new()
 	sh.code = GRASS_SHADER
 	grass_mat = ShaderMaterial.new()
@@ -1520,6 +1526,8 @@ func _build_grass() -> void:
 		for pz in 5:
 			grass_dirty[Vector2i(px, pz)] = true
 
+var grass_noise: FastNoiseLite
+
 func _grass_mark(x: int, z: int) -> void:
 	if grass_mesh != null and x >= WORLD_MIN and x <= WORLD_MAX and z >= WORLD_MIN and z <= WORLD_MAX:
 		grass_dirty[_parcel_of(x, z)] = true
@@ -1538,10 +1546,13 @@ func _build_grass_chunk(pc: Vector2i) -> void:
 			var wild := not in_farm(x, z)
 			var t = tiles.get(key(x, z))
 			var skip: bool = t != null and not (t.kind == "decor" and (t.type == "fence" or t.type == "gate" or t.type == "lantern"))
-			for k in 3:
+			# boş arazide çim yalnızca öbek öbek; aralarda kısa çimen (zemin) kalır
+			var patch := grass_noise.get_noise_2d(x, z) if wild else 1.0
+			var cnt := 2 if not wild else (2 if patch > 0.25 else (1 if patch > 0.05 else 0))
+			for k in cnt:
 				var ox := rng.randf_range(0.12, 0.88)
 				var oz := rng.randf_range(0.12, 0.88)
-				var sc := rng.randf_range(0.75, 1.25) * (1.35 if wild else 1.0)
+				var sc := rng.randf_range(0.7, 1.1) * (1.1 if wild and patch > 0.25 else 0.9)
 				var yaw := rng.randf() * TAU
 				var shade := rng.randf_range(0.85, 1.1)
 				if not skip:
@@ -3310,6 +3321,7 @@ func _update_farmer(dt: float) -> void:
 	fparts.arm_l.rotation.x = lerpf(fparts.arm_l.rotation.x, -sw * 0.8, 0.3)
 	fparts.body.position.y = absf(sin(walk_phase)) * 0.05 if moving else 0.0
 	_animate_action(dt, sw)
+	Models.drive(farmer)
 
 ## İş başlarken çağrılır: tür, süre ve hedef konum.
 func _act_anim(kind: String, pos: Vector3) -> void:
@@ -5302,17 +5314,17 @@ func net_ready(nm: String) -> void:
 	if net_role != "host":
 		return
 	var id := multiplayer.get_remote_sender_id()
-	_net_spawn(id, nm.left(14))
-	_toast("👋 %s çiftliğine geldi!" % nm.left(14), "level")
+	_net_spawn(id, nm)
+	_toast("👋 %s çiftliğine geldi!" % nm.get_slice("|", 0).left(14), "level")
 	_ensure_coop()
 	_net_roster()
 	_render_net_dlg()
 	net_sync_t = 99.0
 
 func _net_roster() -> void:
-	var r := {1: player_name}
+	var r := {1: _net_tag(player_name, str(gfx.get("look", "")))}
 	for id in net_players:
-		r[id] = net_players[id].name
+		r[id] = _net_tag(net_players[id].name, net_players[id].get("look", ""))
 	rpc("net_roster", r)
 
 @rpc("authority", "reliable")
@@ -5325,10 +5337,18 @@ func net_roster(r: Dictionary) -> void:
 		if not r.has(id):
 			_net_drop(id)
 
-func _net_spawn(id: int, nm: String) -> void:
+## Oyuncu adı ve görünümü tek dizgede: "ad|görünüm".
+func _net_tag(nm: String, look: String) -> String:
+	return nm.replace("|", "").left(14) + "|" + look
+
+func _net_spawn(id: int, tag: String) -> void:
 	if net_players.has(id):
 		return
-	var m := Models.farmer(NET_COLORS[absi(id) % NET_COLORS.size()])
+	var nm := tag.get_slice("|", 0).left(14)
+	var look := tag.get_slice("|", 1) if tag.contains("|") else ""
+	if not Models.CHARS.has(look):
+		look = ""
+	var m := Models.farmer(NET_COLORS[absi(id) % NET_COLORS.size()], look)
 	add_child(m)
 	m.position = _home_pos() + Vector3(1.0, 0, 0)
 	var l := Label3D.new()
@@ -5343,7 +5363,7 @@ func _net_spawn(id: int, nm: String) -> void:
 	var pp: Dictionary = m.get_meta("parts")
 	for pr in ["hoe", "can", "bag", "basket"]:
 		pp[pr].visible = false
-	net_players[id] = {"name": nm, "node": m, "parts": pp, "tp": m.position, "ry": 0.0, "mv": false, "act_t": 0.0, "ph": 0.0}
+	net_players[id] = {"name": nm, "look": look, "node": m, "parts": pp, "tp": m.position, "ry": 0.0, "mv": false, "act_t": 0.0, "ph": 0.0}
 
 func _net_drop(id) -> void:
 	if net_players.has(id):
@@ -5655,6 +5675,7 @@ func _net_tick(dt: float) -> void:
 			pp.arm_r.rotation.x = -1.6 * sin((1.0 - p.act_t / 0.5) * PI)
 		else:
 			pp.arm_r.rotation.x = lerpf(pp.arm_r.rotation.x, sw * 0.8, 0.3)
+		Models.drive(m)
 
 func _show_net_dlg() -> void:
 	if net_dlg == null:
@@ -5940,6 +5961,9 @@ func _load_gfx() -> void:
 			if int(d.get("gv", 0)) < 2:   # 0.3.0: tam ekran varsayılan oldu
 				gfx.fs = true
 				gfx.gv = 2
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--look="):   # geliştirici: --look=man|woman|classic
+			gfx.look = a.trim_prefix("--look=").replace("classic", "")
 	_apply_gfx(not _is_dev_run())
 
 func _save_gfx() -> void:
@@ -6148,8 +6172,33 @@ func _open_settings() -> void:
 	set_layer.visible = true
 	_sfx("click")
 
+const LOOKS := [["👦 Erkek", "man"], ["👧 Kız", "woman"], ["🎩 Klasik", ""]]
+
+## Çiftçi modelini seçili görünüme göre yeniden kurar (konum, yön korunur).
+func _swap_farmer() -> void:
+	var look := str(gfx.get("look", "man"))
+	if not Models.has_look(look):
+		look = ""
+	if farmer != null and str(farmer.get_meta("look", "")) == look:
+		return
+	var pos := Vector3(0.5, 0, 9)
+	var ry := 0.0
+	if farmer != null:
+		pos = farmer.position
+		ry = farmer.rotation.y
+		farmer.queue_free()
+	farmer = Models.farmer("#e8574a", look)
+	farmer.set_meta("look", look)
+	fparts = farmer.get_meta("parts")
+	farmer.position = pos
+	farmer.rotation.y = ry
+	add_child(farmer)
+	Models.drive(farmer)
+
 func _set_gfx(k: String, v) -> void:
 	gfx[k] = v
+	if k == "look":
+		_swap_farmer()
 	_apply_gfx(k == "fs" or k == "vs")
 	_save_gfx()
 	_render_settings()
@@ -6235,6 +6284,9 @@ func _render_settings() -> void:
 	_set_row("Çözünürlük", _slider("scale", 50, 100))
 	_set_row("Gece parlaklığı", _slider("night", 0, 100))
 	_set_row("Ekran sallantısı", _seg("shake", [["Açık", true], ["Kapalı", false]]))
+	if Models.has_look("man"):
+		_set_head("🧑‍🌾 Karakter")
+		_set_row("Çiftçin", _seg("look", LOOKS))
 	_set_head("🔊 Ses")
 	_set_row("Ana ses", _slider("vol", 0, 100))
 	_set_row("Müzik", _slider("mus", 0, 100))
@@ -6399,12 +6451,29 @@ func _render_menu(page: String, arg := 0) -> void:
 			h.text = "🌱 Yeni Kariyer (%d. yuva)\nÇiftliğinin adı:" % arg
 			menu_box.add_child(h)
 			var le := LineEdit.new()
-			le.text = "Çiftliğim"
+			le.text = new_nm
 			le.max_length = 18
 			le.custom_minimum_size = Vector2(0, 40)
 			le.add_theme_font_size_override("font_size", 18)
+			le.text_changed.connect(func(t): new_nm = t)
 			menu_box.add_child(le)
 			var nn := arg
+			if Models.has_look("man"):
+				var lh := Label.new()
+				lh.text = "Çiftçin:"
+				menu_box.add_child(lh)
+				var lr := HBoxContainer.new()
+				lr.add_theme_constant_override("separation", 6)
+				for o in LOOKS:
+					var v: String = o[1]
+					var b := _small_btn(" %s " % o[0], func():
+						gfx.look = v
+						_save_gfx()
+						_swap_farmer()
+						_render_menu("new", nn), true, str(gfx.get("look", "man")) == v)
+					b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+					lr.add_child(b)
+				menu_box.add_child(lr)
 			menu_box.add_child(_menu_btn("Başla", func(): _new_career(nn, le.text), true))
 			menu_box.add_child(_menu_btn("←  Geri", func(): _render_menu("main")))
 
@@ -9341,6 +9410,7 @@ func _selftest_build(fails: Array) -> void:
 	_selftest_mill(fails)
 	_selftest_bake(fails)
 	_selftest_town(fails)
+	_selftest_chars(fails)
 	_selftest_world(fails)
 	_selftest_migrate(fails)
 	_selftest_events(fails)
@@ -9554,6 +9624,30 @@ func _selftest_world(fails: Array) -> void:
 		trees += World.tiles[k].block.size()
 	if trees < 50: fails.append("dünyada ağaç/kaya az (%d)" % trees)
 
+## Cutie karakterleri: iskelet sürücü düğümleri izliyor mu; ağ etiketi "ad|görünüm" çözülüyor mu.
+func _selftest_chars(fails: Array) -> void:
+	_net_spawn(9977, "Ali|woman")
+	if not net_players.has(9977) or net_players[9977].name != "Ali" or net_players[9977].look != "woman": fails.append("ağ görünüm etiketi")
+	_net_drop(9977)
+	_net_spawn(9978, "Veli")
+	if not net_players.has(9978) or net_players[9978].look != "": fails.append("eski istemci etiketi")
+	_net_drop(9978)
+	if _net_tag("A|b", "man") != "Ab|man": fails.append("ağ etiketi kaçış")
+	if not Models.has_look("man"):
+		return
+	var g := Models.farmer("#e8574a", "man")
+	add_child(g)
+	var pp: Dictionary = g.get_meta("parts")
+	var sk: Skeleton3D = g.get_meta("rig").sk
+	var hand := sk.find_bone("RightHand")
+	Models.drive(g)
+	var h0 := (sk.get_bone_global_pose(hand)).origin
+	(pp.arm_l as Node3D).rotation.x = -1.5   # kol öne kalkar
+	Models.drive(g)
+	var h1 := (sk.get_bone_global_pose(hand)).origin
+	if h1.y <= h0.y + 0.03 or h1.z <= h0.z + 0.03: fails.append("karakter kolu sürücüyü izlemiyor")
+	g.queue_free()
+
 func _selftest_town(fails: Array) -> void:
 	var keep_res := res.duplicate()
 	var keep_v := vill.duplicate(true)
@@ -9594,6 +9688,20 @@ func _selftest_town(fails: Array) -> void:
 			var s0: float = mv.s
 			Town.tick(0.5, [])
 			if is_equal_approx(float(mv.s), s0): fails.append("köy arabası yürümüyor")
+			# 3 dakikalık trafik: hiçbir araç kilitlenip kalmamalı
+			var went := []
+			for m in Town.movers:
+				went.append(0.0)
+			for k in 1800:
+				var prev := []
+				for m in Town.movers:
+					prev.append(float(m.s))
+				Town.tick(0.1, [])
+				for i in Town.movers.size():
+					went[i] += fposmod(float(Town.movers[i].s) - float(prev[i]), float(Town.movers[i].len))
+			for i in Town.movers.size():
+				if went[i] < float(Town.movers[i].speed) * 180.0 * 0.5:
+					fails.append("köy trafiği kilitlendi (araç %d: %.0f m)" % [i, went[i]])
 	if Town.npc_available():
 		var tq0: Dictionary = town_q.duplicate(true)
 		var tc0 := coins

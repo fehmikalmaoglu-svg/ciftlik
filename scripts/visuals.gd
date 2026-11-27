@@ -187,6 +187,16 @@ const F2_BUILD := {"silo2": ["silo", "silo"], "watertower": ["watertower", "well
 static var _f2_mat: StandardMaterial3D = null
 static var _f2_mesh := {}
 
+static var _bark: StandardMaterial3D = null
+
+## Taç-only ağaçlara eklenen gövdenin malzemesi.
+static func bark_mat() -> StandardMaterial3D:
+	if _bark == null:
+		_bark = StandardMaterial3D.new()
+		_bark.albedo_color = Color("#7a5236")
+		_bark.roughness = 0.95
+	return _bark
+
 ## Farm Set 02 modellerinin ortak doku paleti.
 static func f2_mat() -> StandardMaterial3D:
 	if _f2_mat == null:

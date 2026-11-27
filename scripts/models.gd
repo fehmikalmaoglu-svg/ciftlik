@@ -254,7 +254,7 @@ static func _eyes(g: Node3D, x: float, y: float, z: float, c := "#212121") -> vo
 	add(g, box(0.035, 0.035, 0.02, c, x, y, z))
 
 # ------------------------------------------------------------ çiftçi
-static func farmer(shirt := "#e8574a") -> Node3D:
+static func farmer(shirt := "#e8574a", look := "") -> Node3D:
 	const SKIN := "#f3c69b"
 	var SHIRT := shirt
 	var SHIRT2 := Color(shirt).darkened(0.18).to_html(false)
@@ -367,7 +367,108 @@ static func farmer(shirt := "#e8574a") -> Node3D:
 	add(arms[0], basket)
 	g.set_meta("parts", {"leg_l": legs[0], "leg_r": legs[1], "arm_l": arms[0], "arm_r": arms[1], "body": body, "head": head,
 		"hoe": tool, "can": can, "spout": spout_tip, "bag": bag, "basket": basket})
+	if look != "":
+		_rig(g, look)
 	return g
+
+# ------------------------------------------------------------ iskeletli karakterler (Cutie erkek/kız)
+## Görünüm anahtarı → model. Dosya yoksa (açık repo) eski prosedürel çiftçi kalır.
+const CHARS := {"man": "res://assets/chars/MAN-CUTIE.fbx", "woman": "res://assets/chars/WOMAN-CUTIE.fbx"}
+const CHAR_S := 2.9
+
+static func has_look(look: String) -> bool:
+	return CHARS.has(look) and Assets.exists(CHARS[look])
+
+## Prosedürel çiftçinin eklem düğümleri görünmez sürücü olur; iskelet her karede onlara bakar.
+## Böylece yürüme, çapa, sulama, hasat animasyonlarının hepsi aynen çalışır.
+static func _rig(g: Node3D, look: String) -> void:
+	if not has_look(look):
+		return
+	var w := Assets.inst(CHARS[look], CHAR_S)
+	var sk: Skeleton3D = w.find_child("GeneralSkeleton", true, false)
+	if sk == null:
+		w.free()
+		return
+	var pp: Dictionary = g.get_meta("parts")
+	for k in ["leg_l", "leg_r", "arm_l", "arm_r", "body"]:
+		for c in (pp[k] as Node3D).get_children():
+			if c is MeshInstance3D:
+				c.visible = false
+	(pp.head as Node3D).visible = false
+	g.add_child(w)
+	for m in w.find_children("*", "MeshInstance3D", true, false):
+		(m as MeshInstance3D).extra_cull_margin = 0.5   # iskelet hareketi AABB dışına taşmasın
+	var rest := func(b: String) -> Vector3:
+		return sk.get_bone_global_rest(sk.find_bone(b)).origin * CHAR_S
+	# eklem noktalarını modele taşı (sol eklem düğümü −x'te → modelin "Right" kemikleri)
+	var sides := {"leg_l": "Right", "leg_r": "Left", "arm_l": "Right", "arm_r": "Left"}
+	for k in sides:
+		var o: Vector3 = rest.call(sides[k] + ("UpperLeg" if k.begins_with("leg") else "UpperArm"))
+		(pp[k] as Node3D).position = Vector3(o.x, o.y, 0.0)
+	(pp.head as Node3D).position = rest.call("Head")
+	var arm_len: float = (rest.call("LeftHand") - rest.call("LeftUpperArm")).length() + 0.04
+	for k in ["hoe", "can", "bag", "basket"]:
+		var t: Node3D = pp[k]
+		t.position.y *= arm_len / 0.36
+	var leg := [(rest.call("LeftLowerLeg") - rest.call("LeftUpperLeg")).length(), (rest.call("LeftFoot") - rest.call("LeftLowerLeg")).length()]
+	g.set_meta("rig", {"sk": sk, "sides": sides, "hips": sk.find_bone("Hips"), "hip0": sk.get_bone_rest(sk.find_bone("Hips")).origin, "leg": leg})
+	drive(g)
+
+## Kemiği iskelet uzayında verilen yöne çevirir (çocuk kemiğe doğru olan ekseni `to` olur).
+static func _aim(sk: Skeleton3D, b: int, c: int, to: Vector3) -> void:
+	var gb := sk.get_bone_global_pose(b)
+	var from := sk.get_bone_global_pose(c).origin - gb.origin
+	if from.length_squared() < 1e-10 or to.length_squared() < 1e-10:
+		return
+	var ng := Basis(Quaternion(from.normalized(), to.normalized())) * gb.basis
+	var p := sk.get_bone_parent(b)
+	var pg := sk.get_bone_global_pose(p).basis if p >= 0 else Basis()
+	sk.set_bone_pose_rotation(b, (pg.inverse() * ng).get_rotation_quaternion())
+
+## Kemiği iskelet uzayında `r` kadar döndürür (dinlenme duruşunun üstüne).
+static func _turn(sk: Skeleton3D, b: int, r: Basis) -> void:
+	var p := sk.get_bone_parent(b)
+	var pg := sk.get_bone_global_pose(p).basis if p >= 0 else Basis()
+	var ng := r * sk.get_bone_global_rest(b).basis
+	sk.set_bone_pose_rotation(b, (pg.inverse() * ng).get_rotation_quaternion())
+
+## Sürücü düğümlerin duruşunu iskelete aktarır; her karede çağrılır.
+static func drive(g: Node3D) -> void:
+	var r = g.get_meta("rig", null)
+	if r == null:
+		return
+	var sk: Skeleton3D = r.sk
+	if not is_instance_valid(sk):
+		return
+	var pp: Dictionary = g.get_meta("parts")
+	var body: Node3D = pp.body
+	sk.reset_bone_poses()
+	var hips: int = r.hips
+	sk.set_bone_pose_position(hips, r.hip0 + body.position / CHAR_S)
+	var bb := body.transform.basis.orthonormalized()
+	_turn(sk, hips, bb)
+	# çömelme: kalça inince dizler kırılır, ayaklar yerde kalır
+	var drop := maxf(0.0, -body.position.y)
+	var lt: float = r.leg[0] + r.leg[1]
+	var crouch := acos(clampf((lt - drop) / lt, -1.0, 1.0)) if drop > 0.0 else 0.0
+	var sides: Dictionary = r.sides
+	for k in sides:
+		var side: String = sides[k]
+		var n: Node3D = pp[k]
+		var nb := n.transform.basis.orthonormalized()
+		if k.begins_with("arm"):
+			var ab := bb * nb
+			var d := ab * Vector3.DOWN
+			_aim(sk, sk.find_bone(side + "UpperArm"), sk.find_bone(side + "LowerArm"), d)
+			_aim(sk, sk.find_bone(side + "LowerArm"), sk.find_bone(side + "Hand"), Basis(ab.x.normalized(), -0.25) * d)
+		else:
+			var back := maxf(0.0, n.rotation.x) * 0.9
+			_aim(sk, sk.find_bone(side + "UpperLeg"), sk.find_bone(side + "LowerLeg"), nb * (Basis(Vector3.RIGHT, -crouch) * Vector3.DOWN))
+			_aim(sk, sk.find_bone(side + "LowerLeg"), sk.find_bone(side + "Foot"), nb * (Basis(Vector3.RIGHT, back + crouch) * Vector3.DOWN))
+	var head: Node3D = pp.head
+	var hb := head.transform.basis.orthonormalized()
+	if not hb.is_equal_approx(Basis()):
+		_turn(sk, sk.find_bone("Head"), bb * hb)
 
 # ------------------------------------------------------------ tarla ve ekinler
 static func soil(wet := false, seed := 0) -> Node3D:

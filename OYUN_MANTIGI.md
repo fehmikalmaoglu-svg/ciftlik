@@ -1,4 +1,4 @@
-# Çiftliğim 3D — Oyun Mantığı (v0.22.0)
+# Çiftliğim 3D — Oyun Mantığı (v0.23.0)
 
 > Bu belge oyunun **şu anki** halini anlatır. İstediğin yeri değiştir, sil, ekle.
 > Her bölümün altında **✏️ Notların** alanı var; fikirlerini oraya yazıp bana geri ver.
@@ -11,6 +11,7 @@
 Rahat (cozy) bir çiftlik oyunu. Oyuncu teyzesinden kalan mirasla (500 altın, çapa, 20 buğday tohumu) kasabaya gelir. Çiftliğini kuracağı yeri kendisi seçer, parsel parsel arazi alır, tarla sürer, ekin eker, hayvan besler. Ürünleri ambarda biriktirip satar, köylülerin isteklerini karşılar. Kazandığı parayla çiftliğini büyütür ve süsler.
 
 - **Tür:** 3D, yukarıdan bakışlı, tıkla-yürü çiftlik oyunu
+- **Karakter:** Erkek ya da kız çiftçi (yeni kariyerde ya da ⚙️ Ayarlar → Karakter'den seçilir). İstersen eski hasır şapkalı "klasik" çiftçi de var.
 - **Kayıt:** Birden çok kariyer (kayıt yuvası), otomatik kayıt
 - **Çevrimdışı büyüme:** Oyun kapalıyken ekinler en fazla 6 saat büyümeye devam eder
 - **Çok oyunculu:** Yerel ağ ya da internet üzerinden arkadaş çiftliğe katılır (ev sahibi yetkili)
@@ -274,7 +275,9 @@ Her mevsim bir yarışma olur:
 ## 11. Yeşilköy'ün canlılığı
 
 - **Köylüler:** 13 köylü yol kenarlarında yürür, 8'i ikişer ikişer sohbet eder. Çiftçi önlerine çıkarsa beklerler.
-- **Arabalar:** 4 araba caddelerde tur atar; önlerine çıkarsan dururlar. Ayrıca park etmiş arabalar, polis arabası, otobüs ve kamyonlar var.
+- **Yollar:** Asfalt caddeler (kesik orta çizgi), iki yanda kaldırım. Meydan bir dönel kavşaktır; ortasında elma ağacı ve banklar olan göbek var.
+- **Otoparklar:** Köy girişinde, pazar yerine yakın iki "P" otoparkı. Park etmiş arabalar, polis arabası burada; otobüs durakta, kamyonlar ahırların önünde.
+- **Arabalar:** 4 araba iki tek yönlü halkada tur atar: ana yoldan güneye iner, dönel kavşağı saat yönünde döner, doğu ya da batı caddesinden dolaşıp geri gelir. Hep sağ şerit, burunları gittikleri yöne bakar. Öndekini izler, kavşakta sırası gelene yol verir; önlerine çıkarsan dururlar.
 - **Gece:** Sokak lambaları ve araç farları yanar.
 
 ✏️ Notların:
@@ -287,6 +290,7 @@ Her mevsim bir yarışma olur:
 - Ev sahibi yetkilidir: misafirin her eylemi ev sahibine gider, sonuç herkese eşitlenir.
 - **Ortak olanlar:** Altın, ambar, görevler, köylü istekleri, Yeşilköy işleri, etkinlikler.
 - Oyuncular arasında sohbet ve emoji var.
+- Her oyuncu kendi seçtiği karakterle (erkek / kız / klasik) görünür.
 
 ✏️ Notların:
 

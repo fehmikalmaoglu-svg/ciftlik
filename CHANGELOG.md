@@ -1,5 +1,20 @@
 # Çiftliğim 3D — Sürüm Notları
 
+## v0.23.0 · Erken Erişim
+- 👦👧 **Erkek ve kız çiftçi**: yeni kariyer açarken ya da ⚙️ Ayarlar → Karakter'den çiftçini seç. Yürüme, çapalama, sulama, ekme, hasat ve yemleme animasyonlarının hepsi yeni karakterlerle çalışır. Eski hasır şapkalı çiftçi "Klasik" olarak duruyor. Arkadaşların da seni seçtiğin karakterle görür.
+- 🏘️ **Yeşilköy yeniden planlandı**:
+  - Asfalt caddeler, kesik orta çizgiler ve iki yanda kaldırımlar.
+  - Meydan artık dönel kavşak; ortadaki göbekte elma ağacı ve banklar var.
+  - Köy girişinde, pazar yerine yürüme mesafesinde iki "P" otoparkı. Araçlar artık yolun ortasına değil otoparka park ediyor.
+- 🚗 **Arabalar düzeldi**:
+  - Artık geri geri gitmiyorlar; burunları gittikleri yöne bakıyor.
+  - Karşıdan gelen arabayı görüp yolda kilitlenip kalmıyorlar.
+  - İki tek yönlü tur yolunda, sağ şeritte gidiyorlar. Dönel kavşaktan dönüyor, öndekini izliyor, kavşakta sırasını bekliyorlar.
+- 🌳 Kasabadaki gövdesiz, havada duran ağaçlara gövde eklendi.
+- 🌿 Eski çiftlik yerindeki sık otlar azaldı; artık her yerde değil, öbek öbek.
+- 🏔️ Köyün kuzey ucunda kasaba ile dış dünya arasındaki arazi dikişi (düz çizgi halinde sırt) giderildi.
+- 🌲 Uzaktaki ağaçlar elmas gibi sivri değil, yuvarlak taçlı. Gerçek ağaç modelleri artık daha uzağa kadar (70 m) çiziliyor.
+
 ## v0.22.0 · Erken Erişim
 - 🏡 **Serbest çiftlik**: hazır çiftlik kalktı. Teyzenin mirasıyla (500 🪙, çapa, 20 buğday tohumu) başlıyorsun. Çiftliğini nereye kuracağını sen seçiyorsun.
 - 🗺️ **Parsel parsel arazi**: beğendiğin yere yürü, 🗺️ Arazi (L) penceresinden bulunduğun 8×8 m'lik parseli al. Bulunduğun parsel sarı bir çerçeveyle gösterilir.
