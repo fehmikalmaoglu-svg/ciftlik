@@ -12,3 +12,6 @@ assets/farm02/
 
 # Araçlar ve sokak lambaları (CGTrader, ücretsiz): ham dosyalar repoya konmaz, yalnızca derlemeye girer.
 assets/vehicles/
+
+# Köylü modeli (Peasant Nolant, CGTrader Royalty Free): ham dosyalar repoya konmaz.
+assets/npc/

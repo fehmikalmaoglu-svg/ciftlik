@@ -9207,6 +9207,15 @@ func _selftest_town(fails: Array) -> void:
 			var s0: float = mv.s
 			Town.tick(0.5, [])
 			if is_equal_approx(float(mv.s), s0): fails.append("köy arabası yürümüyor")
+	if Town.npc_available():
+		if Town.walkers.size() < 10: fails.append("köylüler yok")
+		else:
+			var wk: Dictionary = Town.walkers[0]
+			wk.pause = 0.0
+			var p0: Vector3 = (wk.node as Node3D).position
+			for i in 10:
+				Town.tick(0.1, [])
+			if (wk.node as Node3D).position.distance_to(p0) < 0.05 and float(wk.pause) <= 0.0: fails.append("köylü yürümüyor")
 	vill = keep_v
 	_vill_ensure()
 	_vill_marks()

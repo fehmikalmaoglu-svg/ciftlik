@@ -1,5 +1,10 @@
 # Çiftliğim 3D — Sürüm Notları
 
+## v0.19.0 · Erken Erişim
+- 🧑‍🌾 **Yeşilköy artık kalabalık**: 13 köylü yol kenarlarında ve meydanın çevresinde yürüyor. Ara sıra durup soluklanıyorlar, yolun sonunda dönüp geri geliyorlar. Önlerine çıkarsan geçmeni bekliyorlar.
+- 💬 Meydanda ve evlerin önünde ikişer ikişer sohbet eden köylüler var.
+- 👕 Köylüler dört farklı kıyafetle geziyor (mavi, kahverengi, yeşil, sarı).
+
 ## v0.18.0 · Erken Erişim
 - 🏘️ **Yeşilköy**: pazarın güneyinde yaşayan bir köy kuruldu. Ana yol ve iki cadde boyunca 18 ev, köy uçlarında ahırlar, silolar ve barakalar var. Ortada büyük ağaçlı, banklı bir meydan duruyor. Ağaçlar, fıçılar, kasalar ve el arabaları da köye dağıtıldı.
 - 🚗 Caddelerde tur atan arabalar var; önlerine çıkarsan durup beklerler. Kenarda park etmiş arabalar, polis arabası, pazarın önünde otobüs, ahırların yanında kamyonlar duruyor.

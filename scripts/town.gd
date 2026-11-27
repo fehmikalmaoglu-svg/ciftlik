@@ -21,6 +21,10 @@ const FRONT := {"house": 0.0, "farmbuilding": 0.0, "farmstractures": 0.0}
 static var blocks := {}        # Vector2i → true: yürünemeyen kareler
 static var movers := []        # tur atan arabalar: {node, pts, len, s, speed, v}
 static var _vmats := {}
+static var walkers := []       # yürüyen köylüler: {node, ap, pts, len, loop, s, dir, speed, pause}
+static var _npc_scene: PackedScene = null
+static var _npc_mats := {}
+static var _npc_scale := 0.0
 static var _meshes := {}
 
 ## Köy alanına yakınlık: içeride 1, 8 m dışarıda 0.
@@ -178,8 +182,156 @@ static func _at(pts: Array, s: float) -> Array:
 		s -= l
 	return [pts[0], ((pts[1] as Vector2) - (pts[0] as Vector2)).normalized()]
 
+# ---------------------------------------------------------------- köylüler
+const NPC := "res://assets/npc/"
+const NPC_SKINS := ["Blue", "Brown", "Green", "Yellow"]
+const NPC_H := 1.45       # köylü boyu (m): çiftçiden biraz uzun
+const WALK := "metarig|Walk"
+const IDLE := "metarig|Idle"
+
+static func npc_available() -> bool:
+	return Assets.enabled and ResourceLoader.exists(NPC + "Peasant_Nolant.fbx")
+
+## Bir köylü: rastgele kıyafet, döngülü yürüme/bekleme animasyonu.
+static func _npc(root: Node3D, skin: int) -> Array:
+	if _npc_scene == null:
+		_npc_scene = load(NPC + "Peasant_Nolant.fbx")
+	var n: Node3D = _npc_scene.instantiate()
+	root.add_child(n)
+	var key: String = NPC_SKINS[skin % NPC_SKINS.size()]
+	if not _npc_mats.has(key):
+		var m := StandardMaterial3D.new()
+		m.albedo_texture = load(NPC + "Peasant_Nolant_%s.png" % key)
+		m.roughness = 0.9
+		_npc_mats[key] = m
+	var box := AABB()
+	var first := true
+	for mi in n.find_children("*", "MeshInstance3D", true, false):
+		(mi as MeshInstance3D).material_override = _npc_mats[key]
+		(mi as MeshInstance3D).visibility_range_end = 90.0
+		var b: AABB = (mi as MeshInstance3D).global_transform * (mi as MeshInstance3D).get_aabb()
+		box = b if first else box.merge(b)
+		first = false
+	if _npc_scale <= 0.0:
+		_npc_scale = NPC_H / maxf(box.size.y, 0.01)
+	n.scale = Vector3.ONE * _npc_scale
+	var aps := n.find_children("*", "AnimationPlayer", true, false)
+	var ap: AnimationPlayer = aps[0] if aps.size() > 0 else null
+	if ap != null:
+		for a in [WALK, IDLE]:
+			if ap.has_animation(a):
+				ap.get_animation(a).loop_mode = Animation.LOOP_LINEAR
+	return [n, ap]
+
+static func _at_open(pts: Array, s: float) -> Array:
+	for i in pts.size() - 1:
+		var a: Vector2 = pts[i]
+		var b: Vector2 = pts[i + 1]
+		var l := a.distance_to(b)
+		if s <= l or i == pts.size() - 2:
+			return [a.lerp(b, clampf(s / maxf(l, 0.001), 0.0, 1.0)), (b - a).normalized()]
+		s -= l
+	return [pts[0], Vector2.DOWN]
+
+static func _poly_len(pts: Array, loop: bool) -> float:
+	var t := 0.0
+	var n := pts.size()
+	for i in (n if loop else n - 1):
+		t += (pts[i] as Vector2).distance_to(pts[(i + 1) % n])
+	return t
+
+## Yürüyen köylü: açık yolda gidip gelir, kapalı yolda tur atar.
+static func _walker(root: Node3D, r: RandomNumberGenerator, pts: Array, loop: bool) -> void:
+	var made := _npc(root, r.randi())
+	var tot := _poly_len(pts, loop)
+	walkers.append({"node": made[0], "ap": made[1], "pts": pts, "len": tot, "loop": loop, "s": r.randf() * tot,
+		"dir": 1.0 if r.randf() < 0.5 else -1.0, "speed": r.randf_range(0.85, 1.25), "pause": r.randf_range(0.0, 2.0), "rest": false})
+
+## Duran köylü: meydanda ya da evlerin önünde sohbet eder.
+static func _stander(g: Node, root: Node3D, r: RandomNumberGenerator, x: float, z: float, face: Vector2) -> void:
+	var made := _npc(root, r.randi())
+	var n: Node3D = made[0]
+	n.position = Vector3(x, g.height_at(x, z), z)
+	n.rotation.y = atan2(face.x - x, face.y - z)
+	blocks[Vector2i(floori(x), floori(z))] = true
+	if made[1] != null:
+		(made[1] as AnimationPlayer).play(IDLE)
+		(made[1] as AnimationPlayer).seek(r.randf() * 2.5, true)
+
+static func _people(g: Node, root: Node3D) -> void:
+	walkers.clear()
+	if not npc_available():
+		return
+	var r := RandomNumberGenerator.new()
+	r.seed = 77
+	var e := 2.0   # yol kenarı (arabaların şeridinden uzak)
+	var routes := [
+		[[Vector2(e, 38), Vector2(e, PLAZA.y - PLAZA_R - 0.6)], 1],
+		[[Vector2(-e, 38), Vector2(-e, PLAZA.y - PLAZA_R - 0.6)], 1],
+		[[Vector2(e, PLAZA.y + PLAZA_R + 0.6), Vector2(e, 92)], 2],
+		[[Vector2(-e, PLAZA.y + PLAZA_R + 0.6), Vector2(-e, 92)], 2],
+		[[Vector2(PLAZA_R + 0.8, STREETS[0] - e), Vector2(37, STREETS[0] - e)], 1],
+		[[Vector2(-PLAZA_R - 0.8, STREETS[0] + e), Vector2(-37, STREETS[0] + e)], 1],
+		[[Vector2(PLAZA_R + 0.8, STREETS[0] + e), Vector2(30, STREETS[0] + e)], 1],
+		[[Vector2(-4, STREETS[1] - e), Vector2(-37, STREETS[1] - e)], 1],
+		[[Vector2(4, STREETS[1] + e), Vector2(37, STREETS[1] + e)], 1],
+	]
+	for rt in routes:
+		for k in rt[1]:
+			_walker(root, r, rt[0], false)
+	# meydanın çevresinde tur (banklarla plaza kenarı arasından)
+	var ring := []
+	for i in 16:
+		var a := i * TAU / 16.0
+		ring.append(PLAZA + Vector2(cos(a), sin(a)) * 4.75)
+	for k in 2:
+		_walker(root, r, ring, true)
+	# sohbet edenler: meydanda ve evlerin önünde ikişer
+	var spots := [[Vector2(-12.0, 51.0), Vector2(-11.0, 51.0)], [Vector2(13.5, 61.0), Vector2(13.5, 62.1)], [Vector2(-25.0, 76.5), Vector2(-24.0, 76.0)], [Vector2(9.0, 49.2), Vector2(10.0, 49.6)]]
+	for sp in spots:
+		var a: Vector2 = sp[0]
+		var b: Vector2 = sp[1]
+		_stander(g, root, r, a.x, a.y, b)
+		_stander(g, root, r, b.x, b.y, a)
+
+## Köylüleri yürütür: ara sıra durup soluklanır, çiftçi önündeyse bekler.
+static func _tick_people(dt: float, who: Array) -> void:
+	for w in walkers:
+		var node: Node3D = w.node
+		if not is_instance_valid(node):
+			continue
+		var ap: AnimationPlayer = w.ap
+		var pos: Array = _at(w.pts, w.s) if w.loop else _at_open(w.pts, w.s)
+		var d: Vector2 = pos[1] * float(w.dir)
+		var blocked := false
+		for p in who:
+			if Vector2(p.x, p.z).distance_to(pos[0] + d * 1.0) < 0.9:
+				blocked = true
+		if w.pause > 0.0 or blocked:
+			w.pause = maxf(0.0, w.pause - dt)
+			if ap != null and ap.current_animation != IDLE:
+				ap.play(IDLE, 0.25)
+		else:
+			if ap != null and ap.current_animation != WALK:
+				ap.play(WALK, 0.25)
+				ap.speed_scale = w.speed / 1.05
+			w.s += float(w.dir) * float(w.speed) * dt
+			if w.loop:
+				w.s = fposmod(w.s, w.len)
+			elif w.s >= w.len or w.s <= 0.0:   # yolun sonu: dönüp bir süre bekle
+				w.s = clampf(w.s, 0.0, w.len)
+				w.dir = -float(w.dir)
+				w.pause = randf_range(2.0, 6.0)
+			elif randf() < dt * 0.03:
+				w.pause = randf_range(2.0, 5.0)
+		pos = _at(w.pts, w.s) if w.loop else _at_open(w.pts, w.s)
+		d = pos[1] * float(w.dir)
+		node.position = Vector3(pos[0].x, 0.0, pos[0].y)
+		node.rotation.y = lerp_angle(node.rotation.y, atan2(d.x, d.y), minf(1.0, dt * 6.0))
+
 ## Arabaları sürer; önünde çiftçi ya da başka araba varsa yavaşlayıp durur.
 static func tick(dt: float, who: Array) -> void:
+	_tick_people(dt, who)
 	for m in movers:
 		var node: MeshInstance3D = m.node
 		if not is_instance_valid(node):
@@ -339,6 +491,7 @@ static func build(g: Node) -> Array:
 	_drive(root, "car_2", PAINTS[1], east, 0.5, 3.8)
 	_drive(root, "car_6", PAINTS[0], west, 0.2, 4.0)
 	_drive(root, "car_1", PAINTS[3], west, 0.7, 4.4)
+	_people(g, root)
 	# yol kenarı ağaçları ve köy çevresi
 	for i in 70:
 		var x := r.randf_range(RECT.position.x + 1.0, RECT.end.x - 1.0)
