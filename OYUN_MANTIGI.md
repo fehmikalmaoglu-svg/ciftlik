@@ -1,4 +1,4 @@
-# Çiftliğim 3D — Oyun Mantığı (v0.23.0)
+# Çiftliğim 3D — Oyun Mantığı (v0.24.0)
 
 > Bu belge oyunun **şu anki** halini anlatır. İstediğin yeri değiştir, sil, ekle.
 > Her bölümün altında **✏️ Notların** alanı var; fikirlerini oraya yazıp bana geri ver.
@@ -12,7 +12,7 @@ Rahat (cozy) bir çiftlik oyunu. Oyuncu teyzesinden kalan mirasla (500 altın, �
 
 - **Tür:** 3D, yukarıdan bakışlı, tıkla-yürü çiftlik oyunu
 - **Karakter:** Erkek ya da kız çiftçi (yeni kariyerde ya da ⚙️ Ayarlar → Karakter'den seçilir). İstersen eski hasır şapkalı "klasik" çiftçi de var.
-- **Kayıt:** Birden çok kariyer (kayıt yuvası), otomatik kayıt
+- **Kayıt:** Birden çok kariyer (kayıt yuvası), otomatik kayıt. Esc (açık pencere yokken) ana menüyü açar.
 - **Çevrimdışı büyüme:** Oyun kapalıyken ekinler en fazla 6 saat büyümeye devam eder
 - **Çok oyunculu:** Yerel ağ ya da internet üzerinden arkadaş çiftliğe katılır (ev sahibi yetkili)
 
@@ -190,7 +190,7 @@ Hasat edilen her şey **ambara** kaynak olarak girer.
   - Fiyat: (100 + 60·n + 8·n²) × bölge çarpanı (n = sahip olduğun parsel sayısı). İlk parsel 100–150 altın.
   - Bölge çarpanı: eski çiftlik yeri ×1.5, çayır ×1.0, orman ×0.9, göl vadisi ×1.15, ova ×0.85, yayla ×0.75, karlı kuzey ×0.7.
   - Kasaba, pazar ve köy toprağı satılmaz. Suyu olan ya da çok engebeli (3 m'den yüksek, 2.5 m'den fazla eğimli) parsel satılmaz.
-  - Alınan parsel düzleşir; içindeki ağaç, kaya ve otlar kalkar. Parseller bitişik olmak zorunda değil; başka biyomda ikinci bir çiftlik kurulabilir.
+  - Alınan parsel kendi arazisinin ortalama yüksekliğinde düzleşir (çukura inmez); içindeki ağaç, kaya ve otlar kalkar. Parseller bitişik olmak zorunda değil; başka biyomda ikinci bir çiftlik kurulabilir.
 - **Eski kariyerler (v0.21 ve öncesi):** İlk açılışta hazır çiftlik kalkar. Kaldırılabilen her şey (yapılar, süsler, ağaçlar, bahçe, kümes) çantaya girer. Hayvanlar ve ekili tohumlar tam fiyatıyla altın olarak döner. Altın, seviye, ambar ve görevler kalır. Kayıt dosyası önce ".v021" adıyla yedeklenir.
 
 - **Çiftlik geliştirmeleri** (her biri 3 kademe; altın + madalya ile alınır):

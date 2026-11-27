@@ -694,6 +694,9 @@ func _land_changed(pc = null) -> void:
 	World.set_land(land)
 	if pc != null and not _pc_home(pc):
 		World.refresh(_parcel_rect(pc))
+	for e in entities:   # komşu parsel seviyeleri harmanlanınca kenardakiler zemine otursun
+		if e.has("group") and is_instance_valid(e.group) and (move_src == null or move_src != Vector2i(e.x, e.z)):
+			e.group.position.y = height_at(e.group.position.x, e.group.position.z)
 	_on_farm_resized()
 
 func _land_sig() -> String:
@@ -847,6 +850,11 @@ func height_at(x: float, z: float) -> float:
 	if b > 0.0:
 		h = lerpf(h, World.h(x, z), b)   # World.h köy düzlüğünü kendisi içerir
 	return h
+
+## Dünya karolarını yükler; gerçek ağaç modellerinin uzaklığı kamera yakınlaştırmasına ve kaliteye göre.
+func _world_tick() -> void:
+	World.set_near(clampf(cam_dist + [30.0, 42.0, 52.0, 58.0][clampi(int(gfx.q), 0, 3)], 50.0, 115.0))
+	World.update(cam_target, shot_path != "")
 
 # ============================================================ başlat
 func _ready() -> void:
@@ -1465,19 +1473,20 @@ func _refresh_parcels() -> void:
 		var r := _parcel_rect(pc)
 		var x0 := r.position.x
 		var z0 := r.position.y
+		var ly := height_at(r.get_center().x, r.get_center().y)   # parselin düz zemin seviyesi
 		for i in PARCEL + 1:
 			if lines == 0:
 				im.surface_begin(Mesh.PRIMITIVE_LINES)
 			lines += 1
-			im.surface_add_vertex(Vector3(x0 + i, 0, z0))
-			im.surface_add_vertex(Vector3(x0 + i, 0, z0 + PARCEL))
-			im.surface_add_vertex(Vector3(x0, 0, z0 + i))
-			im.surface_add_vertex(Vector3(x0 + PARCEL, 0, z0 + i))
+			im.surface_add_vertex(Vector3(x0 + i, ly, z0))
+			im.surface_add_vertex(Vector3(x0 + i, ly, z0 + PARCEL))
+			im.surface_add_vertex(Vector3(x0, ly, z0 + i))
+			im.surface_add_vertex(Vector3(x0 + PARCEL, ly, z0 + i))
 		for side in [[Vector2i(0, -1), Vector3(4, 0, 0)], [Vector2i(0, 1), Vector3(4, 0, 8)], [Vector2i(-1, 0), Vector3(0, 0, 4)], [Vector2i(1, 0), Vector3(8, 0, 4)]]:
 			if land.has(pc + side[0]):
 				continue
 			var horiz: bool = side[0].y != 0
-			var p: Vector3 = Vector3(x0, 0.025, z0) + side[1]
+			var p: Vector3 = Vector3(x0, 0.025 + ly, z0) + side[1]
 			frame_root.add_child(Models.box(8.1 if horiz else 0.1, 0.04, 0.1 if horiz else 8.1, "#f6e7bd", p.x, p.y, p.z))
 		for cn in [Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 1), Vector2i(1, 1)]:
 			var nb := 0
@@ -1485,7 +1494,7 @@ func _refresh_parcels() -> void:
 				if land.has(pc + d):
 					nb += 1
 			if nb < 4:
-				frame_root.add_child(Models.box(0.12, 0.55, 0.12, "#a0703f", x0 + cn.x * PARCEL, 0.27, z0 + cn.y * PARCEL))
+				frame_root.add_child(Models.box(0.12, 0.55, 0.12, "#a0703f", x0 + cn.x * PARCEL, 0.27 + ly, z0 + cn.y * PARCEL))
 	if lines > 0:
 		im.surface_end()
 	if grid != null:
@@ -1655,6 +1664,7 @@ func _add_entity(d: Dictionary) -> Dictionary:
 	else:
 		g.position = tile_center(e.x, e.z)
 		tiles[key(e.x, e.z)] = e
+	g.position.y = height_at(g.position.x, g.position.z)   # parsel kendi zemin seviyesinde (dışarıda 0 olmayabilir)
 	if not e.has("rot"):
 		var flat: bool = e.kind == "plot" or e.kind == "pond" or e.kind == "coop" or e.get("type", "") == "gate" or e.get("type", "") == "fence" or e.get("type", "") == "path"
 		e.rot = 0.0 if flat else float(randi() % 4) * PI / 2.0
@@ -2552,12 +2562,12 @@ func _move_pick(e) -> void:
 	if move_src != null:
 		var old = tiles.get(key(move_src.x, move_src.y))
 		if old != null and old.has("group") and is_instance_valid(old.group):
-			old.group.position.y = 0.0
+			old.group.position.y = height_at(old.group.position.x, old.group.position.z)
 	move_src = null
 	if e == null:
 		return
 	move_src = Vector2i(e.x, e.z)
-	e.group.position.y = 0.35
+	e.group.position.y = height_at(e.group.position.x, e.group.position.z) + 0.35
 	_sfx("place")
 	_toast("🚚 Seçildi. Yeni yerine tıkla · kendisine tıkla ya da T: döndür · Esc: vazgeç", "hint")
 
@@ -3739,6 +3749,10 @@ func _input(ev: InputEvent) -> void:
 			set_layer.visible = false
 			get_viewport().set_input_as_handled()
 			return
+		if ev.physical_keycode == KEY_ESCAPE and not playing and menu_layer != null and menu_layer.visible and slot > 0 and save_path != "" and not ev.echo:
+			_start_play()   # menüde Esc: oyuna dön
+			get_viewport().set_input_as_handled()
+			return
 	if fps_lbl != null and fps_lbl.visible:
 		fps_lbl.text = "%d FPS" % Engine.get_frames_per_second()
 	if not playing:
@@ -3902,10 +3916,21 @@ func _unhandled_input(ev: InputEvent) -> void:
 				shelf_open = false
 				_render_shelf()
 				return
+			var open_any: bool = land_dlg.visible or help.visible or barn.visible or (net_dlg != null and net_dlg.visible)
 			_clear_queue()
 			land_dlg.visible = false
 			help.visible = false
 			barn.visible = false
+			bag_open = false
+			shop_open = false
+			vill_open = ""
+			town_open = ""
+			ev_open = false
+			if net_dlg != null:
+				net_dlg.visible = false
+			if not open_any:   # açık pencere yoksa Esc ana menüyü açar (oyun duraklar)
+				_save()
+				_show_menu()
 		elif k == KEY_SPACE:
 			cam_follow = true
 		elif k == KEY_L:
@@ -3969,7 +3994,7 @@ func _update_cursor() -> void:
 		var bd = Data.BUILDINGS[arg]
 		c = Vector3(x + bd.w / 2.0, 0, z + bd.d / 2.0)
 		s = Vector3(bd.w, 1, bd.d)
-	cursor.position = c + Vector3(0, 0.13, 0)
+	cursor.position = c + Vector3(0, 0.13 + height_at(c.x, c.z), 0)
 	cursor.scale = s
 	cursor_edge.position = cursor.position
 	cursor_edge.scale = s
@@ -6109,6 +6134,7 @@ func _apply_gfx(window := false) -> void:
 	env.ssr_fade_out = 1.5
 	cam.far = [280.0, 360.0, 520.0, 520.0][q]
 	World.set_radius([4, 5, 6, 6][q])
+	World.set_lod0(1 if q == 0 else 2)
 	grass_frac = [0.35, 0.65, 1.0, 1.0][q]
 	for pc in grass_chunks:
 		var gm: MultiMesh = grass_chunks[pc].multimesh
@@ -7109,7 +7135,7 @@ func _process(delta: float) -> void:
 		if not _paused():
 			_update_day(dt)
 		Town.tick(dt, [])
-		World.update(cam_target, shot_path != "")
+		_world_tick()
 		_update_lamps(dt)
 		_animate_world(dt)
 		_update_parts(dt)
@@ -7140,7 +7166,7 @@ func _process(delta: float) -> void:
 	if not frozen:
 		_update_day(dt)
 	Town.tick(dt, [farmer.position])
-	World.update(cam_target, shot_path != "")
+	_world_tick()
 	_update_land_hi()
 	_update_lamps(dt)
 	_animate_world(dt)
@@ -9881,7 +9907,18 @@ func _selftest_parcels(fails: Array) -> void:
 		var c := r.get_center()
 		World.update(Vector3(c.x, 0, c.y), true)
 		if not _buy_parcel(far): fails.append("uzak parsel alınamadı")
-		if absf(height_at(c.x, c.y)) > 0.01 or absf(height_at(r.position.x + 0.5, r.position.y + 0.5)) > 0.01: fails.append("parsel düzleşmedi")
+		var lv: float = World._flat.get(far, -99.0)
+		if absf(height_at(c.x, c.y) - lv) > 0.01 or absf(height_at(r.position.x + 0.5, r.position.y + 0.5) - lv) > 0.01: fails.append("parsel düzleşmedi")
+		# düzleşme arazinin kendi ortalamasına: çukura inmez
+		var raw := World._n.duplicate()
+		raw.flat = {}
+		var avg := 0.0
+		for i in 3:
+			for j in 3:
+				var sx := r.position.x + (i + 0.5) * PARCEL / 3.0
+				var sz := r.position.y + (j + 0.5) * PARCEL / 3.0
+				avg += World.h_w(sx, sz, World.weights(sx, sz), raw) / 9.0
+		if absf(lv - maxf(avg, World.WATER_Y + 0.4)) > 0.01: fails.append("parsel çukura indi")
 		var t = World.tiles.get(Vector2i(floori(c.x / World.TILE), floori(c.y / World.TILE)))
 		if t != null:
 			for cell in t.block:

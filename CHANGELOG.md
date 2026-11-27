@@ -1,5 +1,13 @@
 # Çiftliğim 3D — Sürüm Notları
 
+## v0.24.0 · Erken Erişim
+- 🌳 **Ağaçlar düzgün yükleniyor**:
+  - Gerçek ağaç modelleri artık çevrende daha geniş bir alanda (5×5 karo) kuruluyor.
+  - Kamerayı uzaklaştırdıkça modeller de daha uzağa kadar çiziliyor; uzaktaki basit ağaçlar yalnızca ufukta kalıyor.
+  - Yakın ve uzak ağaç artık üst üste görünmüyor, yumuşakça birbirine geçiyor.
+- 🗺️ **Parsel alınca zemin çukura inmiyor**: aldığın parsel kendi arazisinin ortalama yüksekliğinde düzleşir, çevresiyle aynı seviyede kalır. Yan yana parseller birbirine yumuşak geçer. Tarlalar, binalar, imleç, parsel çizgisi ve kazıklar bu zemine oturur.
+- ⎋ **Esc ile ana menü**: açık bir pencere yokken Esc ana menüyü açar (oyun kaydedilir, duraklar). Menüdeyken Esc'ye yeniden basınca oyuna dönersin.
+
 ## v0.23.0 · Erken Erişim
 - 👦👧 **Erkek ve kız çiftçi**: yeni kariyer açarken ya da ⚙️ Ayarlar → Karakter'den çiftçini seç. Yürüme, çapalama, sulama, ekme, hasat ve yemleme animasyonlarının hepsi yeni karakterlerle çalışır. Eski hasır şapkalı çiftçi "Klasik" olarak duruyor. Arkadaşların da seni seçtiğin karakterle görür.
 - 🏘️ **Yeşilköy yeniden planlandı**:

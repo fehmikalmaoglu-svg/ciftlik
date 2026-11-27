@@ -51,6 +51,10 @@ const FLORA_N := [150, 210, 170, 170, 150, 120]
 const CAND := 260
 ## Gerçek ağaç modelleri bu uzaklığa kadar (karo merkezine göre); ötesi ucuz biçim.
 const NEAR_TREES := 70.0
+## Gerçek ağaç modellerinin kameradan görünme uzaklığı (yakınlaştırmaya ve kaliteye göre değişir).
+static var near_range := NEAR_TREES
+## Gerçek modelli (en ayrıntılı) karo halkası: 1 → 3×3, 2 → 5×5 karo.
+static var lod0 := 1
 
 static var seed := 0
 static var _n := {}
@@ -72,12 +76,33 @@ const PARCEL_O := -20
 const PARCEL_S := 8
 static var _flat := {}
 
+static var _land_raw := {}
+
+## Sahip olunan parseller düzleşir; her parsel kendi arazisinin ortalama yüksekliğine (çukura inmez, tepe kesilmez).
 static func set_land(land: Dictionary) -> void:
-	_flat = land.duplicate()
-	if not _n.is_empty():
-		var nz := _n.duplicate()
-		nz.flat = _flat
-		_n = nz   # iş parçacıkları eski takımı tutar; yenisi ayrı sözlük
+	_land_raw = land.duplicate()
+	_flat = {}
+	if _n.is_empty():
+		return
+	var raw := _n.duplicate()
+	raw.flat = {}
+	for p in land:
+		var pc: Vector2i = p
+		var x0: float = PARCEL_O + pc.x * PARCEL_S
+		var z0: float = PARCEL_O + pc.y * PARCEL_S
+		if _in_core(x0 + PARCEL_S / 2.0, z0 + PARCEL_S / 2.0):
+			_flat[pc] = 0.0
+			continue
+		var sum := 0.0
+		for i in 3:
+			for j in 3:
+				var x: float = x0 + (i + 0.5) * PARCEL_S / 3.0
+				var z: float = z0 + (j + 0.5) * PARCEL_S / 3.0
+				sum += h_w(x, z, weights(x, z), raw)
+		_flat[pc] = maxf(sum / 9.0, WATER_Y + 0.4)
+	var nz := _n.duplicate()
+	nz.flat = _flat
+	_n = nz   # iş parçacıkları eski takımı tutar; yenisi ayrı sözlük
 
 ## Bir alanın karolarını hemen yeniden kurar (parsel alındı: düzleşme ve doğa temizliği).
 static func refresh(rect: Rect2) -> void:
@@ -87,10 +112,13 @@ static func refresh(rect: Rect2) -> void:
 		if Rect2(k.x * TILE, k.y * TILE, TILE, TILE).intersects(r):
 			_apply(_job(k, t.lod, seed, _n))
 
-static func _flat_f(x: float, z: float, fl: Dictionary) -> float:
+## (düzleşme payı, hedef yükseklik): yakın parsellerin seviyeleri uzaklığa göre harmanlanır.
+static func _flat_f(x: float, z: float, fl: Dictionary) -> Vector2:
 	var px := floori((x - PARCEL_O) / PARCEL_S)
 	var pz := floori((z - PARCEL_O) / PARCEL_S)
 	var best := 0.0
+	var ws := 0.0
+	var ls := 0.0
 	for dz in 3:
 		for dx in 3:
 			var pc := Vector2i(px + dx - 1, pz + dz - 1)
@@ -98,8 +126,12 @@ static func _flat_f(x: float, z: float, fl: Dictionary) -> float:
 				var x0 := PARCEL_O + pc.x * PARCEL_S
 				var z0 := PARCEL_O + pc.y * PARCEL_S
 				var d := Vector2(maxf(maxf(x0 - x, x - x0 - PARCEL_S), 0.0), maxf(maxf(z0 - z, z - z0 - PARCEL_S), 0.0)).length()
-				best = maxf(best, 1.0 - smoothstep(0.0, 5.0, d))
-	return best
+				var wt := 1.0 - smoothstep(0.0, 5.0, d)
+				if wt > 0.0:
+					best = maxf(best, wt)
+					ws += wt
+					ls += wt * float(fl[pc])
+	return Vector2(best, ls / ws if ws > 0.0 else 0.0)
 
 static func setup(g: Node3D, s: int, gmat: Material, wmat: Material) -> void:
 	ground_mat = gmat
@@ -133,6 +165,8 @@ static func _reseed(s: int) -> void:
 		return n
 	_n = {"flat": _flat, "t": mk.call(1, 1.0 / 900.0, 2), "m": mk.call(2, 1.0 / 750.0, 2), "e": mk.call(3, 1.0 / 650.0, 2),
 		"f": mk.call(4, 1.0 / 320.0, 2), "h": mk.call(5, 1.0 / 170.0, 3), "r": mk.call(6, 1.0 / 260.0, 2), "l": mk.call(7, 1.0 / 110.0, 2)}
+	if not _land_raw.is_empty():
+		set_land(_land_raw)   # parsel seviyeleri yeni tohumun arazisinden
 
 ## Tohum değişti (başka kariyer, misafir): bütün karoları yeniden kur.
 static func reset(s: int) -> void:
@@ -240,8 +274,8 @@ static func h_w(x: float, z: float, w: Array, nz: Dictionary) -> float:
 	var fl: Dictionary = nz.get("flat", {})
 	if not fl.is_empty():
 		var ff := _flat_f(x, z, fl)
-		if ff > 0.0:
-			y = lerpf(y, 0.0, ff)
+		if ff.x > 0.0:
+			y = lerpf(y, ff.y, ff.x)
 	# köy düzlüğü çekirdeğin sınırını aşar (kuzey ucu): dış karolar da aynı düzlüğe insin, dikiş kalmasın
 	var tm := Town.mask(x, z)
 	if tm > 0.0:
@@ -294,7 +328,7 @@ static func _ring(k: Vector2i) -> int:
 	return maxi(absi(k.x - _center.x), absi(k.y - _center.y))
 
 static func _lod_for(ring: int) -> int:
-	return 0 if ring <= LOD_RING[0] else 1 if ring <= LOD_RING[1] else 2
+	return 0 if ring <= lod0 else 1 if ring <= maxi(LOD_RING[1], lod0 + 1) else 2
 
 static func _want(k: Vector2i, lod: int) -> bool:
 	var t = tiles.get(k)
@@ -320,7 +354,7 @@ static func update(p: Vector3, sync := false) -> void:
 					_queue.append(k)
 		_queue.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return _ring(a) < _ring(b))
 		if jump:   # uzağa ışınlandı: yakın halka hemen
-			while not _queue.is_empty() and _ring(_queue[0]) <= LOD_RING[0]:
+			while not _queue.is_empty() and _ring(_queue[0]) <= lod0:
 				var k0: Vector2i = _queue.pop_front()
 				_apply(_job(k0, _lod_for(_ring(k0)), seed, _n))
 	if sync:
@@ -592,8 +626,9 @@ static func _apply(r: Dictionary) -> void:
 				mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 				mmi.visibility_range_end = 80.0
 			elif kind != 3:
-				mmi.visibility_range_end = NEAR_TREES
-				mmi.visibility_range_end_margin = 8.0
+				mmi.visibility_range_end = near_range
+				mmi.visibility_range_end_margin = 6.0
+				mmi.set_meta("near", true)
 				mmi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
 			node.add_child(mmi)
 	for si in 3:
@@ -613,8 +648,10 @@ static func _apply(r: Dictionary) -> void:
 		mmi.material_override = ground_mat
 		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		if r.lod == 0:
-			mmi.visibility_range_begin = NEAR_TREES
-			mmi.visibility_range_begin_margin = 8.0
+			mmi.visibility_range_begin = near_range
+			mmi.visibility_range_begin_margin = 6.0
+			mmi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF   # yakın modelle yumuşak geçiş, ikisi üst üste kalmaz
+			mmi.set_meta("far0", true)
 		node.add_child(mmi)
 	root.add_child(node)
 	if old != null and is_instance_valid(old.node):
@@ -720,6 +757,27 @@ static func _far_tree(pine: bool, col: Color) -> ArrayMesh:
 					soft.call(prev[i], cur[i], prev[j], col)
 			prev = cur
 	return st.commit()
+
+## Yakın ağaç uzaklığını günceller (var olan karolar dahil). Küçük değişiklikler yok sayılır.
+static func set_near(d: float) -> void:
+	if absf(d - near_range) < 4.0:
+		return
+	near_range = d
+	for t in tiles.values():
+		if not is_instance_valid(t.node):
+			continue
+		for c in (t.node as Node).get_children():
+			if c is GeometryInstance3D:
+				if c.has_meta("near"):
+					(c as GeometryInstance3D).visibility_range_end = d
+				elif c.has_meta("far0"):
+					(c as GeometryInstance3D).visibility_range_begin = d
+
+## Gerçek modelli halka genişliği (kaliteye göre).
+static func set_lod0(n: int) -> void:
+	if n != lod0:
+		lod0 = n
+		_center = Vector2i(99999, 99999)
 
 static func set_radius(r: int) -> void:
 	if r != radius:
