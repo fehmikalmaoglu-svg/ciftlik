@@ -6,6 +6,8 @@
 
 ## 3D modeller
 - Köy ve doğa süsleri: **Cozy Village / Cozy Nature Sampler** — Midnight Misfit Studio. Ücretsiz paket, oyunda kullanıma izin verir; lisansı ham dosyaların paylaşılmasını yasakladığı için bu dosyalar repoda yoktur, yalnızca kurulum paketinin içindedir.
+- Köy evleri, ahırlar, süs yapılar, köy eşyaları: **Low Poly Farm Set – 330 Models Mega Pack 02** — ilkhom23 (CGTrader, ücretsiz, Royalty Free License). Ham dosyalar repoda yoktur, yalnızca kurulum paketinin içindedir.
+- Arabalar, otobüs, kamyonlar, polis arabası ve sokak lambaları: CGTrader'dan ücretsiz modeller (ücretsiz lisans). Ham dosyalar repoda yoktur, yalnızca kurulum paketinin içindedir.
 - Ekinler ve çiftlik hayvanları: Quaternius (CC0). Doğa süsleri: Kenney Nature Kit (CC0). Ağaç ve bitkiler: Quaternius Stylized Nature MegaKit (CC0).
 
 CC0 isim yazmayı zorunlu tutmaz; yine de teşekkür olarak burada anılıyorlar.

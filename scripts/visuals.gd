@@ -179,6 +179,43 @@ static func cozy(type: String) -> Node3D:
 		g.add_child(n)
 	return g
 
+## Süs yapılar: tür → [model, dosya yoksa düşülecek prosedürel yapı]. Modeller repoda yok (lisans).
+const F2 := "res://assets/farm02/"
+const F2_BUILD := {"silo2": ["silo", "silo"], "watertower": ["watertower", "well"], "shed": ["shed", "stable"],
+	"tower": ["tower", "silo"], "redhouse": ["redhouse", "house"], "woodhouse": ["woodhouse", "house"],
+	"redbarn": ["redbarn", "barn"], "greybarn": ["greybarn", "barn"], "bigbarn": ["bigbarn", "barn"], "manor": ["manor", "house"]}
+static var _f2_mat: StandardMaterial3D = null
+static var _f2_mesh := {}
+
+## Farm Set 02 modellerinin ortak doku paleti.
+static func f2_mat() -> StandardMaterial3D:
+	if _f2_mat == null:
+		_f2_mat = StandardMaterial3D.new()
+		_f2_mat.albedo_texture = load(F2 + "color_1024x1024.jpg")
+		_f2_mat.roughness = 0.9
+		_f2_mat.metallic_specular = 0.3
+	return _f2_mat
+
+static func building(type: String) -> Node3D:
+	if not F2_BUILD.has(type):
+		return Models.building(type)
+	var p: String = F2 + F2_BUILD[type][0] + ".res"
+	if not _f2_mesh.has(p):
+		_f2_mesh[p] = load(p) if Assets.enabled and ResourceLoader.exists(p) else null
+	var mesh: Mesh = _f2_mesh[p]
+	if mesh == null:
+		return Models.building(F2_BUILD[type][1])
+	var b = Data.BUILDINGS[type]
+	var sz := mesh.get_aabb().size
+	var s := 0.92 * minf(float(b.w) / sz.x, float(b.d) / sz.z)
+	var g := Node3D.new()
+	var mi := MeshInstance3D.new()
+	mi.mesh = mesh
+	mi.material_override = f2_mat()
+	mi.scale = Vector3.ONE * s
+	g.add_child(mi)
+	return g
+
 static func decor(type: String, conn: Dictionary) -> Node3D:
 	if COZY.has(type):
 		var cz := cozy(type)

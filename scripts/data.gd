@@ -106,6 +106,17 @@ const BUILDINGS := {
 	"oven": {"name": "Fırın", "icon": "🔥", "cost": 250, "level": 3, "w": 2, "d": 2, "xp": 25, "info": "2×2. Undan poğaça, balık ekmek ve meyveli turta pişirir. Tıkla: fırın penceresi."},
 	"stable": {"name": "Ahır", "icon": "🐮", "cost": 450, "level": 5, "w": 2, "d": 2, "xp": 30, "info": "2×2. Çevresindeki (4 kare) koyun, domuz ve inekler sıcak bir yuvaya kavuşur: mutlulukları yavaş düşer, hiç yarının altına inmez."},
 	"house": {"name": "Çiftlik Evi", "icon": "🏠", "cost": 300, "level": 2, "w": 4, "d": 4, "xp": 40, "info": "4×4. Çiftliğin yuvası: her sabah kapıda küçük bir hediye bırakılır."},
+	# Süs yapılar (ilkhom23 "Low Poly Farm Set 02" modelleri): işlevleri yok, çiftliği güzelleştirir.
+	"silo2":      {"name": "Yem Kulesi",   "icon": "🗼", "cost": 220,  "level": 3, "w": 1, "d": 1, "xp": 10, "info": "1×1 süs yapı: yüksek, kırmızı yem kulesi."},
+	"watertower": {"name": "Su Deposu",    "icon": "🛢️", "cost": 200,  "level": 3, "w": 1, "d": 1, "xp": 10, "info": "1×1 süs yapı: ayaklı su deposu."},
+	"shed":       {"name": "Mavi Kulübe",  "icon": "🛖", "cost": 260,  "level": 3, "w": 2, "d": 2, "xp": 12, "info": "2×2 süs yapı: alet kulübesi."},
+	"tower":      {"name": "Ahşap Kule",   "icon": "🪜", "cost": 300,  "level": 4, "w": 2, "d": 2, "xp": 15, "info": "2×2 süs yapı: merdivenli gözetleme kulesi."},
+	"redhouse":   {"name": "Kırmızı Ev",   "icon": "🏡", "cost": 450,  "level": 4, "w": 3, "d": 3, "xp": 20, "info": "3×3 süs yapı: kırmızı ahşap çiftlik evi."},
+	"woodhouse":  {"name": "Ahşap Ev",     "icon": "🏘️", "cost": 450,  "level": 4, "w": 3, "d": 3, "xp": 20, "info": "3×3 süs yapı: verandalı ahşap ev."},
+	"redbarn":    {"name": "Kırmızı Ahır", "icon": "🏚️", "cost": 500,  "level": 5, "w": 4, "d": 4, "xp": 25, "info": "4×4 süs yapı: klasik kırmızı ahır."},
+	"greybarn":   {"name": "Gri Ahır",     "icon": "🏚️", "cost": 500,  "level": 5, "w": 4, "d": 4, "xp": 25, "info": "4×4 süs yapı: gri ahşap ahır."},
+	"bigbarn":    {"name": "Büyük Ahır",   "icon": "🏭", "cost": 900,  "level": 7, "w": 5, "d": 5, "xp": 40, "info": "5×5 süs yapı: geniş kanatlı büyük ahır."},
+	"manor":      {"name": "Malikâne",     "icon": "🏰", "cost": 1500, "level": 9, "w": 5, "d": 5, "xp": 60, "info": "5×5 süs yapı: çiftliğin en gösterişli evi."},
 }
 const SILO_CAP := 100
 const WELL_RANGE := 5

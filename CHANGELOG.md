@@ -1,5 +1,12 @@
 # Çiftliğim 3D — Sürüm Notları
 
+## v0.18.0 · Erken Erişim
+- 🏘️ **Yeşilköy**: pazarın güneyinde yaşayan bir köy kuruldu. Ana yol ve iki cadde boyunca 18 ev, köy uçlarında ahırlar, silolar ve barakalar var. Ortada büyük ağaçlı, banklı bir meydan duruyor. Ağaçlar, fıçılar, kasalar ve el arabaları da köye dağıtıldı.
+- 🚗 Caddelerde tur atan arabalar var; önlerine çıkarsan durup beklerler. Kenarda park etmiş arabalar, polis arabası, pazarın önünde otobüs, ahırların yanında kamyonlar duruyor.
+- 💡 Köyün sokak lambaları ve araç farları gece yanıyor.
+- 🗺️ **Harita büyüdü**: gezilebilen alan 112 m'den 188 m'ye çıktı. Dağlar geri çekildi; çevrede daha çok orman, çalı ve çiçek tarlası var.
+- 🏗️ **10 yeni süs yapı** (🏗️ Yapı menüsü): Yem Kulesi, Su Deposu, Mavi Kulübe, Ahşap Kule, Kırmızı Ev, Ahşap Ev, Kırmızı Ahır, Gri Ahır, Büyük Ahır, Malikâne.
+
 ## v0.17.0 · Erken Erişim
 - 🎒 **Çanta** (sağ üstteki 🎒 düğmesi ya da **I** tuşu): kaldırdığın süsler, yapılar, ağaçlar, çiçek tarhları, gölet ve kümes artık çantaya giriyor. Oradan **bedava yeniden yerleştir** ya da yarı fiyatına sat. Çiftliği yeniden düzenlemek artık para kaybettirmiyor.
 - 🛒 Dükkân rafında çantada olan eşyalar 🎒 ×adet olarak görünür; yerleştirince önce çantadakiler kullanılır.

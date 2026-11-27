@@ -6,3 +6,9 @@ export/
 # Midnight Misfit Studio "Cozy" sampler: lisans ham dosyaların açık repoda yayınlanmasını yasaklar.
 # Yalnızca yerel derlemeye (pck içine) girer; dosya yoksa oyun kendi modellerine düşer.
 assets/cozy/
+
+# ilkhom23 "Low Poly Farm Set 02" (CGTrader Royalty Free): ham dosyalar açık repoya konamaz; yalnızca yerel derlemeye girer.
+assets/farm02/
+
+# Araçlar ve sokak lambaları (CGTrader, ücretsiz): ham dosyalar repoya konmaz, yalnızca derlemeye girer.
+assets/vehicles/

@@ -32,7 +32,7 @@ func _net_port() -> int:
 			return int(a.substr(10))
 	return NET_PORT
 const NET_COLORS := ["#4a90d9", "#9c5bd6", "#e0912f", "#2fae8f", "#d94a8c"]
-const WALK_LIM := 56     # çiftçinin gezebileceği alan (±), görünen arazinin içi
+const WALK_LIM := 94     # çiftçinin gezebileceği alan (±), görünen arazinin içi
 const BLOCK_DECOR := ["fence", "rock", "lantern", "hay", "scarecrow", "bush", "flowers", "tr_spring", "tr_summer", "tr_autumn", "tr_winter",
 	"mossrock", "berrybush", "stump", "barrels", "crates", "bench", "logstack", "lamppost", "cart", "birch", "xmastree", "giftstack", "sled", "candycane", "market", "cherry"]
 const QUEST_SKIP_COOLDOWN := 24.0 * 3600.0
@@ -358,6 +358,7 @@ var act_dur := 0.22
 var act_pos := Vector3.ZERO
 var act_fx := 0.0           # parçacık zamanlayıcısı
 var night_f := 0.0
+var town_lamps := []   # köyün sokak lambaları (gece ışık havuzundan pay alır)
 var day_f_last := 1.0
 var fps_t := 0.0
 ## --bench: her grafik ayarında FPS, CPU ve GPU süresini ölçer (geliştirici aracı).
@@ -726,6 +727,9 @@ func height_at(x: float, z: float) -> float:
 	var outside := smoothstep(21.5, 30.0, d)
 	var h := (sin(x * 0.15) + cos(z * 0.13) + sin((x + z) * 0.07)) * 1.3 + 1.2
 	h = maxf(0.0, h) * outside * smoothstep(10.0, 15.0, Vector2(x - MARKET.x, z - MARKET.z).length())
+	h *= 1.0 - Town.mask(x, z)
+	if z > 15.0:   # köy yolu düz
+		h *= smoothstep(2.5, 7.0, absf(x))
 	var pd := Vector2(x - POND_X, z - POND_Z).length()
 	return lerpf(-0.7, h, smoothstep(POND_R - 0.6, POND_R + 2.5, pd))
 
@@ -754,6 +758,7 @@ func _ready() -> void:
 	_build_outskirts()
 	_build_stall()
 	_build_market()
+	town_lamps = Town.build(self)
 	_build_farm_frame()
 	_build_grass()
 	_build_cursor()
@@ -966,7 +971,7 @@ func _build_env() -> void:
 
 	cam = Camera3D.new()
 	cam.fov = 40.0
-	cam.far = 480.0
+	cam.far = 520.0
 	add_child(cam)
 	cam.make_current()
 
@@ -1004,8 +1009,8 @@ func _build_terrain() -> void:
 
 ## Zemin örgüsü; çiftlik karesi biraz daha açık yeşil, giriş yolu kapıdan başlar.
 func _build_ground_mesh() -> void:
-	var size := 120.0
-	var seg := 120
+	var size := 200.0
+	var seg := 160
 	var n := seg + 1
 	var hs := PackedFloat32Array()
 	hs.resize(n * n)
@@ -1089,14 +1094,14 @@ func far_height(x: float, z: float) -> float:
 	var r := Vector2(x, z).length()
 	var h := height_at(x, z)
 	var roll := (sin(x * 0.045 + 1.3) + cos(z * 0.05 + 0.4) + sin((x - z) * 0.03)) * 3.2 + 3.0
-	h += maxf(0.0, roll) * smoothstep(62.0, 105.0, r)
+	h += maxf(0.0, roll) * smoothstep(102.0, 145.0, r)
 	var ridge := 1.0 - absf(sin(x * 0.028 + cos(z * 0.021) * 2.0) * cos(z * 0.026 - 0.7))
-	h += pow(ridge, 2.0) * 58.0 * smoothstep(125.0, 200.0, r) + smoothstep(160.0, 280.0, r) * 30.0
+	h += pow(ridge, 2.0) * 58.0 * smoothstep(165.0, 240.0, r) + smoothstep(200.0, 320.0, r) * 30.0
 	return h
 
 func _build_far_land() -> void:
-	var size := 600.0
-	var seg := 120
+	var size := 760.0
+	var seg := 152
 	var step := size / seg
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
@@ -1104,12 +1109,12 @@ func _build_far_land() -> void:
 	rng.seed = 21
 	var fy := func(x: float, z: float) -> float:
 		var d := maxf(absf(x), absf(z))
-		return far_height(x, z) - 0.35 * (1.0 - smoothstep(60.0, 68.0, d))
+		return far_height(x, z) - 0.35 * (1.0 - smoothstep(100.0, 108.0, d))
 	for j in seg:
 		for i in seg:
 			var x0 := -size / 2.0 + i * step
 			var z0 := -size / 2.0 + j * step
-			if maxf(absf(x0 + step / 2.0), absf(z0 + step / 2.0)) < 57.0:
+			if maxf(absf(x0 + step / 2.0), absf(z0 + step / 2.0)) < 97.0:
 				continue
 			var a := Vector3(x0, fy.call(x0, z0), z0)
 			var b := Vector3(x0 + step, fy.call(x0 + step, z0), z0)
@@ -1136,10 +1141,10 @@ func _build_far_land() -> void:
 		var pts := []
 		for k in 1400:
 			var ang := rng.randf() * TAU
-			var r := rng.randf_range(60.0, 170.0)
+			var r := rng.randf_range(100.0, 210.0)
 			var x := cos(ang) * r
 			var z := sin(ang) * r
-			if maxf(absf(x), absf(z)) < 58.0:
+			if maxf(absf(x), absf(z)) < 98.0:
 				continue
 			var hy := far_height(x, z)
 			if hy > (26.0 if si == 0 else 16.0):
@@ -1218,10 +1223,10 @@ func _tri(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, col: Color) -> vo
 func _build_surroundings() -> void:
 	var r := RandomNumberGenerator.new()
 	r.seed = 42
-	for i in 260:
-		var x := (r.randf() - 0.5) * 110.0
-		var z := (r.randf() - 0.5) * 110.0
-		if maxf(absf(x), absf(z)) < 22.5:
+	for i in 560:
+		var x := (r.randf() - 0.5) * 186.0
+		var z := (r.randf() - 0.5) * 186.0
+		if maxf(absf(x), absf(z)) < 22.5 or Town.mask(x, z) > 0.0:
 			continue
 		if Vector2(x - POND_X, z - POND_Z).length() < POND_R + 2.0:
 			continue
@@ -1255,7 +1260,7 @@ func _build_surroundings() -> void:
 		add_child(t)
 	for i in 12:
 		var c := Models.cloud()
-		c.position = Vector3((r.randf() - 0.5) * 140.0, 42.0 + r.randf() * 8.0, (r.randf() - 0.5) * 140.0)
+		c.position = Vector3((r.randf() - 0.5) * 220.0, 42.0 + r.randf() * 8.0, (r.randf() - 0.5) * 140.0)
 		c.scale *= 0.8 + r.randf()
 		add_child(c)
 		clouds.append(c)
@@ -1353,13 +1358,15 @@ func _build_outskirts() -> void:
 			return false
 		if absf(x) < 3.0 and z > 12.0:
 			return false
+		if Town.mask(x, z) > 0.0:
+			return false
 		if Vector2(x - 25.0, z + 12.0).length() < 3.5:
 			return false
 		return Vector2(x, z).distance_to(camp) > 5.0
 	# çiçek tarlaları
-	for i in 22:
-		var cx := r.randf_range(-48, 48)
-		var cz := r.randf_range(-48, 48)
+	for i in 50:
+		var cx := r.randf_range(-85, 85)
+		var cz := r.randf_range(-85, 85)
 		if not free.call(cx, cz):
 			continue
 		var fl := _pick_of(r, WILD_FLOWER)
@@ -1369,12 +1376,12 @@ func _build_outskirts() -> void:
 			if free.call(x, z):
 				_prop(root, fl, r.randf_range(1.0, 1.5), x, z, r.randf() * TAU, false)
 	# çalı, kaya, kütük, mantar, uzun ot
-	var sets := [[WILD_BUSH, 70, 1.2, 2.0, true], [WILD_ROCK, 40, 1.0, 1.8, true], [WILD_WOOD, 18, 1.1, 1.5, true],
-		[WILD_MUSH, 30, 1.0, 1.4, false], [WILD_GRASS, 260, 1.1, 1.8, false], [BIG_TREES, 90, 1.6, 2.6, true]]
+	var sets := [[WILD_BUSH, 150, 1.2, 2.0, true], [WILD_ROCK, 80, 1.0, 1.8, true], [WILD_WOOD, 36, 1.1, 1.5, true],
+		[WILD_MUSH, 50, 1.0, 1.4, false], [WILD_GRASS, 420, 1.1, 1.8, false], [BIG_TREES, 190, 1.6, 2.6, true]]
 	for st in sets:
 		for i in st[1]:
-			var x := r.randf_range(-55, 55)
-			var z := r.randf_range(-55, 55)
+			var x := r.randf_range(-92, 92)
+			var z := r.randf_range(-92, 92)
 			if free.call(x, z):
 				_prop(root, _pick_of(r, st[0]), r.randf_range(st[2], st[3]), x, z, r.randf() * TAU, st[4])
 	# kamp alanı
@@ -1833,7 +1840,7 @@ func _refresh(e: Dictionary) -> void:
 		"decor":
 			g.add_child(Visuals.decor(e.type, {"n": _is_fence(e.x, e.z - 1), "s": _is_fence(e.x, e.z + 1), "e": _is_fence(e.x + 1, e.z), "w": _is_fence(e.x - 1, e.z)}))
 		"building":
-			g.add_child(Models.building(e.type))
+			g.add_child(Visuals.building(e.type))
 	_owner_flag(e)
 
 # ============================================================ simülasyon
@@ -3488,7 +3495,7 @@ func _player_fence(x: int, z: int) -> bool:
 func _walkable(x: int, z: int) -> bool:
 	if x < -WALK_LIM or x >= WALK_LIM or z < -WALK_LIM or z >= WALK_LIM:
 		return false
-	if frame_block.has(Vector2i(x, z)):
+	if frame_block.has(Vector2i(x, z)) or Town.blocks.has(Vector2i(x, z)):
 		return false
 	if absf(x + 0.5 - STALL.x) < 1.3 and absf(z + 0.5 - STALL.z) < 1.3:   # balıkçı tezgâhı
 		return false
@@ -3580,7 +3587,7 @@ func _find_path(from: Vector3, goal: Rect2, thr: float):
 	var found = null
 	var dirs := [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1), Vector2i(1, 1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(-1, -1)]
 	var n := 0
-	while open.size() > 0 and n < 16000:
+	while open.size() > 0 and n < 40000:
 		var cur: Vector2i = _hpop(open)[1]
 		if closed.has(cur):
 			continue
@@ -4347,12 +4354,12 @@ func _update_lamps(dt: float) -> void:
 	lamp_timer -= dt
 	if lamp_timer <= 0.0:
 		lamp_timer = 0.5
-		var list := lanterns.duplicate()
+		var list := lanterns + town_lamps
 		var ct := cam_target
 		list.sort_custom(func(a, b): return Vector2(a.x - ct.x, a.z - ct.z).length_squared() < Vector2(b.x - ct.x, b.z - ct.z).length_squared())
 		for i in lamp_lights.size():
 			var l: OmniLight3D = lamp_lights[i]
-			l.position = Vector3(list[i].x + 0.5, 1.95 if list[i].type == "lamppost" else 1.5, list[i].z + 0.5) if i < list.size() else Vector3(0, -50, 0)
+			l.position = Vector3(list[i].x + 0.5, {"lamppost": 1.95, "townlamp": 2.4}.get(list[i].type, 1.5), list[i].z + 0.5) if i < list.size() else Vector3(0, -50, 0)
 	for l in lamp_lights:
 		l.light_energy = night_f * 1.4
 
@@ -5667,7 +5674,7 @@ func _net_host_probe() -> void:
 		_render_quests()
 	var plots0 := entities.filter(func(e): return e.kind == "plot").size()
 	var seen := 0
-	for i in 170:
+	for i in 260:   # misafirin yüklenip denemesini bitirmesine yetecek süre
 		await get_tree().create_timer(0.1).timeout
 		seen = maxi(seen, net_players.size())
 	var plots1 := entities.filter(func(e): return e.kind == "plot").size()
@@ -5743,6 +5750,11 @@ func _start_play(show_help := false) -> void:
 			var xz := a.substr(5).split(",")
 			farmer.position = Vector3(float(xz[0]), 0, float(xz[1]))
 			cam_target = farmer.position
+		elif a == "--buildshow":   # geliştirici: süs yapıları diz
+			for k in Visuals.F2_BUILD:
+				var b = Data.BUILDINGS[k]
+				var sp := _free_spot(int(b.w), int(b.d))
+				_add_entity({"kind": "building", "type": k, "x": sp.x, "z": sp.y, "w": b.w, "d": b.d, "rot": 0.0})
 		elif a == "--decorshow":   # geliştirici: köy/doğa süslerini çiftçinin önüne diz
 			var i := 0
 			for k in Visuals.COZY:
@@ -5979,7 +5991,7 @@ func _apply_gfx(window := false) -> void:
 	env.ssr_max_steps = 48 if q == 2 else 80
 	env.ssr_fade_in = 0.1
 	env.ssr_fade_out = 1.5
-	cam.far = [220.0, 320.0, 480.0, 480.0][q]
+	cam.far = [280.0, 360.0, 520.0, 520.0][q]
 	grass_frac = [0.35, 0.65, 1.0, 1.0][q]
 	for pc in grass_chunks:
 		var gm: MultiMesh = grass_chunks[pc].multimesh
@@ -6888,6 +6900,7 @@ func _process(delta: float) -> void:
 		_update_camera(dt)
 		if not _paused():
 			_update_day(dt)
+		Town.tick(dt, [])
 		_update_lamps(dt)
 		_animate_world(dt)
 		_update_parts(dt)
@@ -6917,6 +6930,7 @@ func _process(delta: float) -> void:
 	_update_camera(dt)
 	if not frozen:
 		_update_day(dt)
+	Town.tick(dt, [farmer.position])
 	_update_lamps(dt)
 	_animate_world(dt)
 	_update_parts(dt)
@@ -9184,6 +9198,15 @@ func _selftest_town(fails: Array) -> void:
 	_load_vill(sv.vill)
 	if int(vill.hasan.pts) != 50: fails.append("köylü kaydı")
 	if absf(height_at(MARKET.x + 3, MARKET.z)) > 0.05: fails.append("pazar düz değil")
+	if absf(height_at(0, 70)) > 0.01 or absf(height_at(-30, 90)) > 0.01: fails.append("köy düz değil")
+	if not _walkable(0, 70) or not _walkable(20, 56): fails.append("köy yolu kapalı")
+	if Town.available():
+		if Town.blocks.is_empty() or _walkable(18, 48): fails.append("köy evleri engel değil")
+		if Town.movers.size() > 0:
+			var mv: Dictionary = Town.movers[0]
+			var s0: float = mv.s
+			Town.tick(0.5, [])
+			if is_equal_approx(float(mv.s), s0): fails.append("köy arabası yürümüyor")
 	vill = keep_v
 	_vill_ensure()
 	_vill_marks()
