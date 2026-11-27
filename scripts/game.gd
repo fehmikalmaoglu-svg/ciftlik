@@ -478,6 +478,8 @@ const HAPPY_DAY := 2.0   # tam mutluluk ~2 günde sıfırlanır
 const HEART_PTS := 10
 const HEARTS_MAX := 5
 var vill := {}           # id → {"pts", "r", "n", "done", "gd"}
+var town_q := {"step": 0, "d": {"id": "", "r": "", "n": 0, "done": true, "day": -1}}   # Yeşilköy işleri: zincir adımı + günlük iş
+var town_open := ""
 ## Çiftlik geliştirmeleri: altın + madalya ile alınan kalıcı yükseltmeler (madalyanın harcandığı yer).
 ## Seviye 6'dan sonra da hedef olsun diye kademeler 4..15 arasında açılır.
 const UPGRADES := [
@@ -759,6 +761,7 @@ func _ready() -> void:
 	_build_stall()
 	_build_market()
 	town_lamps = Town.build(self)
+	_town_marks()
 	_build_farm_frame()
 	_build_grass()
 	_build_cursor()
@@ -3756,6 +3759,9 @@ func _unhandled_input(ev: InputEvent) -> void:
 				if gp != null and _near_villager(gp) != "":
 					_open_villager(_near_villager(gp))
 					return
+				if gp != null and Town.pick(gp) != "":
+					_town_click(Town.pick(gp))
+					return
 				if gp != null and _near_mill(gp):
 					_open_mill()
 					return
@@ -5384,6 +5390,9 @@ func _net_req_in(t: String, a: String, x: int, z: int) -> void:
 	if t == "@vdeliver":
 		_vill_deliver(a)
 		return
+	if t == "@town":
+		_town_act(a)
+		return
 	if t == "@vgift":
 		var pp := a.split(":")
 		if pp.size() == 2:
@@ -5489,7 +5498,7 @@ func _net_sync_dict() -> Dictionary:
 	for e in entities:
 		ents.append(_ent_dict(e))
 	return {"coins": coins, "xp": xp, "level": level, "day_time": day_time, "day": day, "season": season, "season_t": season_t,
-		"year": year, "weather": weather, "weather_t": weather_t, "fh": farm_h, "res": res, "ents": ents, "q": _net_quest_dict(), "order": order, "fg": fishgear, "vill": vill, "bag": bag, "ev": {"e": ev, "t": trophies}}
+		"year": year, "weather": weather, "weather_t": weather_t, "fh": farm_h, "res": res, "ents": ents, "q": _net_quest_dict(), "order": order, "fg": fishgear, "vill": vill, "town": town_q, "bag": bag, "ev": {"e": ev, "t": trophies}}
 
 @rpc("authority", "reliable")
 func net_sync(d: Dictionary) -> void:
@@ -5532,6 +5541,10 @@ func net_sync(d: Dictionary) -> void:
 		_load_vill(d.vill)
 		if vill_open != "" and land_dlg.visible:
 			_open_villager(vill_open)
+	if d.has("town"):
+		_load_town(d.town)
+		if town_open != "" and land_dlg.visible:
+			_open_townsfolk(town_open)
 	if d.has("fg"):
 		var use2 := bool(fishgear.use2)
 		_load_fishgear(d.fg)
@@ -5750,6 +5763,8 @@ func _start_play(show_help := false) -> void:
 			var xz := a.substr(5).split(",")
 			farmer.position = Vector3(float(xz[0]), 0, float(xz[1]))
 			cam_target = farmer.position
+		elif a.begins_with("--talk="):   # geliştirici: Yeşilköy köylüsüyle konuş
+			_town_click.call_deferred(a.substr(7))
 		elif a == "--buildshow":   # geliştirici: süs yapıları diz
 			for k in Visuals.F2_BUILD:
 				var b = Data.BUILDINGS[k]
@@ -6569,7 +6584,7 @@ func _state_dict() -> Dictionary:
 	var ents := []
 	for e in entities:
 		ents.append(_ent_dict(e))
-	return {"v": 1, "fv": SAVE_VER, "bv": 1, "sv": 2, "story": story_step, "sh": story_have, "fh": farm_h, "fg": fishgear, "vill": vill, "upg": upg, "bag": bag, "ev": ev, "tro": trophies, "name": farm_name, "gems": gems, "quests": quests, "qskip": quest_skip_at, "flv": flv, "season": season, "season_t": season_t, "year": year, "weather": weather, "weather_t": weather_t, "medals": medals, "res": res, "order": order, "coins": coins, "xp": xp, "level": level, "day_time": day_time, "day": day, "sel": sel, "muted": muted,
+	return {"v": 1, "fv": SAVE_VER, "bv": 1, "sv": 2, "story": story_step, "sh": story_have, "fh": farm_h, "fg": fishgear, "vill": vill, "town": town_q, "upg": upg, "bag": bag, "ev": ev, "tro": trophies, "name": farm_name, "gems": gems, "quests": quests, "qskip": quest_skip_at, "flv": flv, "season": season, "season_t": season_t, "year": year, "weather": weather, "weather_t": weather_t, "medals": medals, "res": res, "order": order, "coins": coins, "xp": xp, "level": level, "day_time": day_time, "day": day, "sel": sel, "muted": muted,
 		"saved_at": Time.get_unix_time_from_system(), "ents": ents, "fx": farmer.position.x, "fz": farmer.position.z}
 
 func _ent_dict(e: Dictionary) -> Dictionary:
@@ -6677,6 +6692,7 @@ func _load_dict(data, offline: bool) -> bool:
 				upg[u.id] = clampi(int(ug[u.id]), 0, UPG_MAX)
 	_load_bag(data.get("bag", {}))
 	_load_vill(data.get("vill", {}))
+	_load_town(data.get("town", {}))
 	_load_ev(data.get("ev", {}), data.get("tro", {}))
 	farm_h = int(data.get("fh", 0))
 	if farm_h <= 0:
@@ -7896,6 +7912,7 @@ func _vill_new_request(id: String) -> void:
 ## Her sabah: köylülerin yeni istekleri.
 func _vill_new_day() -> void:
 	_vill_ensure()
+	_town_new_day()
 	for v in VILLAGERS:
 		_vill_new_request(v.id)
 	net_quest_dirty = true
@@ -7969,6 +7986,7 @@ func _hearts_text(id: String) -> String:
 	return "❤️".repeat(h) + "🤍".repeat(HEARTS_MAX - h)
 
 func _open_villager(id: String) -> void:
+	town_open = ""
 	_vill_ensure()
 	var v := _vdef(id)
 	var st: Dictionary = vill[id]
@@ -8507,6 +8525,184 @@ func _land_upgrades() -> void:
 		lst.add_child(row)
 
 ## Köy istekleri panosu: dört köylünün isteği; pazara yürümeden ambardan teslim edilir.
+# ============================================================ Yeşilköy işleri
+func _load_town(d) -> void:
+	town_q = {"step": 0, "d": {"id": "", "r": "", "n": 0, "done": true, "day": -1}}
+	if typeof(d) == TYPE_DICTIONARY:
+		town_q.step = clampi(int(d.get("step", 0)), 0, Town.TQUESTS.size())
+		town_q["heard"] = int(d.get("heard", -1))
+		var dd = d.get("d", {})
+		if typeof(dd) == TYPE_DICTIONARY and (str(dd.get("id", "")) == "" or Data.RESOURCES.has(str(dd.get("r", "")))):
+			town_q.d = {"id": str(dd.get("id", "")), "r": str(dd.get("r", "")), "n": maxi(0, int(dd.get("n", 0))), "done": bool(dd.get("done", true)), "day": int(dd.get("day", -1))}
+	_town_new_day(false)
+	_town_marks()
+
+## Zincir bittiyse her gün bir köylünün küçük bir işi olur.
+func _town_new_day(force := true) -> void:
+	if int(town_q.step) < Town.TQUESTS.size():
+		return
+	if not force and int(town_q.d.day) == day:
+		return
+	if not force and str(town_q.d.id) != "":
+		return
+	var f: Dictionary = Town.TOWNSFOLK[randi() % Town.TOWNSFOLK.size()]
+	var r: String = f.likes[randi() % f.likes.size()]
+	var n := randi_range(1, 2) if int(Data.RESOURCES[r].price) >= 25 else randi_range(3, 6) + level / 4
+	town_q.d = {"id": f.id, "r": r, "n": n, "done": false, "day": day}
+	net_quest_dirty = true
+	_town_marks()
+
+func _town_cur() -> Dictionary:
+	var s := int(town_q.step)
+	return Town.TQUESTS[s] if s < Town.TQUESTS.size() else {}
+
+## Şu an gidilmesi gereken köylü.
+func _town_target() -> String:
+	var q := _town_cur()
+	if not q.is_empty():   # konuşma işinde önce işi veren, dinleyince hedef köylü
+		return str(q.to) if q.has("to") and int(town_q.get("heard", -1)) == int(town_q.step) else str(q.giver)
+	if not bool(town_q.d.done):
+		return str(town_q.d.id)
+	return ""
+
+func _town_marks() -> void:
+	Town.mark(_town_target())
+
+func _town_daily_pay() -> int:
+	var d: Dictionary = town_q.d
+	return int(round(int(d.n) * int(Data.RESOURCES[d.r].price) * 1.5)) if Data.RESOURCES.has(str(d.r)) else 0
+
+## Görev panosu için kısa özet.
+func _town_hint() -> String:
+	var q := _town_cur()
+	if not q.is_empty():
+		var g := Town.folk_def(q.giver)
+		if q.has("to"):
+			return "%s seni %s ile tanıştırmak istiyor (adım %d/%d)." % [g.name, Town.folk_def(q.to).name, int(town_q.step) + 1, Town.TQUESTS.size()]
+		var info = Data.RESOURCES[q.r]
+		return "%s %d %s %s bekliyor (ambarda %d, adım %d/%d)." % [g.name, int(q.n), info.icon, info.name, int(res.get(q.r, 0)), int(town_q.step) + 1, Town.TQUESTS.size()]
+	if not bool(town_q.d.done):
+		var info2 = Data.RESOURCES[town_q.d.r]
+		return "Bugün %s %d %s %s istiyor (%d 🪙)." % [Town.folk_def(town_q.d.id).name, int(town_q.d.n), info2.icon, info2.name, _town_daily_pay()]
+	return "Bugünkü işler bitti. Yarın biri yine yardım isteyecek."
+
+## Köylüye tıklandı: yürüyen köylü laf atar, isimli köylü konuşur (ve konuşma görevi varsa tamamlanır).
+func _town_click(id: String) -> void:
+	if id.begins_with("~"):
+		Town.say(id, Town.WALKER_LINES[randi() % Town.WALKER_LINES.size()], farmer.position)
+		return
+	var q := _town_cur()
+	if not q.is_empty() and str(q.giver) == id:
+		town_q["heard"] = int(town_q.step)
+		_town_marks()
+	if not q.is_empty() and q.has("to") and str(q.to) == id:
+		_town_act(id)
+	else:
+		var fd := Town.folk_def(id)
+		Town.say(id, fd.lines[randi() % fd.lines.size()], farmer.position)
+	_open_townsfolk(id)
+
+## Konuşma ya da teslim (misafirde ev sahibine gider).
+func _town_act(id: String) -> bool:
+	var q := _town_cur()
+	var pay := []
+	var line := ""
+	if not q.is_empty():
+		if q.has("to"):
+			if str(q.to) != id:
+				return false
+		elif str(q.giver) != id or int(res.get(q.r, 0)) < int(q.n):
+			return false
+		pay = q.pay
+		line = q.done
+	elif not bool(town_q.d.done) and str(town_q.d.id) == id and int(res.get(town_q.d.r, 0)) >= int(town_q.d.n):
+		pay = [_town_daily_pay(), 8, 0, ""]
+		line = "Çok sağ ol, tam da lazımdı!"
+	else:
+		return false
+	if net_role == "guest":
+		rpc_id(1, "net_req", "@town", id, 0, 0)
+		return true
+	if not q.is_empty() and q.has("r"):
+		res[q.r] = int(res.get(q.r, 0)) - int(q.n)
+	elif q.is_empty():
+		res[town_q.d.r] = int(res.get(town_q.d.r, 0)) - int(town_q.d.n)
+		town_q.d.done = true
+	var n := Town.node_of(id)
+	_gain(int(pay[0]), int(pay[1]), n.position if n != null else farmer.position, Town.folk_def(id).icon)
+	if int(pay[2]) > 0:
+		gems += int(pay[2])
+	if str(pay[3]) != "":
+		bag[pay[3]] = int(bag.get(pay[3], 0)) + 1
+		var dk: String = str(pay[3]).substr(6)
+		_toast_all("🎁 Hediye çantana girdi: %s %s" % [Data.DECOR[dk].icon, Data.DECOR[dk].name], "level")
+	Town.say(id, line, farmer.position)
+	if not q.is_empty():
+		town_q.step = int(town_q.step) + 1
+		var nq := _town_cur()
+		if nq.is_empty():
+			_toast_all("🏆 Yeşilköy işlerinin hepsini bitirdin! Artık her gün bir köylü yardım isteyecek.", "level")
+			_town_new_day()
+		else:
+			_toast_all("🏘️ Yeni köy işi: %s seni bekliyor." % Town.folk_def(nq.giver).name, "level")
+	_sfx("level")
+	net_quest_dirty = true
+	_town_marks()
+	_render_quests()
+	if town_open != "" and land_dlg.visible:
+		_open_townsfolk(town_open)
+	return true
+
+func _open_townsfolk(id: String) -> void:
+	var fd := Town.folk_def(id)
+	if fd.is_empty():
+		return
+	town_open = id
+	vill_open = ""
+	ev_open = false
+	shop_open = false
+	bag_open = false
+	for c in land_box.get_children():
+		land_box.remove_child(c)
+		c.queue_free()
+	var t := Label.new()
+	t.text = "%s %s" % [fd.icon, fd.name]
+	t.add_theme_font_size_override("font_size", 26)
+	land_box.add_child(t)
+	var q := _town_cur()
+	var box := PanelContainer.new()
+	box.add_theme_stylebox_override("panel", _sb(Color("#fff4cc"), 10, Color("#f2c94c"), 2, 10))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	box.add_child(row)
+	var l := Label.new()
+	l.custom_minimum_size = Vector2(330, 0)
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	row.add_child(l)
+	var did := id
+	if not q.is_empty() and str(q.giver) == id:
+		var head := "📜 Köy işi %d/%d\n\"%s\"" % [int(town_q.step) + 1, Town.TQUESTS.size(), q.ask]
+		if q.has("to"):
+			l.text = head + "\n➡ %s %s ile konuş." % [Town.folk_def(q.to).icon, Town.folk_def(q.to).name]
+		else:
+			var info = Data.RESOURCES[q.r]
+			l.text = head + "\nÖdül: %d 🪙 · +%d XP%s   (ambarda %d)" % [int(q.pay[0]), int(q.pay[1]), (" · +%d 💎" % int(q.pay[2])) if int(q.pay[2]) > 0 else "", int(res.get(q.r, 0))]
+			row.add_child(_small_btn("  %d %s Ver  " % [int(q.n), info.icon], func(): _town_act(did), int(res.get(q.r, 0)) >= int(q.n), true))
+	elif q.is_empty() and not bool(town_q.d.done) and str(town_q.d.id) == id:
+		var info2 = Data.RESOURCES[town_q.d.r]
+		l.text = "📜 Bugünkü ricası: %d %s %s\nÖdül: %d 🪙 · +8 XP   (ambarda %d)" % [int(town_q.d.n), info2.icon, info2.name, _town_daily_pay(), int(res.get(town_q.d.r, 0))]
+		row.add_child(_small_btn("  Ver  ", func(): _town_act(did), int(res.get(town_q.d.r, 0)) >= int(town_q.d.n), true))
+	else:
+		var tg := _town_target()
+		l.text = "\"%s\"" % fd.lines[randi() % fd.lines.size()]
+		if tg != "" and tg != id:
+			l.text += "\n\n🏘️ " + _town_hint()
+	land_box.add_child(box)
+	land_box.add_child(_small_btn("  Kapat  ", func():
+		town_open = ""
+		land_dlg.visible = false, true, true))
+	land_dlg.visible = true
+
 func _open_village_board() -> void:
 	bag_open = false
 	shop_open = false
@@ -8525,6 +8721,13 @@ func _open_village_board() -> void:
 	d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	d.add_theme_color_override("font_color", Color("#7a5a3a"))
 	land_box.add_child(d)
+	if Town.npc_available():
+		var tl := Label.new()
+		tl.text = "🏘️ Yeşilköy: " + _town_hint()
+		tl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		tl.add_theme_font_size_override("font_size", 14)
+		tl.add_theme_color_override("font_color", Color("#33691e"))
+		land_box.add_child(tl)
 	for v in VILLAGERS:
 		var st: Dictionary = vill[v.id]
 		var r: String = st.r
@@ -9208,6 +9411,34 @@ func _selftest_town(fails: Array) -> void:
 			Town.tick(0.5, [])
 			if is_equal_approx(float(mv.s), s0): fails.append("köy arabası yürümüyor")
 	if Town.npc_available():
+		var tq0: Dictionary = town_q.duplicate(true)
+		var tc0 := coins
+		town_q.step = 0
+		town_q["heard"] = -1
+		_town_marks()
+		var exk = (Town.folk.kemal as Node3D).get_node_or_null("Ex")
+		if exk == null or not exk.visible: fails.append("köy işi: ❗ işi verende değil")
+		_town_click("ayse")
+		if int(town_q.step) != 1 or coins <= tc0: fails.append("köy işi: konuşma")
+		res["wool"] = 2
+		if _town_act("ayse"): fails.append("köy işi: eksik yünle teslim")
+		res["wool"] = 5
+		if not _town_act("ayse") or int(res.wool) != 2 or int(town_q.step) != 2: fails.append("köy işi: teslim")
+		town_q.step = 3
+		res["milk"] = 3
+		var b0 := int(bag.get("decor:bench", 0))
+		_town_act("fatma")
+		if int(bag.get("decor:bench", 0)) != b0 + 1: fails.append("köy işi: çanta hediyesi")
+		town_q.step = Town.TQUESTS.size()
+		_town_new_day()
+		if bool(town_q.d.done) or Town.folk_def(str(town_q.d.id)).is_empty(): fails.append("köy günlük işi")
+		var w0: String = "~0"
+		_town_click(w0)
+		if float(Town.walkers[0].pause) < 4.0: fails.append("köylü konuşunca durmadı")
+		land_dlg.visible = false
+		town_open = ""
+		town_q = tq0
+		_town_marks()
 		if Town.walkers.size() < 10: fails.append("köylüler yok")
 		else:
 			var wk: Dictionary = Town.walkers[0]

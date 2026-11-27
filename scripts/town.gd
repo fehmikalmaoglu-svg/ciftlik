@@ -25,6 +25,141 @@ static var walkers := []       # yürüyen köylüler: {node, ap, pts, len, loop
 static var _npc_scene: PackedScene = null
 static var _npc_mats := {}
 static var _npc_scale := 0.0
+static var folk := {}          # isimli köylü id → düğüm
+static var _bubbles := []      # [Label3D, kalan süre]
+static var _font: Font = null
+
+## Yeşilköy'ün isimli sakinleri (meydanda ve ev önlerinde sohbet edenler, ikişer ikişer).
+const TOWNSFOLK := [
+	{"id": "kemal", "name": "Postacı Kemal", "icon": "✉️", "likes": ["egg", "cereal"],
+		"lines": ["Mektup var, mektup! Bugün sana yok ama.", "Bu köyün her kapısını bilirim.", "Otobüs yine geç kaldı, şaşırdık mı?"]},
+	{"id": "ayse", "name": "Terzi Ayşe", "icon": "🧵", "likes": ["wool", "flower"],
+		"lines": ["Şu şapka sana çok yakışmış!", "Yeni kumaşlar geldi, bir ara uğra.", "İğne iplik, bir de iyi yün: başka bir şey istemem."]},
+	{"id": "fatma", "name": "Sütçü Fatma", "icon": "🥛", "likes": ["milk", "veg"],
+		"lines": ["Sabah dörtte kalkarım, inekler beklemez.", "Taze süt her derde deva!", "Senin ineklerin de nazlı mı?"]},
+	{"id": "mehmet", "name": "Demirci Mehmet", "icon": "⚒️", "likes": ["cereal", "nut"],
+		"lines": ["Örs başında bütün gün, kollarım demir gibi.", "Çapanın ağzı mı köreldi? Getir bileyleyeyim.", "Atlarım tahıla bayılır."]},
+	{"id": "elif", "name": "Öğretmen Elif", "icon": "📚", "likes": ["flower", "fruit"],
+		"lines": ["Bugün çocuklara tohumların nasıl filizlendiğini anlattım.", "Okuma yazma bilmeyen kalmasın bu köyde.", "Sınıfa bir saksı çiçek ne güzel olurdu."]},
+	{"id": "selin", "name": "Doktor Selin", "icon": "🩺", "likes": ["fruit", "mushroom"],
+		"lines": ["Bol su iç, güneşte çok kalma!", "Günde bir elma doktoru uzak tutar derler... bana da iş kalmıyor.", "Köy sağlıklı, ben mutluyum."]},
+	{"id": "ali", "name": "Marangoz Ali", "icon": "🪚", "likes": ["nut", "veg"],
+		"lines": ["Ölç bin kere, kes bir kere.", "Çitin mi kırıldı? Tahtası bende.", "Ceviz ağacından iyi masa olur."]},
+	{"id": "yusuf", "name": "Bekçi Yusuf", "icon": "🔦", "likes": ["pogaca", "fish"],
+		"lines": ["Geceleri köy bana emanet.", "Dün gece bir tilki gördüm, tavuklarına dikkat!", "Lambalar yanınca köy bir başka güzel."]},
+]
+const WALKER_LINES := ["Günaydın komşu!", "Pazara mı gidiyorsun?", "Hava bugün ne güzel!", "Senin çiftliğin buradan görünüyor mu?",
+	"Fırıncı Zeynep'in poğaçaları bir harika.", "Otobüs kaçta geliyordu?", "Selam! Acelem var, sonra konuşalım.", "Bu yıl hasat bereketli olacak.",
+	"Meydandaki ağaç benim dedemden yaşlı.", "Akşam şenlik var mıydı?"]
+
+## Köy işleri zinciri: "to" varsa o köylüyle konuşmak, "r"/"n" varsa ambardan teslim etmek.
+## pay: [altın, XP, elmas, çantaya hediye]
+const TQUESTS := [
+	{"giver": "kemal", "to": "ayse", "ask": "Yeşilköy'e hoş geldin! Ben postacı Kemal. Terzi Ayşe yeni komşuyu çok merak ediyor, git bir selam ver.",
+		"done": "Demek yeni çiftçi sensin! Kemal hep senden bahsediyor.", "pay": [30, 10, 0, ""]},
+	{"giver": "ayse", "r": "wool", "n": 3, "ask": "Kışlık elbise dikiyorum ama yünüm bitti. 3 yün getirir misin?",
+		"done": "Ne yumuşak yün bu! Sana bir atkı örerim.", "pay": [80, 20, 0, ""]},
+	{"giver": "ayse", "to": "fatma", "ask": "Sütçü Fatma çiftliğini görmek istiyordu. Meydanın doğusunda, evlerin önünde bulursun onu.",
+		"done": "Ayşe mi gönderdi? Gel bakalım, konuşacaklarımız var.", "pay": [30, 10, 0, ""]},
+	{"giver": "fatma", "r": "milk", "n": 3, "ask": "İneklerim hasta, köye süt yetmiyor. 3 süt getirebilir misin?",
+		"done": "Çocuklar bugün de süt içecek, sağ ol! Al şu bankı, bahçene koy.", "pay": [100, 25, 2, "decor:bench"]},
+	{"giver": "mehmet", "r": "cereal", "n": 10, "ask": "Demirhanenin atları aç kaldı. 10 tahıl getirir misin? Parasını fazlasıyla veririm.",
+		"done": "Atlar bayram etti!", "pay": [60, 20, 0, ""]},
+	{"giver": "elif", "r": "flower", "n": 5, "ask": "Sınıfı süslemek istiyorum. 5 çiçek getirir misin?",
+		"done": "Çocuklar bayılacak, teşekkürler!", "pay": [70, 20, 0, ""]},
+	{"giver": "elif", "to": "selin", "ask": "Öğrencilerimden biri hasta. Doktor Selin'e haber verir misin? Batıdaki arka caddede olur.",
+		"done": "Hemen bakarım, haber verdiğin iyi oldu.", "pay": [40, 12, 0, ""]},
+	{"giver": "selin", "r": "fruit", "n": 6, "ask": "Hastalara taze meyve iyi gelir. 6 meyve getirebilir misin?",
+		"done": "Şifa olsun! Bu lamba yolunu aydınlatsın.", "pay": [90, 25, 2, "decor:lamppost"]},
+	{"giver": "ali", "r": "nut", "n": 5, "ask": "Yeni bir dolap yapıyorum, cilası için ceviz lazım. 5 ceviz getirir misin?",
+		"done": "Bu cilayla dolap pırıl pırıl olacak.", "pay": [80, 22, 0, ""]},
+	{"giver": "yusuf", "r": "pogaca", "n": 2, "ask": "Gece nöbeti uzun sürüyor. 2 poğaça getirsen dua ederim.",
+		"done": "Mis gibi! Bu gece köy emin ellerde.", "pay": [120, 28, 0, ""]},
+	{"giver": "kemal", "r": "egg", "n": 8, "ask": "Köy şenliği yaklaşıyor! Kek için 8 yumurta lazım.",
+		"done": "Şenlik hazırlığı tamam sayılır!", "pay": [90, 25, 0, ""]},
+	{"giver": "kemal", "r": "pie", "n": 1, "ask": "Şenliğin baş tatlısı senin turtan olsun. 1 turta getirir misin?",
+		"done": "Bütün köy seni konuşuyor, artık Yeşilköy'ün gözdesisin! Bu tezgâh da şenlikten hatıra.", "pay": [300, 60, 5, "decor:market"]},
+]
+
+static func folk_def(id: String) -> Dictionary:
+	for f in TOWNSFOLK:
+		if f.id == id:
+			return f
+	return {}
+
+## Tıklanan noktadaki köylü: isimliyse id, yürüyen köylüyse "~sıra", yoksa "".
+static func pick(p: Vector3) -> String:
+	for id in folk:
+		var n: Node3D = folk[id]
+		if is_instance_valid(n) and Vector2(p.x - n.position.x, p.z - n.position.z).length() < 1.0:
+			return id
+	for i in walkers.size():
+		var n: Node3D = walkers[i].node
+		if is_instance_valid(n) and Vector2(p.x - n.position.x, p.z - n.position.z).length() < 1.0:
+			return "~%d" % i
+	return ""
+
+static func node_of(id: String) -> Node3D:
+	if id.begins_with("~"):
+		var i := int(id.substr(1))
+		return walkers[i].node if i >= 0 and i < walkers.size() else null
+	return folk.get(id)
+
+## Köylünün başının üstünde konuşma balonu.
+static func say(id: String, text: String, look := Vector3.INF) -> void:
+	var n := node_of(id)
+	if n == null or not is_instance_valid(n):
+		return
+	var l: Label3D = n.get_node_or_null("Say")
+	if l == null:
+		l = Label3D.new()
+		l.name = "Say"
+		l.font = _font
+		l.font_size = 40
+		l.outline_size = 10
+		l.outline_modulate = Color(0, 0, 0, 0.65)
+		l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		l.no_depth_test = true
+		l.width = 420.0
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		l.pixel_size = 0.006 / maxf(_npc_scale, 0.001)
+		l.position = Vector3(0, (NPC_H + 1.0) / maxf(_npc_scale, 0.001), 0)
+		n.add_child(l)
+	l.text = "💬 " + text
+	l.visible = true
+	for b in _bubbles:
+		if b[0] == l:
+			_bubbles.erase(b)
+			break
+	_bubbles.append([l, 5.0])
+	if id.begins_with("~"):
+		var w: Dictionary = walkers[int(id.substr(1))]
+		w.pause = maxf(float(w.pause), 5.0)
+		if look != Vector3.INF:
+			w["look"] = Vector2(look.x, look.z)
+	elif look != Vector3.INF:
+		n.rotation.y = atan2(look.x - n.position.x, look.z - n.position.z)
+
+## Görev işareti: yalnızca `id` köylüsünün başında ❗.
+static func mark(id: String) -> void:
+	for k in folk:
+		var n: Node3D = folk[k]
+		if not is_instance_valid(n):
+			continue
+		var ex: Label3D = n.get_node_or_null("Ex")
+		if ex == null:
+			if k != id:
+				continue
+			ex = Label3D.new()
+			ex.name = "Ex"
+			ex.font = _font
+			ex.text = "❗"
+			ex.font_size = 80
+			ex.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+			ex.pixel_size = 0.006 / maxf(_npc_scale, 0.001)
+			ex.position = Vector3(0, (NPC_H + 0.6) / maxf(_npc_scale, 0.001), 0)
+			n.add_child(ex)
+		ex.visible = k == id
 static var _meshes := {}
 
 ## Köy alanına yakınlık: içeride 1, 8 m dışarıda 0.
@@ -248,9 +383,23 @@ static func _walker(root: Node3D, r: RandomNumberGenerator, pts: Array, loop: bo
 		"dir": 1.0 if r.randf() < 0.5 else -1.0, "speed": r.randf_range(0.85, 1.25), "pause": r.randf_range(0.0, 2.0), "rest": false})
 
 ## Duran köylü: meydanda ya da evlerin önünde sohbet eder.
-static func _stander(g: Node, root: Node3D, r: RandomNumberGenerator, x: float, z: float, face: Vector2) -> void:
+static func _stander(g: Node, root: Node3D, r: RandomNumberGenerator, x: float, z: float, face: Vector2, id: String) -> void:
 	var made := _npc(root, r.randi())
 	var n: Node3D = made[0]
+	if id != "":
+		folk[id] = n
+		var nl := Label3D.new()   # isim etiketi
+		var fd := folk_def(id)
+		nl.text = "%s %s" % [fd.icon, fd.name]
+		nl.font = g.font
+		nl.font_size = 34
+		nl.outline_size = 10
+		nl.outline_modulate = Color(0, 0, 0, 0.6)
+		nl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		nl.pixel_size = 0.006 / maxf(_npc_scale, 0.001)
+		nl.position = Vector3(0, (NPC_H + 0.15) / maxf(_npc_scale, 0.001), 0)
+		nl.visibility_range_end = 40.0
+		n.add_child(nl)
 	n.position = Vector3(x, g.height_at(x, z), z)
 	n.rotation.y = atan2(face.x - x, face.y - z)
 	blocks[Vector2i(floori(x), floori(z))] = true
@@ -260,6 +409,9 @@ static func _stander(g: Node, root: Node3D, r: RandomNumberGenerator, x: float, 
 
 static func _people(g: Node, root: Node3D) -> void:
 	walkers.clear()
+	folk.clear()
+	_font = g.font
+	_bubbles.clear()
 	if not npc_available():
 		return
 	var r := RandomNumberGenerator.new()
@@ -287,15 +439,23 @@ static func _people(g: Node, root: Node3D) -> void:
 	for k in 2:
 		_walker(root, r, ring, true)
 	# sohbet edenler: meydanda ve evlerin önünde ikişer
-	var spots := [[Vector2(-12.0, 51.0), Vector2(-11.0, 51.0)], [Vector2(13.5, 61.0), Vector2(13.5, 62.1)], [Vector2(-25.0, 76.5), Vector2(-24.0, 76.0)], [Vector2(9.0, 49.2), Vector2(10.0, 49.6)]]
+	var spots := [[Vector2(-12.4, 51.0), Vector2(-10.6, 51.0)], [Vector2(12.6, 60.4), Vector2(12.6, 62.2)], [Vector2(-25.8, 76.6), Vector2(-24.0, 76.0)], [Vector2(8.4, 49.3), Vector2(10.2, 49.7)]]
+	var fi := 0
 	for sp in spots:
 		var a: Vector2 = sp[0]
 		var b: Vector2 = sp[1]
-		_stander(g, root, r, a.x, a.y, b)
-		_stander(g, root, r, b.x, b.y, a)
+		_stander(g, root, r, a.x, a.y, b, TOWNSFOLK[fi].id)
+		_stander(g, root, r, b.x, b.y, a, TOWNSFOLK[fi + 1].id)
+		fi += 2
 
 ## Köylüleri yürütür: ara sıra durup soluklanır, çiftçi önündeyse bekler.
 static func _tick_people(dt: float, who: Array) -> void:
+	for b in _bubbles.duplicate():
+		b[1] -= dt
+		if b[1] <= 0.0 or not is_instance_valid(b[0]):
+			if is_instance_valid(b[0]):
+				(b[0] as Label3D).visible = false
+			_bubbles.erase(b)
 	for w in walkers:
 		var node: Node3D = w.node
 		if not is_instance_valid(node):
@@ -326,6 +486,10 @@ static func _tick_people(dt: float, who: Array) -> void:
 				w.pause = randf_range(2.0, 5.0)
 		pos = _at(w.pts, w.s) if w.loop else _at_open(w.pts, w.s)
 		d = pos[1] * float(w.dir)
+		if w.pause > 0.0 and w.has("look"):   # konuşurken çiftçiye döner
+			d = (w.look as Vector2) - (pos[0] as Vector2)
+		elif w.has("look"):
+			w.erase("look")
 		node.position = Vector3(pos[0].x, 0.0, pos[0].y)
 		node.rotation.y = lerp_angle(node.rotation.y, atan2(d.x, d.y), minf(1.0, dt * 6.0))
 

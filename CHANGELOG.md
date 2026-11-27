@@ -1,5 +1,11 @@
 # Çiftliğim 3D — Sürüm Notları
 
+## v0.20.0 · Erken Erişim
+- 💬 **Yeşilköy'lülerle konuş**: köylülere tıkla. Yürüyenler durup sana döner ve başlarının üstünde bir laf eder. Meydanda ve ev önlerinde sohbet eden 8 köylünün artık adı ve mesleği var: Postacı Kemal, Terzi Ayşe, Sütçü Fatma, Demirci Mehmet, Öğretmen Elif, Doktor Selin, Marangoz Ali, Bekçi Yusuf.
+- 📜 **Köy işleri**: 12 adımlık bir hikâye zinciri. Köylüleri birbiriyle tanıştır, ambarından yün, süt, tahıl, çiçek, meyve, ceviz, poğaça, yumurta ve turta götür. Her iş altın ve XP verir.
+- 🎁 4., 8. ve 12. işlerde elmas ve çantaya hediye süs (bank, sokak lambası, pazar tezgâhı) var. Zinciri bitirince köyün gözdesi olursun; ondan sonra her gün bir köylü küçük bir ricada bulunur.
+- ❗ Sıradaki işi veren köylünün başında ünlem durur; 🏘️ Köy istekleri panosunda da sıradaki iş yazar.
+
 ## v0.19.0 · Erken Erişim
 - 🧑‍🌾 **Yeşilköy artık kalabalık**: 13 köylü yol kenarlarında ve meydanın çevresinde yürüyor. Ara sıra durup soluklanıyorlar, yolun sonunda dönüp geri geliyorlar. Önlerine çıkarsan geçmeni bekliyorlar.
 - 💬 Meydanda ve evlerin önünde ikişer ikişer sohbet eden köylüler var.
