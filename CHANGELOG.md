@@ -1,5 +1,11 @@
 # Çiftliğim 3D — Sürüm Notları
 
+## v0.17.0 · Erken Erişim
+- 🎒 **Çanta** (sağ üstteki 🎒 düğmesi ya da **I** tuşu): kaldırdığın süsler, yapılar, ağaçlar, çiçek tarhları, gölet ve kümes artık çantaya giriyor. Oradan **bedava yeniden yerleştir** ya da yarı fiyatına sat. Çiftliği yeniden düzenlemek artık para kaybettirmiyor.
+- 🛒 Dükkân rafında çantada olan eşyalar 🎒 ×adet olarak görünür; yerleştirince önce çantadakiler kullanılır.
+- 🏆 Kupalar ve ambardaki ürünlerin özeti de çantada.
+- Hayvanlar kaldırılınca eskisi gibi yarı fiyatı geri verir.
+
 ## v0.16.0 · Erken Erişim
 - 🏡 **21 yeni süs** (🎨 Dekor menüsü, sayfa ▶): bank, fıçılar, kasalar, odun yığını, el arabası, pazar tezgâhı, sokak lambası (gece yanar), huş ve kiraz çiçeği ağacı, ayçiçekleri, kır çiçekleri, mantar öbeği, böğürtlen çalısı, yosunlu kaya, kütük, eğrelti, uzun ot; kış için süslü çam, hediye kutuları, kızak, şeker direk.
 - 🎨 Düz renkli modellerin yaprakları artık beyaz görünmüyor, mevsimle birlikte renk değiştiriyor.

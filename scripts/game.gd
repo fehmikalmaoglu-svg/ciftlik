@@ -224,7 +224,7 @@ const TOOLS := [
 	{"id": "decor", "icon": "🌷", "name": "Dekor", "shelf": "decor", "tip": "Çit, yol, çiçek…"},
 	{"id": "garden", "icon": "🌼", "name": "Bahçe", "shelf": "garden", "tip": "Çiçek tarhı ve balık göleti"},
 	{"id": "build", "icon": "🏗️", "name": "Yapı", "shelf": "build", "tip": "Ambar, kuyu, silo, ev kur"},
-	{"id": "remove", "icon": "🗑️", "name": "Kaldır", "shelf": "", "tip": "Nesneyi kaldır (yarı fiyatı geri gelir)"},
+	{"id": "remove", "icon": "🗑️", "name": "Kaldır", "shelf": "", "tip": "Nesneyi kaldır: çantaya girer, sonra bedava yeniden yerleştirilir  [I]"},
 	{"id": "move", "icon": "🚚", "name": "Taşı", "shelf": "", "tip": "Nesneye tıkla, sonra yeni yerine tıkla  [-]"},
 ]
 const ACT_TXT := {"plant": "🌱 Ek", "water": "💧 Sula", "harvest": "🧺 Topla", "feed": "🌾 Yemle", "flower": "🌼 Çiçek dik", "pond": "🐟 Gölet kur", "build": "🏗️ Kur", "coop": "🛖 Kümes kur", "plow": "⛏️ Sür", "tree": "🌳 Dik", "animal": "🐾 Yerleştir", "decor": "🎨 Yerleştir", "remove": "🗑️ Kaldır", "move": "🚚 Buraya taşı", "turn": "🔄 Döndür"}
@@ -490,6 +490,9 @@ const UPGRADES := [
 const UPG_MAX := 3
 const UPG_COST := [[1000, 10, 0], [3000, 25, 3], [7000, 50, 6]]   # kademe: [altın, madalya, +seviye]
 var upg := {}
+## Çanta: kaldırılan eşyalar. Anahtar "raf:tür" (ör. "decor:bench") → adet.
+var bag := {}
+var bag_open := false
 var nudged := {}         # bu oturumda gösterilen hatırlatmalar
 var nudge_t := 0.0
 var land_avail := false  # arazi/geliştirme alınabilir: 🗺️ düğmesi parlar
@@ -2030,23 +2033,23 @@ func _resolve(t: String, arg, x: int, z: int):
 			return "water" if e != null and e.kind == "plot" and e.water < Data.WATER_REFILL and weather != "snow" and (e.crop == null or e.progress < 1.0) else null
 		"tree":
 			var c = Data.TREES.get(arg)
-			return "tree" if e == null and _unlocked(c) and coins >= c.cost else null
+			return "tree" if e == null and _unlocked(c) and _afford("tree", arg, c.cost) else null
 		"animal":
 			if arg == "coop":
-				return "coop" if _unlocked(Data.COOP) and coins >= Data.COOP.cost and _free_area(x, z, 2, 2) else null
+				return "coop" if _unlocked(Data.COOP) and _afford("animal", "coop", Data.COOP.cost) and _free_area(x, z, 2, 2) else null
 			var c = Data.ANIMALS.get(arg)
 			return "animal" if e == null and _unlocked(c) and coins >= c.cost else null
 		"decor":
 			var c = Data.DECOR.get(arg)
-			return "decor" if e == null and _unlocked(c) and coins >= c.cost and (not c.get("event", false) or int(trophies.get(arg, 0)) > 0) else null
+			return "decor" if e == null and _unlocked(c) and _afford("decor", arg, c.cost) and (not c.get("event", false) or int(trophies.get(arg, 0)) > 0) else null
 		"garden":
 			if arg == "pond":
-				return "pond" if _unlocked(Data.POND) and coins >= Data.POND.cost and _free_area(x, z, 2, 2) else null
+				return "pond" if _unlocked(Data.POND) and _afford("garden", "pond", Data.POND.cost) and _free_area(x, z, 2, 2) else null
 			var c = Data.FLOWERS.get(arg)
-			return "flower" if e == null and _unlocked(c) and coins >= c.cost else null
+			return "flower" if e == null and _unlocked(c) and _afford("garden", arg, c.cost) else null
 		"build":
 			var b = Data.BUILDINGS.get(arg)
-			return "build" if b != null and _unlocked(b) and coins >= b.cost and _free_area(x, z, b.w, b.d) else null
+			return "build" if b != null and _unlocked(b) and _afford("build", arg, b.cost) and _free_area(x, z, b.w, b.d) else null
 		"remove":
 			if e != null and e.kind == "building" and e.type == "barn" and _count_buildings("barn") <= 1 and _res_total() > 0:
 				return null   # son ambar doluyken yıkılmaz
@@ -2293,6 +2296,226 @@ func _refund_of(e: Dictionary) -> int:
 	if def == null:
 		return 0
 	return int(def.cost * 0.5)
+
+# ============================================================ çanta
+## Kaldırılınca çantaya giren nesnelerin anahtarı (hayvanlar ve kupalar hariç).
+func _bag_key_of(e: Dictionary) -> String:
+	match e.kind:
+		"decor": return "" if Data.DECOR.get(e.type, {}).get("event", false) else "decor:" + str(e.type)
+		"building": return "build:" + str(e.type)
+		"tree": return "tree:" + str(e.type)
+		"flower": return "garden:" + str(e.type)
+		"pond": return "garden:pond"
+		"coop": return "animal:coop"
+	return ""
+
+func _bag_n(cat: String, arg) -> int:
+	return int(bag.get("%s:%s" % [cat, str(arg)], 0))
+
+func _afford(cat: String, arg, cost: int) -> bool:
+	return _bag_n(cat, arg) > 0 or coins >= cost
+
+## Çantada varsa oradan düşer (0 döner), yoksa altın harcanır.
+func _pay(cat: String, arg, cost: int) -> int:
+	var k := "%s:%s" % [cat, str(arg)]
+	if int(bag.get(k, 0)) > 0:
+		bag[k] = int(bag[k]) - 1
+		if int(bag[k]) <= 0:
+			bag.erase(k)
+		hud_dirty = true
+		if bag_open and land_dlg.visible:
+			_open_bag()
+		return 0
+	_spend(cost)
+	return cost
+
+func _paid_txt(paid: int) -> String:
+	return "🎒" if paid == 0 else "-%d 🪙" % paid
+
+func _bag_def(k: String):
+	var p := k.split(":")
+	if p.size() != 2:
+		return null
+	var list = {"tree": Data.TREES, "animal": Data.animal_shop(), "decor": Data.DECOR, "garden": Data.garden(), "build": Data.BUILDINGS}.get(p[0])
+	return null if list == null else list.get(p[1])
+
+func _load_bag(d) -> void:
+	bag = {}
+	if typeof(d) != TYPE_DICTIONARY:
+		return
+	for k in d:
+		if _bag_def(str(k)) != null and int(d[k]) > 0:
+			bag[str(k)] = int(d[k])
+
+func _bag_total() -> int:
+	var n := 0
+	for k in bag:
+		n += int(bag[k])
+	return n
+
+## Çantadaki bir eşyayı yarı fiyatına sat.
+func _bag_sell(k: String) -> bool:
+	if net_role == "guest":
+		_toast("🎒 Çantadan satışı çiftlik sahibi yapar.", "hint")
+		return false
+	var def = _bag_def(k)
+	if def == null or int(bag.get(k, 0)) <= 0:
+		return false
+	bag[k] = int(bag[k]) - 1
+	if int(bag[k]) <= 0:
+		bag.erase(k)
+	var back := int(def.cost * 0.5)
+	coins += back
+	hud_dirty = true
+	_sfx("harvest")
+	_toast("🎒 %s %s satıldı: +%d 🪙" % [def.icon, def.name, back])
+	return true
+
+## Çantadaki eşyayı yerleştirmek için aleti ve eşyayı seç.
+func _bag_place(k: String) -> void:
+	var p := k.split(":")
+	var def = _bag_def(k)
+	if def == null:
+		return
+	land_dlg.visible = false
+	bag_open = false
+	sel[p[0]] = p[1]
+	_set_tool(p[0])
+	_toast("🎒 %s %s: yerleştirmek için bir kareye tıkla" % [def.icon, def.name], "hint")
+
+func _open_bag() -> void:
+	shop_open = false
+	vill_open = ""
+	ev_open = false
+	help.visible = false
+	barn.visible = false
+	bag_open = true
+	for c in land_box.get_children():
+		land_box.remove_child(c)
+		c.queue_free()
+	var t := Label.new()
+	t.text = "🎒 Çanta"
+	t.add_theme_font_size_override("font_size", 26)
+	land_box.add_child(t)
+	var d := Label.new()
+	d.text = "Kaldırdığın süsler, yapılar, ağaçlar ve tarhlar buraya girer. Yeniden yerleştirmek bedava; istersen yarı fiyatına satabilirsin."
+	d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	d.custom_minimum_size = Vector2(560, 0)
+	d.add_theme_color_override("font_color", Color("#7a5a3a"))
+	land_box.add_child(d)
+	var h1 := Label.new()
+	h1.text = "📦 Eşyalar  (%d)" % _bag_total()
+	h1.add_theme_font_size_override("font_size", 19)
+	land_box.add_child(h1)
+	var keys: Array = bag.keys()
+	keys.sort()
+	if keys.is_empty():
+		var e := Label.new()
+		e.text = "Çanta boş. 🗑️ Kaldır aletiyle (ya da nesneye basılı tutup Kaldır) eşyaları buraya koyabilirsin."
+		e.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		e.custom_minimum_size = Vector2(560, 0)
+		e.add_theme_color_override("font_color", Color("#8a7260"))
+		land_box.add_child(e)
+	else:
+		var sc := ScrollContainer.new()
+		sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+		sc.custom_minimum_size = Vector2(560, mini(keys.size() * 38, 300))
+		var grid := GridContainer.new()
+		grid.columns = 4
+		grid.add_theme_constant_override("h_separation", 12)
+		grid.add_theme_constant_override("v_separation", 4)
+		grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		for k in keys:
+			var def = _bag_def(k)
+			if def == null:
+				continue
+			var nm := Label.new()
+			nm.text = "%s %s" % [def.icon, def.name]
+			nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			grid.add_child(nm)
+			var cnt := Label.new()
+			cnt.text = "× %d" % int(bag[k])
+			cnt.custom_minimum_size = Vector2(50, 0)
+			grid.add_child(cnt)
+			var kk: String = k
+			grid.add_child(_small_btn(" Yerleştir ", func(): _bag_place(kk), true, true))
+			grid.add_child(_small_btn(" Sat +%d🪙 " % int(def.cost * 0.5), func():
+				if _bag_sell(kk):
+					_open_bag(), net_role != "guest"))
+		sc.add_child(grid)
+		land_box.add_child(sc)
+	var tk: Array = trophies.keys()
+	if not tk.is_empty():
+		land_box.add_child(HSeparator.new())
+		var h2 := Label.new()
+		h2.text = "🏆 Kupalar"
+		h2.add_theme_font_size_override("font_size", 19)
+		land_box.add_child(h2)
+		var tg := GridContainer.new()
+		tg.columns = 3
+		tg.add_theme_constant_override("h_separation", 12)
+		for k in tk:
+			var def = Data.DECOR.get(k)
+			if def == null:
+				continue
+			var nm := Label.new()
+			nm.text = "%s %s" % [def.icon, def.name]
+			nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			tg.add_child(nm)
+			var cnt := Label.new()
+			cnt.text = "× %d" % int(trophies[k])
+			tg.add_child(cnt)
+			var kk: String = "decor:" + str(k)
+			tg.add_child(_small_btn(" Yerleştir ", func(): _bag_place(kk), true, true))
+		land_box.add_child(tg)
+	land_box.add_child(HSeparator.new())
+	var h3 := Label.new()
+	h3.text = "🧺 Ürünler  (ambarda %d / %d)" % [_res_total(), _barn_cap()]
+	h3.add_theme_font_size_override("font_size", 19)
+	land_box.add_child(h3)
+	var parts := []
+	for r in Data.RESOURCES:
+		if int(res.get(r, 0)) > 0:
+			parts.append("%s %d" % [Data.RESOURCES[r].icon, int(res[r])])
+	var rl := Label.new()
+	rl.text = "   ".join(parts) if not parts.is_empty() else "Ambar boş."
+	rl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	rl.custom_minimum_size = Vector2(560, 0)
+	land_box.add_child(rl)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	row.add_child(_small_btn("  📦 Ambarı aç (sat, sipariş)  ", func():
+		land_dlg.visible = false
+		bag_open = false
+		_open_barn()))
+	row.add_child(_small_btn("  Kapat  ", func():
+		land_dlg.visible = false
+		bag_open = false))
+	land_box.add_child(row)
+	land_dlg.visible = true
+
+func _selftest_bag(fails: Array) -> void:
+	var keep := [coins, bag.duplicate(), level]
+	level = 99
+	coins = 1000
+	bag = {}
+	var sp := _free_spot(1, 1)
+	if not _perform_local({"tool": "decor", "arg": "bench", "x": sp.x, "z": sp.y}): fails.append("bank konmadı")
+	var c0 := coins
+	if not _perform_local({"tool": "remove", "arg": null, "x": sp.x, "z": sp.y}) or _bag_n("decor", "bench") != 1 or coins != c0: fails.append("kaldırınca çantaya girmedi")
+	coins = 0
+	if not _perform_local({"tool": "decor", "arg": "bench", "x": sp.x, "z": sp.y}) or _bag_n("decor", "bench") != 0 or coins != 0: fails.append("çantadan bedava yerleşmedi")
+	_perform_local({"tool": "remove", "arg": null, "x": sp.x, "z": sp.y})
+	var js = JSON.parse_string(JSON.stringify(_state_dict()))
+	_load_bag(js.bag)
+	if _bag_n("decor", "bench") != 1: fails.append("çanta kaydı")
+	_open_bag()
+	if not _bag_sell("decor:bench") or coins != int(Data.DECOR.bench.cost * 0.5) or not bag.is_empty(): fails.append("çantadan satış")
+	land_dlg.visible = false
+	bag_open = false
+	coins = keep[0]
+	bag = keep[1]
+	level = keep[2]
 
 ## Taşı aleti: nesneyi seç / bırak (seçilince hafifçe havalanır).
 func _move_pick(e) -> void:
@@ -2749,44 +2972,48 @@ func _perform_local_in(item: Dictionary) -> bool:
 			_feed_pen(e)
 		"flower":
 			var f = Data.FLOWERS[arg]
-			_spend(f.cost)
+			var paid := _pay("garden", arg, f.cost)
 			_add_entity({"kind": "flower", "type": arg, "x": x, "z": z})
-			_float_text(pos, "-%d 🪙" % f.cost, Color("#ffb4a8"))
+			_float_text(pos, _paid_txt(paid), Color("#ffb4a8"))
 			_burst(pos + Vector3(0, 0.2, 0), f.color, 8, 2.0)
 			_sfx("plant")
 		"build":
 			var b = Data.BUILDINGS[arg]
-			_spend(b.cost)
+			var paid := _pay("build", arg, b.cost)
 			_add_entity({"kind": "building", "type": arg, "x": x, "z": z, "w": b.w, "d": b.d, "rot": 0.0})
 			var bc := Vector3(x + b.w / 2.0, 0, z + b.d / 2.0)
-			_float_text(bc + Vector3(0, 0.6, 0), "-%d 🪙" % b.cost, Color("#ffb4a8"))
-			_gain(0, b.xp, bc, b.icon)
+			_float_text(bc + Vector3(0, 0.6, 0), _paid_txt(paid), Color("#ffb4a8"))
+			if paid > 0:   # çantadan yeniden kurmak XP/görev vermez
+				_gain(0, b.xp, bc, b.icon)
 			_burst(bc + Vector3(0, 0.8, 0), "#d7b98e", 22, 4.0)
 			_burst(bc + Vector3(0, 0.4, 0), "#9e9e9e", 14, 3.0)
 			_recompute_boosts()
-			_quest_event("build", arg, 1)
+			if paid > 0:
+				_quest_event("build", arg, 1)
 			_sfx("place")
 		"coop":
-			_spend(Data.COOP.cost)
+			var paid := _pay("animal", "coop", Data.COOP.cost)
 			_add_entity({"kind": "coop", "type": "coop", "x": x, "z": z})
-			_quest_event("buy", "coop", 1)
+			if paid > 0:
+				_quest_event("buy", "coop", 1)
 			var ccp := Vector3(x + 1.0, 0, z + 1.0)
-			_float_text(ccp, "-%d 🪙" % Data.COOP.cost, Color("#ffb4a8"))
+			_float_text(ccp, _paid_txt(paid), Color("#ffb4a8"))
 			_burst(ccp + Vector3(0, 0.5, 0), "#c9874d", 14, 3.0)
 			_sfx("place")
 		"pond":
-			_spend(Data.POND.cost)
+			var paid := _pay("garden", "pond", Data.POND.cost)
 			_add_entity({"kind": "pond", "type": "pond", "x": x, "z": z})
 			var pc := Vector3(x + 1.0, 0, z + 1.0)
-			_float_text(pc, "-%d 🪙" % Data.POND.cost, Color("#ffb4a8"))
+			_float_text(pc, _paid_txt(paid), Color("#ffb4a8"))
 			_burst(pc + Vector3(0, 0.3, 0), "#4fc3f7", 16, 3.0)
 			_sfx("water")
 		"tree":
 			var t = Data.TREES[arg]
-			_spend(t.cost)
-			_quest_event("tree", arg, 1)
+			var paid := _pay("tree", arg, t.cost)
+			if paid > 0:
+				_quest_event("tree", arg, 1)
 			_add_entity({"kind": "tree", "type": arg, "x": x, "z": z, "age": 0.0, "fruit_t": 0.0, "has_fruit": false})
-			_float_text(pos, "-%d 🪙" % t.cost, Color("#ffb4a8"))
+			_float_text(pos, _paid_txt(paid), Color("#ffb4a8"))
 			_burst(pos + Vector3(0, 0.3, 0), "#66bb6a", 10, 2.5)
 			_sfx("place")
 		"animal":
@@ -2799,7 +3026,10 @@ func _perform_local_in(item: Dictionary) -> bool:
 			_sfx("animal")
 		"decor":
 			var dd = Data.DECOR[arg]
-			_spend(dd.cost)
+			if dd.get("event", false):
+				_spend(dd.cost)
+			else:
+				_pay("decor", arg, dd.cost)
 			if dd.get("event", false):
 				trophies[arg] = int(trophies.get(arg, 0)) - 1
 				if int(trophies[arg]) <= 0:
@@ -2842,7 +3072,12 @@ func _perform_local_in(item: Dictionary) -> bool:
 			_burst(pos + Vector3(0, 0.3, 0), "#9e9e9e", 10, 2.5)
 			if e.kind == "building":
 				_recompute_boosts()
-			var back := _refund_of(e)
+			var bk := _bag_key_of(e)
+			var back := 0 if bk != "" else _refund_of(e)
+			if bk != "":
+				bag[bk] = int(bag.get(bk, 0)) + 1
+				_float_text(pos, "+1 🎒", Color("#e6f7ff"))
+				hud_dirty = true
 			if e.kind == "decor" and Data.DECOR.get(e.type, {}).get("event", false):
 				trophies[e.type] = int(trophies.get(e.type, 0)) + 1   # kupa envantere döner
 				net_quest_dirty = true
@@ -2938,7 +3173,7 @@ func _explain_fail(arg, x: int, z: int) -> void:
 		_toast("🌨️ Kar yağarken sulamaya gerek yok", "hint")
 		return
 	var target_ok: bool = (e != null and e.kind == "plot" and e.crop == null) if seedish else e == null
-	if def != null and coins < def.cost and target_ok:
+	if def != null and not _afford(_shelf_key_of(tool), arg, int(def.cost)) and target_ok:
 		_sfx("error")
 		_toast("🪙 Yeterli altının yok", "warn")
 		return
@@ -3640,6 +3875,11 @@ func _unhandled_input(ev: InputEvent) -> void:
 		elif k == KEY_J:
 			quest_open = not quest_open
 			_render_quests()
+		elif k == KEY_I:
+			if land_dlg.visible and bag_open:
+				land_dlg.visible = false
+			else:
+				_open_bag()
 		elif k == KEY_B:
 			if barn.visible:
 				barn.visible = false
@@ -3802,7 +4042,7 @@ func _describe(e, act, arg, x: int, z: int) -> String:
 			"tree": extra = " %s  -%d🪙" % [Data.TREES[arg].icon, Data.TREES[arg].cost]
 			"animal": extra = " %s  -%d🪙" % [Data.ANIMALS[arg].icon, Data.ANIMALS[arg].cost]
 			"decor": extra = " %s  -%d🪙" % [Data.DECOR[arg].icon, Data.DECOR[arg].cost]
-			"remove": extra = ("  +%d🪙" % _refund_of(e)) if e != null and _refund_of(e) > 0 else ""
+			"remove": extra = "  → 🎒" if e != null and _bag_key_of(e) != "" else ("  +%d🪙" % _refund_of(e)) if e != null and _refund_of(e) > 0 else ""
 		s += ("\n" if s != "" else "") + "👉 " + ACT_TXT[act] + extra
 	return s
 
@@ -4394,6 +4634,9 @@ func _build_ui() -> void:
 	var bb := _icon_btn("📦", "Ambar  [B]")
 	bb.pressed.connect(_open_barn)
 	ah.add_child(bb)
+	var bbag := _icon_btn("🎒", "Çanta: kaldırdığın eşyalar, kupalar ve ürünler  [I]")
+	bbag.pressed.connect(_open_bag)
+	ah.add_child(bbag)
 	var bh := _icon_btn("❔", "Yardım")
 	bh.pressed.connect(func(): help.visible = not help.visible)
 	ah.add_child(bh)
@@ -5239,7 +5482,7 @@ func _net_sync_dict() -> Dictionary:
 	for e in entities:
 		ents.append(_ent_dict(e))
 	return {"coins": coins, "xp": xp, "level": level, "day_time": day_time, "day": day, "season": season, "season_t": season_t,
-		"year": year, "weather": weather, "weather_t": weather_t, "fh": farm_h, "res": res, "ents": ents, "q": _net_quest_dict(), "order": order, "fg": fishgear, "vill": vill, "ev": {"e": ev, "t": trophies}}
+		"year": year, "weather": weather, "weather_t": weather_t, "fh": farm_h, "res": res, "ents": ents, "q": _net_quest_dict(), "order": order, "fg": fishgear, "vill": vill, "bag": bag, "ev": {"e": ev, "t": trophies}}
 
 @rpc("authority", "reliable")
 func net_sync(d: Dictionary) -> void:
@@ -5270,6 +5513,8 @@ func net_sync(d: Dictionary) -> void:
 		net_quests(d.q)
 	if d.has("order") and typeof(d.order) == TYPE_DICTIONARY:
 		order = d.order
+	if d.has("bag"):
+		_load_bag(d.bag)
 	if d.has("ev"):
 		_load_ev(d.ev.get("e", {}), d.ev.get("t", {}))
 		if ev_open and land_dlg.visible:
@@ -5506,6 +5751,9 @@ func _start_play(show_help := false) -> void:
 				if not tiles.has(key(tx, tz)):
 					_add_entity({"kind": "decor", "type": k, "x": tx, "z": tz, "rot": 0.0})
 				i += 1
+		elif a == "--bag":   # geliştirici: örnek eşyalarla çanta
+			_load_bag({"decor:bench": 2, "decor:cherry": 1, "build:well": 1, "garden:pond": 1, "decor:lamppost": 3})
+			_open_bag()
 		elif a == "--board":   # geliştirici: köy istekleri panosu
 			_open_village_board()
 		elif a == "--land":   # geliştirici: arazi penceresini aç
@@ -6190,7 +6438,7 @@ func _render_shelf() -> void:
 		b.focus_mode = Control.FOCUS_NONE
 		b.custom_minimum_size = Vector2(124, 100)
 		b.add_theme_font_size_override("font_size", 13)
-		b.text = "%s\n%s\n%s\n%s" % [it.icon, it.name, "🏆 Kupa" if it.get("event", false) else "🪙 %d" % it.cost, ("🔒 Sv %d" % it.level) if locked else meta]
+		b.text = "%s\n%s\n%s\n%s" % [it.icon, it.name, "🏆 Kupa" if it.get("event", false) else ("🎒 ×%d" % _bag_n(cat, k)) if _bag_n(cat, k) > 0 else "🪙 %d" % it.cost, ("🔒 Sv %d" % it.level) if locked else meta]
 		b.tooltip_text = it.get("info", it.name)
 		if cat == "garden" and k != "pond":
 			b.tooltip_text = "%s · Sv %d\nBir kez açar: hasattan sonra yeniden ekilir.\nBüyürken sulu tutarsan kazanç 3 katına kadar çıkar." % [it.name, _flower_lv(k).lv]
@@ -6200,7 +6448,7 @@ func _render_shelf() -> void:
 		_btn_styles(b, Color("#f1ffe6") if selected else Color.WHITE, Color("#fbf3e4"), Color("#6fbf3b") if selected else Color("#e7d7bf"), 2)
 		if locked or (cat == "seed" and not _in_season(it)):
 			b.modulate = Color(0.7, 0.7, 0.7, 0.75)
-		b.set_meta("cost", it.cost)
+		b.set_meta("cost", 0 if _bag_n(cat, k) > 0 else it.cost)
 		var kk: String = k
 		b.pressed.connect(func():
 			if locked:
@@ -6309,7 +6557,7 @@ func _state_dict() -> Dictionary:
 	var ents := []
 	for e in entities:
 		ents.append(_ent_dict(e))
-	return {"v": 1, "fv": SAVE_VER, "bv": 1, "sv": 2, "story": story_step, "sh": story_have, "fh": farm_h, "fg": fishgear, "vill": vill, "upg": upg, "ev": ev, "tro": trophies, "name": farm_name, "gems": gems, "quests": quests, "qskip": quest_skip_at, "flv": flv, "season": season, "season_t": season_t, "year": year, "weather": weather, "weather_t": weather_t, "medals": medals, "res": res, "order": order, "coins": coins, "xp": xp, "level": level, "day_time": day_time, "day": day, "sel": sel, "muted": muted,
+	return {"v": 1, "fv": SAVE_VER, "bv": 1, "sv": 2, "story": story_step, "sh": story_have, "fh": farm_h, "fg": fishgear, "vill": vill, "upg": upg, "bag": bag, "ev": ev, "tro": trophies, "name": farm_name, "gems": gems, "quests": quests, "qskip": quest_skip_at, "flv": flv, "season": season, "season_t": season_t, "year": year, "weather": weather, "weather_t": weather_t, "medals": medals, "res": res, "order": order, "coins": coins, "xp": xp, "level": level, "day_time": day_time, "day": day, "sel": sel, "muted": muted,
 		"saved_at": Time.get_unix_time_from_system(), "ents": ents, "fx": farmer.position.x, "fz": farmer.position.z}
 
 func _ent_dict(e: Dictionary) -> Dictionary:
@@ -6415,6 +6663,7 @@ func _load_dict(data, offline: bool) -> bool:
 		for u in UPGRADES:
 			if ug.has(u.id):
 				upg[u.id] = clampi(int(ug[u.id]), 0, UPG_MAX)
+	_load_bag(data.get("bag", {}))
 	_load_vill(data.get("vill", {}))
 	_load_ev(data.get("ev", {}), data.get("tro", {}))
 	farm_h = int(data.get("fh", 0))
@@ -7526,6 +7775,7 @@ func _decor_shop() -> Dictionary:
 	return out
 
 func _open_event() -> void:
+	bag_open = false
 	_ev_check()
 	var d := _ev_def()
 	vill_open = ""
@@ -8244,6 +8494,7 @@ func _land_upgrades() -> void:
 
 ## Köy istekleri panosu: dört köylünün isteği; pazara yürümeden ambardan teslim edilir.
 func _open_village_board() -> void:
+	bag_open = false
 	shop_open = false
 	vill_open = ""
 	ev_open = false
@@ -8506,6 +8757,7 @@ func _build_land_ui() -> void:
 	land_dlg.visible = false
 
 func _open_land() -> void:
+	bag_open = false
 	shop_open = false
 	vill_open = ""
 	ev_open = false
@@ -8742,10 +8994,12 @@ func _selftest_build(fails: Array) -> void:
 	_selftest_pause(fails)
 	_selftest_savever(fails)
 	_selftest_upg(fails)
+	_selftest_bag(fails)
 	var rb := _refund_of(tiles.get(key(sp.x, sp.y)))
 	var c2 := coins
 	if not _perform({"x": sp.x, "z": sp.y, "tool": "remove", "arg": null}) or _count_buildings("barn") != b0: fails.append("bina kaldırma")
-	if rb != Data.BUILDINGS.barn.cost / 2 or coins != c2 + rb: fails.append("yarı fiyat iade")
+	if rb != Data.BUILDINGS.barn.cost / 2 or coins != c2 or _bag_n("build", "barn") != 1: fails.append("bina çantaya girmedi")
+	bag.erase("build:barn")
 	var we = tiles.get(key(ws.x, ws.y))
 	if we != null:
 		_remove_entity(we)
