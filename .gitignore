@@ -2,3 +2,7 @@
 *.import
 export/
 .claude/skills/
+
+# Midnight Misfit Studio "Cozy" sampler: lisans ham dosyaların açık repoda yayınlanmasını yasaklar.
+# Yalnızca yerel derlemeye (pck içine) girer; dosya yoksa oyun kendi modellerine düşer.
+assets/cozy/

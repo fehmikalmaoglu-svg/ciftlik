@@ -53,7 +53,8 @@ static func _fix(n: Node) -> void:
 						c.albedo_color = Color(PALETTE[m.resource_name])
 					if m.resource_name.begins_with("Lea"):
 						# MegaKit yaprakları kendi shader'ı olmadan koyu kalıyor: aydınlat, arkadan ışık geçir
-						var base := LEAF_BASE * (Color(1.35, 1.25, 1.2) if "Pine" in m.resource_name else Color.WHITE)
+						# Dokusuz yapraklar (Cozy modelleri) kendi düz rengini taban alır; yoksa beyaz kalırlar.
+						var base: Color = (LEAF_BASE * (Color(1.35, 1.25, 1.2) if "Pine" in m.resource_name else Color.WHITE)) if m.albedo_texture != null else m.albedo_color
 						c.set_meta("base", base)
 						c.albedo_color = base
 						c.backlight_enabled = true
@@ -63,7 +64,7 @@ static func _fix(n: Node) -> void:
 						c.cull_mode = BaseMaterial3D.CULL_DISABLED
 						c.diffuse_mode = BaseMaterial3D.DIFFUSE_LAMBERT_WRAP
 						leaf_mats.append(c)
-					elif m.resource_name.begins_with("Bark"):
+					elif m.resource_name.begins_with("Bark") and m.albedo_texture != null:
 						c.albedo_color = Color(1.25, 1.15, 1.1)
 					_fixed[m] = c
 				mi.set_surface_override_material(i, _fixed[m])

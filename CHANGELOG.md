@@ -1,5 +1,9 @@
 # Çiftliğim 3D — Sürüm Notları
 
+## v0.16.0 · Erken Erişim
+- 🏡 **21 yeni süs** (🎨 Dekor menüsü, sayfa ▶): bank, fıçılar, kasalar, odun yığını, el arabası, pazar tezgâhı, sokak lambası (gece yanar), huş ve kiraz çiçeği ağacı, ayçiçekleri, kır çiçekleri, mantar öbeği, böğürtlen çalısı, yosunlu kaya, kütük, eğrelti, uzun ot; kış için süslü çam, hediye kutuları, kızak, şeker direk.
+- 🎨 Düz renkli modellerin yaprakları artık beyaz görünmüyor, mevsimle birlikte renk değiştiriyor.
+
 ## v0.15.1 · Erken Erişim
 - 🌗 **Gölgeler HD ve titremesiz**: gölge dilimleri artık kameranın baktığı yere göre ayarlanıyor (önce kameranın dibine harcanıyordu); çit gölgelerindeki merdiven/piksel görüntüsü gitti. Yüksek ve Ultra'da daha iyi gölge süzgeci.
 - ✨ Güneş artık küçük adımlarla dönüyor: gölge kenarlarındaki sürekli kıpırtı/titreme kesildi.

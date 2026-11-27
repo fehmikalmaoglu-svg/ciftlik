@@ -133,7 +133,56 @@ static func _body_h(sk: Skeleton3D) -> float:
 		return 1.0
 	return sk.get_bone_global_rest(top).origin.distance_to(sk.get_bone_global_rest(end).origin)
 
+## Köy/doğa süsleri: tür → [[dosya, ölçek, x, z, dönüş], ...]. Dosyalar repoda yok (lisans):
+## yalnızca yerel derlemede bulunur; eksikse COZY_FALLBACK'teki prosedürel modele düşülür.
+const CZ := "res://assets/cozy/"
+const COZY := {
+	"tallgrass": [["Nat_37_TallGrass.glb", 1.15, 0.0, 0.0, 0.0]],
+	"fern": [["Nat_17_FernLarge.glb", 0.62, 0.0, 0.0, 0.0]],
+	"wildflowers": [["Nat_31_Tulip.glb", 1.9, -0.22, -0.18, 0.0], ["Nat_30_Daisy.glb", 2.3, 0.2, -0.22, 1.0], ["Nat_32_Lavender.glb", 1.8, -0.15, 0.22, 2.0],
+		["Nat_31_Tulip.glb", 1.7, 0.24, 0.16, 3.0], ["Nat_30_Daisy.glb", 2.1, 0.0, 0.02, 4.0], ["Nat_35_GrassTuftA.glb", 0.9, 0.05, 0.05, 0.5]],
+	"mushrooms": [["Nat_42_MushroomGroup.glb", 1.3, -0.08, -0.05, 0.0], ["Nat_40_FlyAgaric.glb", 1.4, 0.24, 0.2, 0.7]],
+	"mossrock": [["Nat_28_RockMossy.glb", 0.55, 0.0, 0.0, 0.0]],
+	"sunflowers": [["Nat_33_Sunflower.glb", 1.5, -0.2, -0.15, 0.0], ["Nat_33_Sunflower.glb", 1.3, 0.22, -0.1, 0.4], ["Nat_33_Sunflower.glb", 1.6, 0.0, 0.22, -0.3]],
+	"berrybush": [["Nat_15_BushBerries.glb", 0.6, 0.0, 0.0, 0.0]],
+	"stump": [["Nat_50_StumpRoots.glb", 0.52, 0.0, 0.0, 0.0]],
+	"barrels": [["Vil_38_BarrelsA.glb", 0.66, 0.0, 0.0, 0.0]],
+	"crates": [["Vil_40_CratesA.glb", 0.68, 0.0, 0.0, 0.0]],
+	"bench": [["Vil_20_BenchA.glb", 0.5, 0.0, 0.0, 0.0]],
+	"logstack": [["Nat_48_LogStack.glb", 0.6, 0.0, 0.0, 0.0]],
+	"lamppost": [["Vil_15_LampPost.glb", 0.55, 0.0, 0.0, 0.0]],
+	"cart": [["Vil_36_Cart.glb", 0.29, -0.45, 0.0, 0.0]],
+	"birch": [["Nat_03_Birch.glb", 0.3, 0.0, 0.0, 0.0]],
+	"xmastree": [["Win_31_TreeSmallA.glb", 0.6, 0.0, 0.0, 0.0]],
+	"giftstack": [["Win_38_GiftStack.glb", 0.62, 0.0, 0.0, 0.0]],
+	"sled": [["Win_35_Sled.glb", 0.48, -0.2, 0.0, 0.0]],
+	"candycane": [["Win_41_CandyCanePost.glb", 0.7, 0.0, 0.0, 0.0]],
+	"market": [["Vil_09_MarketStallA.glb", 0.36, 0.0, 0.0, 0.0]],
+	"cherry": [["Nat_10_CherryBlossom.glb", 0.3, 0.0, 0.0, 0.0]],
+}
+const COZY_FALLBACK := {"tallgrass": "bush", "fern": "bush", "wildflowers": "flowers", "mushrooms": "rock", "mossrock": "rock",
+	"sunflowers": "flowers", "berrybush": "bush", "stump": "hay", "barrels": "hay", "crates": "hay", "bench": "hay",
+	"logstack": "hay", "lamppost": "lantern", "cart": "hay", "birch": "bush", "xmastree": "bush", "giftstack": "hay",
+	"sled": "hay", "candycane": "lantern", "market": "hay", "cherry": "bush"}
+
+static func cozy(type: String) -> Node3D:
+	var parts: Array = COZY[type]
+	var g: Node3D = null
+	for p in parts:
+		var n := Assets.inst(CZ + p[0], p[1], p[4], Vector3(p[2], 0, p[3]))
+		if n == null:
+			if g != null:
+				g.free()
+			return null
+		if g == null:
+			g = Node3D.new()
+		g.add_child(n)
+	return g
+
 static func decor(type: String, conn: Dictionary) -> Node3D:
+	if COZY.has(type):
+		var cz := cozy(type)
+		return cz if cz != null else Models.decor(COZY_FALLBACK[type], conn)
 	match type:
 		"rock":
 			var n := Assets.inst(N + "rock_largeA.glb", 0.9)

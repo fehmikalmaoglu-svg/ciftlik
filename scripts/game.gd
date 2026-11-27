@@ -33,7 +33,8 @@ func _net_port() -> int:
 	return NET_PORT
 const NET_COLORS := ["#4a90d9", "#9c5bd6", "#e0912f", "#2fae8f", "#d94a8c"]
 const WALK_LIM := 56     # çiftçinin gezebileceği alan (±), görünen arazinin içi
-const BLOCK_DECOR := ["fence", "rock", "lantern", "hay", "scarecrow", "bush", "flowers", "tr_spring", "tr_summer", "tr_autumn", "tr_winter"]
+const BLOCK_DECOR := ["fence", "rock", "lantern", "hay", "scarecrow", "bush", "flowers", "tr_spring", "tr_summer", "tr_autumn", "tr_winter",
+	"mossrock", "berrybush", "stump", "barrels", "crates", "bench", "logstack", "lamppost", "cart", "birch", "xmastree", "giftstack", "sled", "candycane", "market", "cherry"]
 const QUEST_SKIP_COOLDOWN := 24.0 * 3600.0
 const QUEST_SKIP_GEMS := 2
 const FSPEED := 5.2
@@ -1665,7 +1666,7 @@ func _add_entity(d: Dictionary) -> Dictionary:
 			e.erase("watered")
 		if not e.has("water"):
 			e.water = 0.0
-	if e.get("type", "") == "lantern":
+	if e.get("type", "") == "lantern" or e.get("type", "") == "lamppost":
 		lanterns.append(e)
 	_refresh(e)
 	if e.get("type", "") == "fence" or e.get("type", "") == "gate":
@@ -4111,7 +4112,7 @@ func _update_lamps(dt: float) -> void:
 		list.sort_custom(func(a, b): return Vector2(a.x - ct.x, a.z - ct.z).length_squared() < Vector2(b.x - ct.x, b.z - ct.z).length_squared())
 		for i in lamp_lights.size():
 			var l: OmniLight3D = lamp_lights[i]
-			l.position = Vector3(list[i].x + 0.5, 1.5, list[i].z + 0.5) if i < list.size() else Vector3(0, -50, 0)
+			l.position = Vector3(list[i].x + 0.5, 1.95 if list[i].type == "lamppost" else 1.5, list[i].z + 0.5) if i < list.size() else Vector3(0, -50, 0)
 	for l in lamp_lights:
 		l.light_energy = night_f * 1.4
 
@@ -5497,6 +5498,14 @@ func _start_play(show_help := false) -> void:
 			var xz := a.substr(5).split(",")
 			farmer.position = Vector3(float(xz[0]), 0, float(xz[1]))
 			cam_target = farmer.position
+		elif a == "--decorshow":   # geliştirici: köy/doğa süslerini çiftçinin önüne diz
+			var i := 0
+			for k in Visuals.COZY:
+				var tx := int(farmer.position.x) - 6 + (i % 7) * 2
+				var tz := int(farmer.position.z) - 2 + (i / 7) * 2
+				if not tiles.has(key(tx, tz)):
+					_add_entity({"kind": "decor", "type": k, "x": tx, "z": tz, "rot": 0.0})
+				i += 1
 		elif a == "--board":   # geliştirici: köy istekleri panosu
 			_open_village_board()
 		elif a == "--land":   # geliştirici: arazi penceresini aç
